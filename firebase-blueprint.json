@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nome": { "type": "string" },
+        "turma": { "type": "string" },
+        "avatar": { "type": "string" },
+        "email": { "type": "string" },
+        "criadoEm": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "nome", "avatar", "email"]
+    },
+    "Progress": {
+      "title": "Progress",
+      "description": "Weekly progress for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "week": { "type": "string" },
+        "xp": { "type": "number" },
+        "streak": { "type": "number" },
+        "done": { "type": "array" },
+        "history": { "type": "object" },
+        "nome": { "type": "string" },
+        "avatar": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "week", "xp", "streak"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profile data."
+    },
+    "progress/{progressId}": {
+      "schema": { "$ref": "#/entities/Progress" },
+      "description": "Stores weekly progress for the ranking."
+    }
+  }
+}
