@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DEMO } from './data';
-import { gs, ss, calcPos, rankDemo, PROG0 } from './utils';
-import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin } from './components';
+import { gs, ss, calcPos, rankDemo, PROG0, playSound } from './utils';
+import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config } from './components';
 
 export default function App() {
   const [tela, setTela] = useState('splash');
@@ -99,7 +99,13 @@ export default function App() {
     
     setRanking(r);
     setProg({ ...p, pos: calcPos(r, j.id, p.xp || 0) });
-    setTela('home');
+    if (j.isNew) {
+      delete j.isNew;
+      ss('jogador', j);
+      setTela('config');
+    } else {
+      setTela('home');
+    }
   };
 
   const handleDoneQuiz = async (res: any) => {
@@ -114,7 +120,7 @@ export default function App() {
       xp: novoXP,
       streak: novoStreak,
       done: novaDone,
-      history: { ...prog.history, [diaAtual.id]: { xp: res.xpTotal, acertos: res.acertos } }
+      history: { ...prog.history, [diaAtual.id]: { ...prog.history[diaAtual.id], xp: res.xpTotal, acertos: res.acertos } }
     };
     
     let r = [...ranking];
@@ -173,6 +179,7 @@ export default function App() {
     } catch(e) {
       console.error(e);
     }
+    playSound('ranking');
     setTela('ranking');
   };
 
@@ -201,18 +208,61 @@ export default function App() {
     }
   };
 
+  const handleSaveStudy = async (nota: string, hl: any) => {
+    const l = licao || DEMO;
+    const diaHist = prog.history[diaAtual.id] || {};
+    const np = {
+      ...prog,
+      history: { ...prog.history, [diaAtual.id]: { ...diaHist, nota, hl } }
+    };
+    ss(semKey(l), np);
+    setProg(np);
+    try {
+      const { saveProgress, waitForAuthInit } = await import('./firebase');
+      const user = await waitForAuthInit();
+      if (user) {
+        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar);
+      }
+    } catch(e) { console.error(e) }
+  };
+
+  const handleUpdateConfig = async (novoJ: any) => {
+    setJogador(novoJ);
+    ss('jogador', novoJ);
+    try {
+      const { saveUser, saveProgress, waitForAuthInit } = await import('./firebase');
+      const user = await waitForAuthInit();
+      if (user) {
+        await saveUser(novoJ);
+        const l = licao || DEMO;
+        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar);
+      }
+      
+      let r = [...ranking];
+      const idx = r.findIndex(x => x.id === novoJ.id);
+      if (idx !== -1) {
+        r[idx].nome = novoJ.nome;
+        r[idx].avatar = novoJ.avatar;
+        ss('ranking', r);
+        setRanking(r);
+      }
+    } catch(e) { console.error(e) }
+    setTela('home');
+  };
+
   if (tela === 'splash') return <Splash />;
   if (tela === 'login') return <Login onLogin={handleLogin} />;
   if (!jogador || !licao) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',color:'#B9ACE6'}}>Carregando...</div>;
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); }} onRanking={loadLatestRanking} onLogout={handleLogout} />}
-      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); }} onRanking={loadLatestRanking} onConfig={() => setTela('config')} />}
+      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} onSaveStudy={handleSaveStudy} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={loadLatestRanking} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} onBack={() => setTela('home')} />}
       {tela === 'admin' && <Admin licao={licao} onImport={handleImport} onClear={handleClear} onBack={() => setTela('home')} />}
+      {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
     </>
   );

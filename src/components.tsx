@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { DEMO } from './data';
-import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, rankDemo, calcPos, PROG0, shareApp } from './utils';
+import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, rankDemo, calcPos, PROG0, shareApp, playSound } from './utils';
 
 /* ===== CONFETTI ===== */
 export const Confetti = ({ show }: { show: boolean }) => {
@@ -88,7 +88,8 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
           turma: 'Visitante',
           avatar: '🦁',
           email: user.email,
-          criadoEm: new Date().toISOString()
+          criadoEm: new Date().toISOString(),
+          isNew: true
         };
       }
       ss('jogador', j);
@@ -100,7 +101,11 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
       onLogin(j);
     } catch (e: any) {
       console.error(e);
-      setErr(e.message || 'Erro ao realizar login');
+      if (e.code === 'auth/unauthorized-domain') {
+        setErr('Hospedagem não autorizada no Firebase. Acesse o console do Firebase (projeto gen-lang-client-0268878137) > Authentication > Settings > Authorized domains e adicione este site na lista.');
+      } else {
+        setErr(e.message || 'Erro ao realizar login');
+      }
       setLoading(false);
     }
   };
@@ -133,7 +138,7 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 };
 
 /* ===== HOME ===== */
-export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onLogout }: any) => {
+export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig }: any) => {
   const diaId = getDiaId(licao.dias);
   const diaAtual = licao.dias.find((d: any) => d.id === diaId);
   
@@ -154,7 +159,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onLogout }: an
         </div>
         <div style={{display: 'flex', gap: '8px'}}>
           <button className="btn btn-ghost btn-sm" onClick={shareApp} style={{width:'auto',padding:'8px',fontSize:14}}>🔗</button>
-          <button className="btn btn-ghost btn-sm" onClick={onLogout} style={{width:'auto',gap:4,fontSize:12}}>⚙️ Sair</button>
+          <button className="btn btn-ghost btn-sm" onClick={onConfig} style={{width:'auto',padding:'8px',fontSize:14}}>⚙️</button>
         </div>
       </div>
 
@@ -170,7 +175,9 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onLogout }: an
         <div className="profile-card">
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
             <div style={{display:'flex',alignItems:'center',gap:12}}>
-              <div style={{fontSize:40,background:'rgba(255,255,255,.1)',borderRadius:14,padding:'6px 10px',border:'2px solid rgba(245,200,66,.3)'}}>{jogador.avatar}</div>
+              <div style={{width: 60, height: 60, background:'rgba(255,255,255,.1)', borderRadius:14, display:'flex', alignItems:'center', justifyContent:'center', fontSize: 36, overflow:'hidden', border:'2px solid rgba(245,200,66,.3)', flexShrink: 0}}>
+                {jogador.avatar?.length > 10 ? <img src={jogador.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{jogador.avatar}</span>}
+              </div>
               <div>
                 <div style={{fontWeight:900,fontSize:22,marginBottom:3}}>{jogador.nome}</div>
                 {jogador.turma && <div style={{fontSize:12,color:'#B9ACE6',fontWeight:700,marginBottom:5}}>👥 {jogador.turma}</div>}
@@ -236,8 +243,12 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onLogout }: an
 };
 
 /* ===== ESTUDO ===== */
-export const Estudo = ({ dia, onQuiz, onBack }: any) => {
+export const Estudo = ({ dia, prog, onSaveStudy, onQuiz, onBack }: any) => {
+  const initHistory = prog.history?.[dia.id] || {};
+  const [notes, setNotes] = useState(initHistory.nota || '');
+  const [hl, setHl] = useState<any>(initHistory.hl || {});
   const [pct, setPct] = useState(0);
+  const [sel, setSel] = useState<any>(null);
   const ref = useRef<HTMLDivElement>(null);
   
   const onScroll = () => {
@@ -249,10 +260,85 @@ export const Estudo = ({ dia, onQuiz, onBack }: any) => {
   
   const paras = dia.conteudo.split('\n\n').filter(Boolean);
 
+  const handleSelectionChange = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return setSel(null);
+    const text = selection.toString().trim();
+    if (text.length > 2) {
+      let currentElement = selection.anchorNode?.nodeType === 3 ? selection.anchorNode.parentElement : selection.anchorNode as HTMLElement;
+      let pIdx = -1;
+      const pNode = currentElement?.closest('[data-pidx]');
+      if (pNode) {
+        pIdx = parseInt(pNode.getAttribute('data-pidx') as string, 10);
+      }
+      if (pIdx !== -1) {
+        setSel({ pIndex: pIdx, text });
+      } else {
+        setSel(null);
+      }
+    } else {
+      setSel(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, [handleSelectionChange]);
+
+  const addHl = (color: string) => {
+    if (!sel) return;
+    setHl((prev: any) => {
+      const list = prev[sel.pIndex] || [];
+      return { ...prev, [sel.pIndex]: [...list, { text: sel.text, color }] };
+    });
+    setSel(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const renderP = (p: string, pIdx: number) => {
+    let res = [p];
+    const myHls = hl[pIdx] || [];
+    
+    myHls.forEach((h: any) => {
+      const newRes: any[] = [];
+      res.forEach((chunk: any) => {
+        if (typeof chunk !== 'string') { newRes.push(chunk); return; }
+        const parts = chunk.split(h.text);
+        parts.forEach((pt, i) => {
+          newRes.push(pt);
+          if (i < parts.length - 1) {
+            newRes.push(<span key={i} style={{background: h.color, color: h.color === '#F5C842' || h.color === '#2ECC71' ? '#000' : '#fff', padding: '0 2px', borderRadius: 4}}>{h.text}</span>);
+          }
+        });
+      });
+      res = newRes;
+    });
+
+    return (
+      <div key={pIdx} data-pidx={pIdx} style={{background:'rgba(255,255,255,.04)',borderRadius:14,padding:16,marginBottom:12,borderLeft:'3px solid rgba(82,118,208,.55)',lineHeight:1.75,fontSize:15,color:'#E2D9F3',fontWeight:500,animation:`fadeIn .4s ease ${pIdx*.07}s both`}}>
+        {res}
+      </div>
+    );
+  };
+
+  const wrapLeave = (fn: any) => {
+    onSaveStudy(notes, hl);
+    fn();
+  };
+
   return (
     <div className="scr-full">
+      {sel && (
+        <div style={{position:'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background:'rgba(28,20,53,.95)', padding: '10px 16px', borderRadius: 30, display:'flex', gap: 14, boxShadow:'0 10px 30px rgba(0,0,0,.5), inset 0 1px 1px rgba(255,255,255,.1)', zIndex: 1000, border:'1px solid rgba(255,255,255,.1)', animation:'fadeUp .2s ease'}}>
+           {['#F5C842', '#2ECC71', '#5276D0', '#FF6B6B'].map(c => (
+              <div key={c} onClick={() => addHl(c)} style={{width: 32, height: 32, borderRadius: '50%', background: c, border:'2px solid rgba(255,255,255,.8)', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,.5)'}} title="Destacar" />
+           ))}
+           <div onClick={() => { setSel(null); window.getSelection()?.removeAllRanges(); }} style={{width: 32, height: 32, borderRadius: '50%', background: '#333', border:'2px solid rgba(255,255,255,.2)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 13}}>❌</div>
+        </div>
+      )}
       <div className="hdr">
-        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => wrapLeave(onBack)} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:800,fontSize:14}}>Dia {dia.id} — {dia.diaSemana}</div>
         <div className="xp-badge" style={{fontSize:12}}>~3 min</div>
       </div>
@@ -265,16 +351,25 @@ export const Estudo = ({ dia, onQuiz, onBack }: any) => {
       </div>
       <div ref={ref} onScroll={onScroll} style={{flex:1,overflowY:'auto',padding:'20px 16px 120px'}}>
         <div style={{fontWeight:900,fontSize:22,marginBottom:20,lineHeight:1.2,color:'#E2D9F3'}}>{dia.titulo}</div>
-        {paras.map((p: string, i: number) => (
-          <div key={i} style={{background:'rgba(255,255,255,.04)',borderRadius:14,padding:16,marginBottom:12,borderLeft:'3px solid rgba(82,118,208,.55)',lineHeight:1.75,fontSize:15,color:'#E2D9F3',fontWeight:500,animation:`fadeIn .4s ease ${i*.07}s both`}}>{p}</div>
-        ))}
-        <div className="verse-card" style={{marginTop:8,marginBottom:24}}>
+        {paras.map((p: string, i: number) => renderP(p, i))}
+        <div className="verse-card" style={{marginTop:16,marginBottom:24}}>
           <div style={{fontSize:11,fontWeight:800,color:'#F5C842',textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>💡 Versículo-chave</div>
           <div style={{fontSize:15,fontStyle:'italic',lineHeight:1.65,color:'#E2D9F3',marginBottom:8,paddingLeft:8}}>"{dia.versiculoChave.texto}"</div>
           <div style={{fontWeight:800,color:'#F5C842',fontSize:13}}>— {dia.versiculoChave.referencia}</div>
         </div>
-        <button className="btn btn-gold" onClick={onQuiz} style={{fontSize:19}}>🎯 FAZER O QUIZ</button>
-        <p style={{textAlign:'center',color:'rgba(185,172,230,.5)',fontSize:13,marginTop:8}}>Leitura: {pct}% completa</p>
+        
+        <div style={{marginBottom: 24, background:'rgba(255,255,255,.03)', padding: '16px', borderRadius: 16, border:'1px solid rgba(255,255,255,.08)'}}>
+          <div style={{fontSize:13,fontWeight:800,color:'#B9ACE6',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>📝 Minhas Anotações</div>
+          <textarea 
+            value={notes} 
+            onChange={e => setNotes(e.target.value)} 
+            placeholder="Escreva aqui ideias, lições ou cole trechos da lição..."
+            style={{width:'100%', minHeight: 120, background:'rgba(0,0,0,.2)', border:'1px solid rgba(255,255,255,.05)', color:'#E2D9F3', fontSize: 15, lineHeight: 1.6, padding: '14px', borderRadius: 12, resize:'vertical', outline:'none'}}
+          />
+        </div>
+
+        <button className="btn btn-gold" onClick={() => wrapLeave(onQuiz)} style={{fontSize:19}}>🎯 FAZER O QUIZ</button>
+        <p style={{textAlign:'center',color:'rgba(185,172,230,.5)',fontSize:13,marginTop:12}}>Leitura: {pct}% completa</p>
       </div>
     </div>
   );
@@ -324,6 +419,12 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
     const ok = idx === q.correta;
     const xp = xpSpeed(t, ok);
     setAns(idx);
+    
+    if (ok) {
+      playSound('correct');
+    } else {
+      playSound('wrong');
+    }
     
     if (xp > 0) {
       setXpMsg(`+${xp} XP ⭐`);
@@ -454,20 +555,26 @@ export const Ranking = ({ jogador, ranking, prog, onBack }: any) => {
         <div style={{padding:'8px 16px 0'}}>
           <div className="podium">
             <div className="pod-col">
-              <div style={{fontSize:30}}>{sorted[1].avatar}</div>
+              <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
+                {sorted[1].avatar?.length > 10 ? <img src={sorted[1].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{sorted[1].avatar}</span>}
+              </div>
               <div style={{fontWeight:800,fontSize:12,maxWidth:66,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[1].nome}</div>
               <div className="pod-base p2">🥈</div>
               <div style={{fontWeight:900,color:'#F5C842',fontSize:12}}>{sorted[1].xp} XP</div>
             </div>
             <div className="pod-col">
               <div style={{fontSize:18,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
-              <div style={{fontSize:42}}>{sorted[0].avatar}</div>
+              <div style={{width: 56, height: 56, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 32, overflow:'hidden', margin:'0 auto 4px', flexShrink:0, border:'2px solid #F5C842'}}>
+                {sorted[0].avatar?.length > 10 ? <img src={sorted[0].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{sorted[0].avatar}</span>}
+              </div>
               <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[0].nome}</div>
               <div className="pod-base p1">🥇</div>
               <div style={{fontWeight:900,color:'#F5C842',fontSize:14}}>{sorted[0].xp} XP</div>
             </div>
             <div className="pod-col">
-              <div style={{fontSize:24}}>{sorted[2].avatar}</div>
+              <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
+                {sorted[2].avatar?.length > 10 ? <img src={sorted[2].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{sorted[2].avatar}</span>}
+              </div>
               <div style={{fontWeight:800,fontSize:11,maxWidth:58,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[2].nome}</div>
               <div className="pod-base p3">🥉</div>
               <div style={{fontWeight:900,color:'#F5C842',fontSize:12}}>{sorted[2].xp} XP</div>
@@ -483,9 +590,11 @@ export const Ranking = ({ jogador, ranking, prog, onBack }: any) => {
             return (
               <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(245,200,66,.12),rgba(245,200,66,.04))':'rgba(255,255,255,.04)',border:`2px solid ${eu?'rgba(245,200,66,.42)':'rgba(255,255,255,.07)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`}}>
                 <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':'#B9ACE6'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
-                <div style={{fontSize:26}}>{r.avatar}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:800,fontSize:14}}>{r.nome}{eu ? ' 👈' : ''}</div>
+                <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
+                  {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
+                </div>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{fontWeight:800,fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.nome}{eu ? ' 👈' : ''}</div>
                   <div style={{fontSize:12,color:'#B9ACE6'}}>📅 {r.dias} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
                 </div>
                 <div style={{fontWeight:900,color:'#F5C842',fontSize:15}}>{r.xp} XP</div>
@@ -562,3 +671,72 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
     </div>
   );
 };
+
+/* ===== CONFIG ===== */
+export const Config = ({ jogador, onSave, onBack, onLogout }: any) => {
+  const [nome, setNome] = useState(jogador.nome || '');
+  const [avatar, setAvatar] = useState(jogador.avatar || '🦁');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const img = new Image();
+    const r = new FileReader();
+    r.onload = ev => {
+      img.onload = () => {
+        const cvs = document.createElement('canvas');
+        const MAX = 150;
+        let w = img.width; let h = img.height;
+        if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
+        else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+        cvs.width = w; cvs.height = h;
+        const ctx = cvs.getContext('2d');
+        ctx?.drawImage(img, 0, 0, w, h);
+        setAvatar(cvs.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = ev.target?.result as string;
+    };
+    r.readAsDataURL(f);
+  };
+
+  return (
+    <div className="scr">
+      <div className="hdr">
+        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
+        <div style={{fontWeight:900,fontSize:17}}>⚙️ Configurações</div>
+        <div/>
+      </div>
+      <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:20, flex: 1}}>
+        
+        <div style={{background:'rgba(255,255,255,.05)', padding: '20px 16px', borderRadius: 16}}>
+          <div style={{fontWeight:800, marginBottom:20, color:'#E2D9F3'}}>Seu Perfil</div>
+          
+          <div style={{display:'flex', alignItems:'center', gap:16, marginBottom: 24}}>
+            <div style={{width: 72, height: 72, borderRadius: 16, background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 36, overflow:'hidden', flexShrink: 0, boxShadow:'0 4px 10px rgba(0,0,0,.2)'}}>
+              {avatar.length > 10 ? <img src={avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{avatar}</span>}
+            </div>
+            <div style={{flex: 1}}>
+              <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} style={{width:'100%', background:'rgba(245,200,66,.1)', color:'#F5C842', padding:'8px', marginBottom: 8}}>📸 Enviar Imagem</button>
+              <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
+              <div style={{fontSize: 11, color: '#B9ACE6', textAlign:'center', marginBottom: 4}}>OU DIGITE UM EMOJI</div>
+              <input type="text" value={avatar.length < 10 ? avatar : ''} onChange={e => { if (e.target.value) setAvatar(e.target.value) }} placeholder="Ex: 👾" style={{width: '100%', padding: '8px', borderRadius: 8, background:'rgba(0,0,0,.3)', color:'#fff', border:'none', textAlign:'center', outline:'none'}} maxLength={2}/>
+            </div>
+          </div>
+
+          <div>
+             <div style={{fontSize: 12, fontWeight: 700, color:'#B9ACE6', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Nome de Exibição</div>
+             <input type="text" value={nome} onChange={e => setNome(e.target.value)} style={{width:'100%', padding:'14px 16px', borderRadius: 12, background:'rgba(0,0,0,.3)', color:'#fff', border:'1px solid rgba(255,255,255,.1)', fontSize: 16, outline:'none'}} />
+          </div>
+        </div>
+
+        <button className="btn btn-gold" onClick={() => onSave({ ...jogador, nome, avatar })} style={{fontSize: 18, marginTop: 10}}>✅ SALVAR ALTERAÇÕES</button>
+        
+        <div style={{marginTop: 'auto', paddingTop: 40}}>
+           <button className="btn btn-ghost" onClick={onLogout} style={{color:'#FF6B6B', borderColor:'rgba(227,28,61,.3)', width:'100%'}}>🚪 Sair da conta (Logout)</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
