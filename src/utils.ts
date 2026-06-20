@@ -114,3 +114,16 @@ export const playSound = (type: 'correct' | 'wrong' | 'ranking') => {
   } catch(e) {}
 };
 
+export const formatDiaSemana = (dia: string): string => {
+  if (!dia) return '';
+  const d = dia.trim().toLowerCase();
+  if (d === 'sex') return 'Sexta';
+  if (d === 'sáb' || d === 'sab') return 'Sábado';
+  if (d === 'dom') return 'Domingo';
+  if (d === 'seg') return 'Segunda';
+  if (d === 'ter') return 'Terça';
+  if (d === 'qua') return 'Quarta';
+  if (d === 'qui') return 'Quinta';
+  return dia;
+};
+

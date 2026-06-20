@@ -63,7 +63,7 @@ export const DEMO = {
       ]
     },
     {
-      id:6,diaSemana:"Sex",data:"2026-06-05",
+      id:6,diaSemana:"Sexta",data:"2026-06-05",
       titulo:"Vivendo Como Comunidade Viva",
       conteudo:"Chegamos ao último dia da semana. Exploramos o que significa ser Igreja — o corpo de Cristo, unido na diversidade, cuidando uns dos outros, servindo em amor, praticando o perdão.\n\nUma comunidade viva não é aquela com os melhores programas ou o maior templo. É aquela onde as pessoas se importam genuinamente umas com as outras. Onde os que chegam pela primeira vez sentem que pertencem. Onde os que estão sofrendo encontram acolhida.\n\nJesus disse: 'Onde dois ou três estão reunidos em meu nome, aí estou eu no meio deles.' (Mateus 18:20). A presença de Cristo é o elemento definitivo que transforma um grupo de pessoas em comunidade viva.\n\nA questão que fica é pessoal: que tipo de membro da comunidade sou eu? Contribuo para o calor e o cuidado desta comunidade? Uma comunidade só é viva quando cada um decide ser agente ativo de vida, amor e serviço.",
       versiculoChave:{texto:"Porque onde dois ou três estiverem reunidos em meu nome, aí estou no meio deles.",referencia:"Mateus 18:20"},

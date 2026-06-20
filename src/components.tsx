@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { DEMO } from './data';
-import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, rankDemo, calcPos, PROG0, shareApp, playSound } from './utils';
+import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, rankDemo, calcPos, PROG0, shareApp, playSound, formatDiaSemana } from './utils';
 
 /* ===== CONFETTI ===== */
 export const Confetti = ({ show }: { show: boolean }) => {
@@ -205,7 +205,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig }: an
             const st = getSt(dia);
             return (
               <div key={dia.id} className={`day-btn ${st}`} onClick={() => st !== 'locked' && onEstudo(dia)}>
-                <span>{dia.diaSemana}</span>
+                <span>{formatDiaSemana(dia.diaSemana)}</span>
                 <span className="di">{st === 'done' ? '✅' : st === 'today' ? '📖' : st === 'missed' ? '📖' : '🔒'}</span>
               </div>
             );
@@ -223,7 +223,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig }: an
             </div>
             <div style={{fontWeight:900,fontSize:20,color:concHoje?'#3E6B3E':'#5A3E16',lineHeight:1.2,marginBottom:6,textTransform:'uppercase'}}>{licao.titulo}</div>
             <div style={{fontSize:14,color:'rgba(90,62,22,.8)',marginBottom:16,lineHeight:1.5}}>
-              {diaAtual.diaSemana} — <strong style={{color:'#5A3E16'}}>{diaAtual.titulo}</strong> • Complete a leitura diária e ganhe 100 XP!
+              {formatDiaSemana(diaAtual.diaSemana)} — <strong style={{color:'#5A3E16'}}>{diaAtual.titulo}</strong> • Complete a leitura diária e ganhe 100 XP!
             </div>
             {concHoje
               ? <div className="btn btn-grn" style={{pointerEvents:'none',fontSize:16}}>✅ Concluído hoje! Parabéns!</div>
@@ -339,7 +339,7 @@ export const Estudo = ({ dia, prog, onSaveStudy, onQuiz, onBack }: any) => {
       )}
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={() => wrapLeave(onBack)} style={{width:'auto'}}>← Voltar</button>
-        <div style={{fontWeight:800,fontSize:14}}>Dia {dia.id} — {dia.diaSemana}</div>
+        <div style={{fontWeight:800,fontSize:14}}>Dia {dia.id} — {formatDiaSemana(dia.diaSemana)}</div>
         <div className="xp-badge" style={{fontSize:12}}>~3 min</div>
       </div>
       <div style={{padding:'10px 20px',background:'rgba(46,33,96,.8)'}}>
@@ -511,7 +511,7 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
       <Confetti show={true}/>
       <div style={{animation:'popIn .5s ease .2s both',fontSize:80,marginTop:20,display:'block',marginBottom:10}}>{ic}</div>
       <div style={{animation:'popIn .5s ease .4s both',fontWeight:900,fontSize:24,marginBottom:4}}>{mg}</div>
-      <div style={{animation:'fadeIn .5s ease .6s both',color:'#B9ACE6',fontSize:14,marginBottom:26}}>{dia.diaSemana} — {dia.titulo}</div>
+      <div style={{animation:'fadeIn .5s ease .6s both',color:'#B9ACE6',fontSize:14,marginBottom:26}}>{formatDiaSemana(dia.diaSemana)} — {dia.titulo}</div>
       <div style={{animation:'fadeUp .5s ease .7s both',display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:22}}>
         {[{e:'✅',l:'Acertos',v:`${acertos}/${total}`},{e:'⭐',l:'XP Ganho',v:`+${xpTotal}`},{e:'⏱️',l:'Tempo médio',v:`${Math.round(tempoMedio)}s`}].map(s => (
           <div key={s.l} className="purple-card" style={{padding:'12px 6px',textAlign:'center'}}>
@@ -540,7 +540,7 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
 
 /* ===== RANKING ===== */
 export const Ranking = ({ jogador, ranking, prog, onBack }: any) => {
-  const sorted = [...ranking].sort((a, b) => b.xp - a.xp).slice(0, 10);
+  const sorted = [...ranking].map(r => r.id === jogador.id ? { ...r, nome: jogador.nome, avatar: jogador.avatar } : r).sort((a, b) => b.xp - a.xp).slice(0, 10);
   const myIdx = sorted.findIndex(r => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
 
@@ -720,7 +720,34 @@ export const Config = ({ jogador, onSave, onBack, onLogout }: any) => {
               <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} style={{width:'100%', background:'rgba(245,200,66,.1)', color:'#F5C842', padding:'8px', marginBottom: 8}}>📸 Enviar Imagem</button>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
               <div style={{fontSize: 11, color: '#B9ACE6', textAlign:'center', marginBottom: 4}}>OU DIGITE UM EMOJI</div>
-              <input type="text" value={avatar.length < 10 ? avatar : ''} onChange={e => { if (e.target.value) setAvatar(e.target.value) }} placeholder="Ex: 👾" style={{width: '100%', padding: '8px', borderRadius: 8, background:'rgba(0,0,0,.3)', color:'#fff', border:'none', textAlign:'center', outline:'none'}} maxLength={2}/>
+              <input type="text" value={avatar.length < 10 ? avatar : ''} onChange={e => setAvatar(e.target.value)} placeholder="Ex: 👾" style={{width: '100%', padding: '8px', borderRadius: 8, background:'rgba(0,0,0,.3)', color:'#fff', border:'none', textAlign:'center', outline:'none'}} maxLength={2}/>
+            </div>
+          </div>
+
+          <div style={{marginBottom: 20}}>
+            <div style={{fontSize: 12, fontWeight: 700, color:'#B9ACE6', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Sugestões de Emojis</div>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap: 8, background:'rgba(0,0,0,.2)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,.05)', maxHeight: 180, overflowY: 'auto'}}>
+              {['🦁', '🐯', '🦊', '🐺', '🐨', '🐼', '🦅', '🦉', '🐬', '🐙', '🦖', '👾', '🤖', '👑', '🌟', '⚡', '🔥', '🎯', '🚀', '🎮', '⚽', '🏆', '🎨', '🎸', '🎒', '📚', '🍕', '🍿', '🐶', '🐱', '🐭', '🐹', '🐰', '🐻', '🐻‍❄️', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦇', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🐢', '🐍', '🦕', '🦂', '🐠', '🐟', '🍔', '🍟', '🍩', '🍪', '🍫', '🍬'].map(emo => (
+                <button
+                  key={emo}
+                  type="button"
+                  onClick={() => setAvatar(emo)}
+                  style={{
+                    fontSize: 24,
+                    height: 40,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: avatar === emo ? 'rgba(245,200,66,.2)' : 'transparent',
+                    border: avatar === emo ? '2px solid #F5C842' : '1px solid transparent',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {emo}
+                </button>
+              ))}
             </div>
           </div>
 
