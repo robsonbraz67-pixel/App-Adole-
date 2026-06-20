@@ -16,6 +16,38 @@ export default function App() {
   const semKey = (l: any) => 'prog_' + (l?.semana || 'w');
 
   useEffect(() => {
+    if (!jogador?.id) return;
+    
+    let unsub = () => {};
+    let lastNotifTime = 0;
+    
+    import('./firebase').then(({ listenToUserNotifications }) => {
+       unsub = listenToUserNotifications(jogador.id, (notification) => {
+          if (notification && notification.timestamp > lastNotifTime) {
+             // Only show if it's recent (last 5 minutes) or if it arrived during the session
+             const now = new Date().getTime();
+             if (now - notification.timestamp < 5 * 60 * 1000 || lastNotifTime !== 0) {
+                 if ('Notification' in window && Notification.permission === 'granted') {
+                    navigator.serviceWorker.ready.then(reg => {
+                       reg.showNotification(notification.title || 'Nova Notificação', {
+                          body: notification.body || '',
+                          icon: '/icon-192.png',
+                          badge: '/icon-192.png'
+                       });
+                    });
+                 } else {
+                    alert(`${notification.title}\n\n${notification.body}`);
+                 }
+             }
+             lastNotifTime = notification.timestamp;
+          }
+       });
+    });
+    
+    return () => unsub();
+  }, [jogador?.id]);
+
+  useEffect(() => {
     let unmounted = false;
     const initApp = async () => {
       const j = gs('jogador');

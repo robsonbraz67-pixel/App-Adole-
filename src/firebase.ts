@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -87,6 +87,26 @@ export const getAllUsers = async () => {
 export const toggleAdmin = async (userId: string, targetValue: boolean) => {
   const userRef = doc(db, 'users', userId);
   await setDoc(userRef, { isAdmin: targetValue }, { merge: true });
+};
+
+export const sendManualNotification = async (userIds: string[], title: string, body: string) => {
+  const now = new Date().getTime();
+  for (const uid of userIds) {
+    const userRef = doc(db, 'users', uid);
+    await setDoc(userRef, { manualNotification: { title, body, timestamp: now } }, { merge: true });
+  }
+};
+
+export const listenToUserNotifications = (userId: string, callback: (notification: any) => void) => {
+  const userRef = doc(db, 'users', userId);
+  return onSnapshot(userRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.manualNotification) {
+        callback(data.manualNotification);
+      }
+    }
+  });
 };
 
 export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string) => {

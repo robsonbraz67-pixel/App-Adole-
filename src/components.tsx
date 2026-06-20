@@ -661,6 +661,12 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  
+  // Notification States
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [notifTitle, setNotifTitle] = useState('Você tem uma nova mensagem! 📬');
+  const [notifBody, setNotifBody] = useState('Continue seu estudo diário e ganhe mais XP!');
+  const [sendingNotif, setSendingNotif] = useState(false);
 
   useEffect(() => {
     let unmounted = false;
@@ -687,6 +693,33 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
         setUsers(users.map(u => u.id === userId ? { ...u, isAdmin: !currentStatus } : u));
      } catch(e) {
         alert('Erro ao atualizar usuário');
+     }
+  };
+  
+  const handleSendNotif = async () => {
+    if (selectedUsers.length === 0) return alert('Selecione pelo menos um usuário.');
+    if (!notifTitle || !notifBody) return alert('Preencha o título e o corpo da notificação.');
+    setSendingNotif(true);
+    try {
+      const { sendManualNotification } = await import('./firebase');
+      await sendManualNotification(selectedUsers, notifTitle, notifBody);
+      alert('Notificação enviada com sucesso!');
+      setSelectedUsers([]);
+    } catch(e) {
+      alert('Erro ao enviar notificação.');
+    }
+    setSendingNotif(false);
+  };
+  
+  const toggleSelectUser = (id: string) => {
+     setSelectedUsers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+  
+  const toggleSelectAll = () => {
+     if (selectedUsers.length === users.length) {
+         setSelectedUsers([]);
+     } else {
+         setSelectedUsers(users.map(u => u.id));
      }
   };
   
@@ -742,6 +775,37 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
                   </div>
                 ))}
               </div>
+           )}
+        </div>
+
+        <div className="sec-title" style={{marginBottom:8}}>Notificações Manuais</div>
+        <div style={{background:'rgba(255,255,255,.03)', padding: 12, borderRadius: 12, marginBottom: 24}}>
+           {loadingUsers ? <div style={{color:'#B9ACE6', fontSize:14}}>Carregando...</div> : (
+             <>
+               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+                  <div style={{fontSize:13, color:'#B9ACE6', fontWeight:800}}>Selecione os Destinatários:</div>
+                  <button onClick={toggleSelectAll} className="btn btn-ghost btn-sm" style={{width:'auto', padding:'4px 8px', fontSize:12, margin:0, minHeight:0}}>{selectedUsers.length === users.length && users.length > 0 ? 'Desmarcar Todos' : 'Selecionar Todos'}</button>
+               </div>
+               <div style={{display:'flex', flexDirection:'column', gap: 6, maxHeight: 150, overflowY:'auto', marginBottom:16, border:'1px solid rgba(255,255,255,.05)', borderRadius:8, padding:4}}>
+                 {users.map((u: any) => (
+                   <label key={u.id} style={{display:'flex', alignItems:'center', gap:10, padding:'6px 8px', background:'rgba(0,0,0,.2)', borderRadius:6, cursor:'pointer'}}>
+                     <input type="checkbox" checked={selectedUsers.includes(u.id)} onChange={() => toggleSelectUser(u.id)} style={{accentColor:'#F5C842', width:16, height:16}} />
+                     <div style={{fontSize:16}}>{u.avatar}</div>
+                     <div style={{fontSize:14, color:'#E2D9F3', fontWeight:600}}>{u.nome}</div>
+                   </label>
+                 ))}
+               </div>
+               
+               <div style={{fontSize:13, color:'#B9ACE6', fontWeight:800, marginBottom:8}}>Título da Notificação:</div>
+               <input type="text" value={notifTitle} onChange={e => setNotifTitle(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'rgba(0,0,0,.2)', border:'1px solid rgba(255,255,255,.1)', color:'#E2D9F3', fontSize:14, marginBottom:12}} placeholder="Ex: Hora do estudo!" />
+               
+               <div style={{fontSize:13, color:'#B9ACE6', fontWeight:800, marginBottom:8}}>Mensagem:</div>
+               <textarea value={notifBody} onChange={e => setNotifBody(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'rgba(0,0,0,.2)', border:'1px solid rgba(255,255,255,.1)', color:'#E2D9F3', fontSize:14, marginBottom:16, minHeight:60, resize:'vertical'}} placeholder="Ex: Venha completar sua lição..." />
+               
+               <button onClick={handleSendNotif} disabled={sendingNotif} className={`btn btn-gold ${sendingNotif ? 'btn-dis' : ''}`} style={{fontSize:15, padding:'10px'}}>
+                  {sendingNotif ? 'Enviando...' : `🚀 Enviar para ${selectedUsers.length} usuário(s)`}
+               </button>
+             </>
            )}
         </div>
 
