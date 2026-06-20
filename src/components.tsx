@@ -910,6 +910,29 @@ export const Config = ({ jogador, onSave, onBack, onLogout }: any) => {
              <div style={{fontSize: 12, fontWeight: 700, color:'#B9ACE6', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Nome de Exibição</div>
              <input type="text" value={nome} onChange={e => setNome(e.target.value)} style={{width:'100%', padding:'14px 16px', borderRadius: 12, background:'rgba(0,0,0,.3)', color:'#fff', border:'1px solid rgba(255,255,255,.1)', fontSize: 16, outline:'none'}} />
           </div>
+
+          <div style={{marginTop: 24}}>
+             <div style={{fontSize: 12, fontWeight: 700, color:'#B9ACE6', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Notificações</div>
+             <button 
+               onClick={async () => {
+                 if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+                   alert("Notificações não são suportadas neste navegador.");
+                   return;
+                 }
+                 const perm = await Notification.requestPermission();
+                 if (perm === 'granted') {
+                   alert("Notificações ativadas com sucesso! Você receberá lembretes e mensagens do professor no celular/PC.");
+                 } else {
+                   alert("As notificações foram bloqueadas/negadas. Você pode precisar ir nas configurações do navegador/site para permitir o recebimento.");
+                 }
+               }} 
+               className="btn btn-ghost" 
+               style={{width:'100%', borderColor:'rgba(255,255,255,.1)', color:'#F5C842', padding:'12px'}}
+             >
+               🔔 HABILITAR NOTIFICAÇÕES
+             </button>
+             <div style={{fontSize: 11, color: '#B9ACE6', marginTop: 8, textAlign:'center'}}>Necessário para receber lembretes de estudo se a aba estiver fechada.</div>
+          </div>
         </div>
 
         <button className="btn btn-gold" onClick={() => onSave({ ...jogador, nome, avatar })} style={{fontSize: 18, marginTop: 10}}>✅ SALVAR ALTERAÇÕES</button>
