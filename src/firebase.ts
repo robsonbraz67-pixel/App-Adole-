@@ -47,16 +47,46 @@ export const logout = async () => {
 
 export const saveUser = async (userProfile: any) => {
   const userRef = doc(db, 'users', userProfile.id);
+  const snap = await getDoc(userRef);
+  
+  const { isNew, ...cleanProfile } = userProfile;
+  if (!snap.exists() && cleanProfile.email && cleanProfile.email.toLowerCase() === 'robsonbraz67@gmail.com') {
+     cleanProfile.isAdmin = true;
+  }
+  
   await setDoc(userRef, {
-    ...userProfile,
-    criadoEm: userProfile.criadoEm || new Date().toISOString()
+    ...cleanProfile,
+    criadoEm: cleanProfile.criadoEm || new Date().toISOString()
   }, { merge: true });
 };
 
 export const getUser = async (userId: string) => {
   const userRef = doc(db, 'users', userId);
   const snap = await getDoc(userRef);
-  return snap.exists() ? snap.data() : null;
+  if (snap.exists()) {
+    const data = snap.data();
+    if (data.email && data.email.toLowerCase() === 'robsonbraz67@gmail.com' && !data.isAdmin) {
+      data.isAdmin = true;
+      await saveUser(data);
+    }
+    return data;
+  }
+  return null;
+};
+
+export const getAllUsers = async () => {
+  const usersCol = collection(db, 'users');
+  const snap = await getDocs(usersCol);
+  const users: any[] = [];
+  snap.forEach(doc => {
+    users.push({ id: doc.id, ...doc.data() });
+  });
+  return users;
+};
+
+export const toggleAdmin = async (userId: string, targetValue: boolean) => {
+  const userRef = doc(db, 'users', userId);
+  await setDoc(userRef, { isAdmin: targetValue }, { merge: true });
 };
 
 export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string) => {

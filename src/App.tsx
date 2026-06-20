@@ -47,6 +47,12 @@ export default function App() {
           const { getProgress, getUser, waitForAuthInit } = await import('./firebase');
           const user = await waitForAuthInit();
           if (user) {
+            if (user.uid !== j.id) {
+               // Local storage user doesn't match firebase auth user. Clear local and restart.
+               localStorage.removeItem('jogador');
+               window.location.reload();
+               return;
+            }
             const dbUser = await getUser(j.id);
             if (dbUser) {
                setJogador({ ...j, ...dbUser });
@@ -58,6 +64,12 @@ export default function App() {
               p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
               ss(semKey(l), p);
             }
+          } else {
+             // User is not authenticated in Firebase, but we have a local player.
+             // We should enforce login if they have local progress to sync
+             localStorage.removeItem('jogador');
+             window.location.reload();
+             return;
           }
         } catch(e) {
           console.error("Error loading progress:", e);
@@ -66,6 +78,7 @@ export default function App() {
         if (unmounted) return;
         setProg({ ...p, pos: calcPos(r, j.id, p.xp || 0) });
       }
+
       
       setTimeout(() => {
         if (!unmounted) setTela(j ? 'home' : 'login');
@@ -122,22 +135,31 @@ export default function App() {
     
     // Bonificação da leitura reduzida pelo tempo (mesma lógica)
     let readingXP = 0;
-    if (!prog.done.includes(diaAtual.id)) {
+    const isRepeat = prog.done.includes(diaAtual.id);
+    if (!isRepeat) {
       const { getRecencyMult } = await import('./utils');
       readingXP = Math.round(100 * (dbLicaoData || diaAtual.data ? getRecencyMult(dbLicaoData || diaAtual.data) : 1.0));
       res.xpTotal += readingXP; // Add it to res directly so it shows up in the UI score summary
     }
 
-    const novaDone = prog.done.includes(diaAtual.id) ? prog.done : [...prog.done, diaAtual.id];
-    const novoXP = prog.xp + res.xpTotal;
-    const novoStreak = prog.done.includes(diaAtual.id) ? prog.streak : prog.streak + 1;
+    const novaDone = isRepeat ? prog.done : [...prog.done, diaAtual.id];
+    
+    // If repeat attempt (only possible for admins), don't update their XP to prevent infinite accumulation or loss of reading XP
+    const novoXP = isRepeat ? prog.xp : prog.xp + res.xpTotal;
+    const novoStreak = isRepeat ? prog.streak : prog.streak + 1;
     
     const np = {
       ...prog,
       xp: novoXP,
       streak: novoStreak,
       done: novaDone,
-      history: { ...prog.history, [diaAtual.id]: { ...prog.history[diaAtual.id], xp: res.xpTotal, acertos: res.acertos } }
+      history: { ...prog.history, [diaAtual.id]: { 
+         ...prog.history[diaAtual.id], 
+         // Keep old XP on repeat, or give new if first time 
+         xp: isRepeat ? (prog.history[diaAtual.id]?.xp || 0) : res.xpTotal, 
+         // Keep old acertos on repeat, or give new if first time
+         acertos: isRepeat ? (prog.history[diaAtual.id]?.acertos || 0) : res.acertos 
+      } }
     };
     
     let r = [...ranking];
@@ -319,8 +341,8 @@ export default function App() {
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); }} onRanking={() => loadLatestRanking('week')} onConfig={() => setTela('config')} onChangeLicao={handleChangeLicao} />}
-      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} onSaveStudy={handleSaveStudy} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); }} onRanking={() => loadLatestRanking('week')} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
+      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} onSaveStudy={handleSaveStudy} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} />}

@@ -22,32 +22,42 @@ service cloud.firestore {
       return resource.data;
     }
 
+    function isUserAdmin() {
+      return isAuthenticated() 
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(['isAdmin'])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
     function isValidUser(data) {
       return data.keys().hasAll(['id', 'nome', 'avatar', 'email'])
         && data.id is string
         && data.nome is string && data.nome.size() > 0 && data.nome.size() <= 50
-        && data.turma is string && data.turma.size() <= 50
+        && (!data.keys().hasAny(['turma']) || data.turma is string)
         && data.avatar is string && data.avatar.size() > 0 && data.avatar.size() <= 10
         && data.email is string && data.email.size() > 0 && data.email.size() <= 100
-        && (!data.keys().hasAny(['criadoEm']) || data.criadoEm is string);
+        && (!data.keys().hasAny(['criadoEm']) || data.criadoEm is string)
+        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool);
     }
 
     match /users/{userId} {
-      // Users can only read their own data, ranking only needs progress
-      // But maybe we allow reading all users for showing profile details if needed?
-      // Since email is here, we should isolate it or restrict read to owner.
-      allow get, list: if isOwner(userId);
+      allow get, list: if isOwner(userId) || isUserAdmin();
       
       allow create: if isOwner(userId)
         && incoming().id == userId
-        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm'])
+        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin'])
+        && (!incoming().keys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && isValidUser(incoming());
         
-      allow update: if isOwner(userId)
-        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar'])
+      allow update: if (isOwner(userId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm'])
         && incoming().id == existing().id
         && incoming().email == existing().email
-        && isValidUser(incoming());
+        && (!incoming().diff(existing()).affectedKeys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
+        && isValidUser(incoming())) || (
+        isUserAdmin() 
+        && incoming().diff(existing()).affectedKeys().hasOnly(['isAdmin'])
+        && isValidUser(incoming()));
         
       allow delete: if false;
     }
@@ -56,6 +66,7 @@ service cloud.firestore {
       return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string
         && data.week is string && data.week.size() > 0 && data.week.size() <= 20
+        && (!data.keys().hasAny(['trimestre']) || data.trimestre is string)
         && data.xp is number
         && data.streak is number
         && data.nome is string && data.nome.size() <= 50
@@ -72,7 +83,7 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && progressId == incoming().userId + '_' + incoming().week
         && isOwner(incoming().userId)
-        && incoming().keys().hasOnly(['userId', 'week', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'updatedAt'])
+        && incoming().keys().hasOnly(['userId', 'week', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));
         
@@ -80,7 +91,8 @@ service cloud.firestore {
         && isOwner(existing().userId)
         && incoming().userId == existing().userId
         && incoming().week == existing().week
-        && incoming().diff(existing()).affectedKeys().hasOnly(['xp', 'streak', 'done', 'history', 'nome', 'avatar', 'updatedAt'])
+        && (!existing().keys().hasAny(['trimestre']) || incoming().trimestre == existing().trimestre || !incoming().keys().hasAny(['trimestre']))
+        && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'updatedAt'])
         && isValidProgress(incoming());
 
       allow delete: if false;

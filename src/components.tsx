@@ -138,13 +138,14 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 };
 
 /* ===== HOME ===== */
-export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onChangeLicao }: any) => {
+export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAdmin, onChangeLicao }: any) => {
   const diaId = getDiaId(licao.dias);
   const diaAtual = licao.dias.find((d: any) => d.id === diaId);
   
   const getSt = (dia: any) => {
     if (prog.done.includes(dia.id)) return 'done';
     if (dia.id === diaId) return 'today';
+    if (jogador.isAdmin) return 'missed'; // Admins can access all days as if they missed them, so it's not locked.
     if (dia.id < diaId) return 'missed';
     return 'locked';
   };
@@ -158,6 +159,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onCh
           <div className="logo-sub">Escola Sabatina Teen</div>
         </div>
         <div style={{display: 'flex', gap: '8px'}}>
+          {jogador.isAdmin && <button className="btn btn-ghost btn-sm" onClick={onAdmin} style={{width:'auto',padding:'8px',fontSize:14}}>🛡️</button>}
           <button className="btn btn-ghost btn-sm" onClick={shareApp} style={{width:'auto',padding:'8px',fontSize:14}}>🔗</button>
           <button className="btn btn-ghost btn-sm" onClick={onConfig} style={{width:'auto',padding:'8px',fontSize:14}}>⚙️</button>
         </div>
@@ -261,7 +263,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onCh
 };
 
 /* ===== ESTUDO ===== */
-export const Estudo = ({ dia, prog, onSaveStudy, onQuiz, onBack }: any) => {
+export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any) => {
   const initHistory = prog.history?.[dia.id] || {};
   const [notes, setNotes] = useState(initHistory.nota || '');
   const [hl, setHl] = useState<any>(initHistory.hl || {});
@@ -386,14 +388,16 @@ export const Estudo = ({ dia, prog, onSaveStudy, onQuiz, onBack }: any) => {
           />
         </div>
 
-        {prog.done.includes(dia.id) ? (
+        {prog.done.includes(dia.id) && !jogador?.isAdmin ? (
           <button className="btn btn-gold" style={{fontSize:19, background:'#2ECC71', filter:'brightness(0.8)', cursor:'not-allowed'}} onClick={(e) => e.preventDefault()}>✅ QUIZ CONCLUÍDO</button>
         ) : (
           <button className="btn btn-gold" onClick={() => {
-            if (window.confirm("Atenção! O quiz só pode ser feito UMA VEZ para somar pontos no ranking.\n\nVocê já revisou todo o estudo e está pronto para começar?")) {
+            if (jogador?.isAdmin || window.confirm("Atenção! O quiz só pode ser feito UMA VEZ para somar pontos no ranking.\n\nVocê já revisou todo o estudo e está pronto para começar?")) {
               wrapLeave(onQuiz);
             }
-          }} style={{fontSize:19}}>🎯 FAZER O QUIZ</button>
+          }} style={{fontSize:19}}>
+             {prog.done.includes(dia.id) && jogador?.isAdmin ? '🎯 REFAZER QUIZ (ADM)' : '🎯 FAZER O QUIZ'}
+          </button>
         )}
         <p style={{textAlign:'center',color:'rgba(185,172,230,.5)',fontSize:13,marginTop:12}}>Leitura: {pct}% completa</p>
       </div>
@@ -655,6 +659,36 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
   const [prev, setPrev] = useState<any>(null);
   const [err, setErr] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+
+  useEffect(() => {
+    let unmounted = false;
+    const loadUsers = async () => {
+      try {
+        const { getAllUsers } = await import('./firebase');
+        const usrs = await getAllUsers();
+        if (!unmounted) {
+           setUsers(usrs);
+           setLoadingUsers(false);
+        }
+      } catch (e) {
+        if (!unmounted) setLoadingUsers(false);
+      }
+    };
+    loadUsers();
+    return () => { unmounted = true; };
+  }, []);
+
+  const handleToggleAdmin = async (userId: string, currentStatus: boolean) => {
+     try {
+        const { toggleAdmin } = await import('./firebase');
+        await toggleAdmin(userId, !currentStatus);
+        setUsers(users.map(u => u.id === userId ? { ...u, isAdmin: !currentStatus } : u));
+     } catch(e) {
+        alert('Erro ao atualizar usuário');
+     }
+  };
   
   const validate = (s: string) => {
     setErr('');
@@ -689,6 +723,28 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
         <div/>
       </div>
       <div style={{padding:'20px 16px'}}>
+        <div className="sec-title" style={{marginBottom:8}}>Gerenciar Usuários (Admins)</div>
+        <div style={{background:'rgba(255,255,255,.03)', padding: 12, borderRadius: 12, marginBottom: 24}}>
+           {loadingUsers ? <div style={{color:'#B9ACE6', fontSize:14}}>Carregando...</div> : (
+              <div style={{display:'flex', flexDirection:'column', gap: 10, maxHeight: 250, overflowY:'auto'}}>
+                {users.sort((a,b) => (b.isAdmin?1:0) - (a.isAdmin?1:0)).map((u: any) => (
+                  <div key={u.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px', background:'rgba(0,0,0,.2)', borderRadius:8}}>
+                     <div style={{display:'flex', alignItems:'center', gap: 10}}>
+                        <div style={{fontSize:20}}>{u.avatar}</div>
+                        <div>
+                           <div style={{fontSize:14, fontWeight:800, color:'#E2D9F3'}}>{u.nome} {u.isAdmin && <span style={{color:'#F5C842', fontSize:12}}>🛡️</span>}</div>
+                           <div style={{fontSize:11, color:'#B9ACE6'}}>{u.email}</div>
+                        </div>
+                     </div>
+                     <button onClick={() => handleToggleAdmin(u.id, !!u.isAdmin)} style={{background: u.isAdmin ? 'rgba(227,28,61,.2)' : 'rgba(79,184,92,.2)', color: u.isAdmin ? '#FF6B6B' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>
+                        {u.isAdmin ? 'Remover Adm' : 'Tornar Adm'}
+                     </button>
+                  </div>
+                ))}
+              </div>
+           )}
+        </div>
+
         <div className="sec-title" style={{marginBottom:8}}>Cole o JSON da lição:</div>
         <textarea className="adm-ta" value={txt} onChange={e => { setTxt(e.target.value); validate(e.target.value); }} placeholder={'{\n  "titulo": "Nome da Lição",\n  "semana": "2026-W24",\n  "trimestre": "3T2026",\n  "dias": [...]\n}'}/>
         <button className="btn btn-ghost" style={{marginTop:12,marginBottom:12}} onClick={() => fileRef.current?.click()}>📁 ESCOLHER ARQUIVO .JSON</button>
