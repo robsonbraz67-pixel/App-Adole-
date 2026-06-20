@@ -59,12 +59,13 @@ export const getUser = async (userId: string) => {
   return snap.exists() ? snap.data() : null;
 };
 
-export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string) => {
+export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string) => {
   const progId = `${userId}_${week}`;
   const progRef = doc(db, 'progress', progId);
   await setDoc(progRef, {
     userId,
     week,
+    trimestre,
     xp: prog.xp,
     streak: prog.streak,
     done: prog.done,
@@ -95,4 +96,34 @@ export const getWeeklyRanking = async (week: string) => {
   });
   // Sort descending by XP locally, since we only query by week to save index requirements
   return results.sort((a, b) => b.xp - a.xp);
+};
+
+export const getSeasonRanking = async (trimestre: string) => {
+  const progressCol = collection(db, 'progress');
+  const q = query(
+    progressCol, 
+    where('trimestre', '==', trimestre)
+  );
+  const snap = await getDocs(q);
+  
+  const userTotals: Record<string, any> = {};
+  
+  snap.forEach(doc => {
+    const data = doc.data();
+    const uid = data.userId;
+    if (!userTotals[uid]) {
+      userTotals[uid] = {
+        id: uid,
+        nome: data.nome,
+        avatar: data.avatar,
+        xp: 0,
+        dias: 0 // completed days for the whole season
+      };
+    }
+    
+    userTotals[uid].xp += (data.xp || 0);
+    userTotals[uid].dias += (data.done?.length || 0);
+  });
+  
+  return Object.values(userTotals).sort((a, b) => b.xp - a.xp);
 };

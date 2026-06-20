@@ -241,7 +241,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onCh
             </div>
             <div style={{fontWeight:900,fontSize:20,color:concHoje?'#3E6B3E':'#5A3E16',lineHeight:1.2,marginBottom:6,textTransform:'uppercase'}}>{licao.titulo}</div>
             <div style={{fontSize:14,color:'rgba(90,62,22,.8)',marginBottom:16,lineHeight:1.5}}>
-              {formatDiaSemana(diaAtual.diaSemana)} — <strong style={{color:'#5A3E16'}}>{diaAtual.titulo}</strong> • Complete a leitura diária e ganhe 100 XP!
+              {formatDiaSemana(diaAtual.diaSemana)} — <strong style={{color:'#5A3E16'}}>{diaAtual.titulo}</strong> • Complete a lição para garantir seus XP!
             </div>
             {concHoje
               ? <div className="btn btn-grn" style={{pointerEvents:'none',fontSize:16}}>✅ Concluído hoje! Parabéns!</div>
@@ -254,7 +254,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onCh
       )}
 
       <div className="bot-nav">
-        <button className="btn btn-purple" onClick={onRanking} style={{fontSize:16}}>🏆 VER RANKING SEMANAL</button>
+        <button className="btn btn-purple" onClick={onRanking} style={{fontSize:16}}>🏆 VER RANKING</button>
       </div>
     </div>
   );
@@ -386,7 +386,15 @@ export const Estudo = ({ dia, prog, onSaveStudy, onQuiz, onBack }: any) => {
           />
         </div>
 
-        <button className="btn btn-gold" onClick={() => wrapLeave(onQuiz)} style={{fontSize:19}}>🎯 FAZER O QUIZ</button>
+        {prog.done.includes(dia.id) ? (
+          <button className="btn btn-gold" style={{fontSize:19, background:'#2ECC71', filter:'brightness(0.8)', cursor:'not-allowed'}} onClick={(e) => e.preventDefault()}>✅ QUIZ CONCLUÍDO</button>
+        ) : (
+          <button className="btn btn-gold" onClick={() => {
+            if (window.confirm("Atenção! O quiz só pode ser feito UMA VEZ para somar pontos no ranking.\n\nVocê já revisou todo o estudo e está pronto para começar?")) {
+              wrapLeave(onQuiz);
+            }
+          }} style={{fontSize:19}}>🎯 FAZER O QUIZ</button>
+        )}
         <p style={{textAlign:'center',color:'rgba(185,172,230,.5)',fontSize:13,marginTop:12}}>Leitura: {pct}% completa</p>
       </div>
     </div>
@@ -557,7 +565,7 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
 };
 
 /* ===== RANKING ===== */
-export const Ranking = ({ jogador, ranking, prog, onBack }: any) => {
+export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack }: any) => {
   const sorted = [...ranking].map(r => r.id === jogador.id ? { ...r, nome: jogador.nome, avatar: jogador.avatar } : r).sort((a, b) => b.xp - a.xp).slice(0, 10);
   const myIdx = sorted.findIndex(r => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
@@ -566,9 +574,17 @@ export const Ranking = ({ jogador, ranking, prog, onBack }: any) => {
     <div className="scr">
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
-        <div style={{fontWeight:900,fontSize:17}}>🏆 Ranking Semanal</div>
+        <div style={{fontWeight:900,fontSize:17}}>🏆 Ranking</div>
         <button className="btn btn-ghost btn-sm" onClick={shareApp} style={{width:'auto',padding:'8px',fontSize:14}}>🔗</button>
       </div>
+      
+      <div style={{padding:'4px 16px 12px'}}>
+        <div style={{display:'flex',background:'rgba(255,255,255,.05)',borderRadius:12,padding:4}}>
+          <div onClick={() => onChangeType('week')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='week'?'rgba(245,200,66,.15)':'transparent',color:type==='week'?'#F5C842':'#B9ACE6'}}>Da Semana</div>
+          <div onClick={() => onChangeType('season')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='season'?'rgba(245,200,66,.15)':'transparent',color:type==='season'?'#F5C842':'#B9ACE6'}}>Da Temporada</div>
+        </div>
+      </div>
+      
       {sorted.length >= 3 && (
         <div style={{padding:'8px 16px 0'}}>
           <div className="podium">
@@ -619,13 +635,14 @@ export const Ranking = ({ jogador, ranking, prog, onBack }: any) => {
               </div>
             );
           })}
+          {sorted.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'#B9ACE6'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
         </div>
       </div>
       <div className="sec">
         <div className="purple-card" style={{textAlign:'center'}}>
           <div style={{fontSize:13,color:'#B9ACE6',marginBottom:4}}>Sua posição</div>
           <div style={{fontWeight:900,fontSize:32,color:'#F5C842'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
-          <div style={{fontSize:13,color:'#B9ACE6'}}>📅 {prog.done.length} dias • ⭐ {prog.xp} XP esta semana</div>
+          {myIdx !== -1 && <div style={{fontSize:13,color:'#B9ACE6'}}>📅 {sorted[myIdx].dias} dias • ⭐ {sorted[myIdx].xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}</div>}
         </div>
       </div>
     </div>

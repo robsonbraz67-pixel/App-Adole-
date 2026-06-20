@@ -111,6 +111,23 @@ export default function App() {
   const handleDoneQuiz = async (res: any) => {
     setResultado(res);
     const l = licao || LICOES[LICOES.length - 1];
+    
+    let dbLicaoData = null;
+    try {
+      const selectedLicaoData = LICOES.find((x:any) => x.semana === l.semana);
+      if (selectedLicaoData) {
+        dbLicaoData = selectedLicaoData.dias.find((d: any) => d.id === diaAtual.id)?.data;
+      }
+    } catch(e) {}
+    
+    // Bonificação da leitura reduzida pelo tempo (mesma lógica)
+    let readingXP = 0;
+    if (!prog.done.includes(diaAtual.id)) {
+      const { getRecencyMult } = await import('./utils');
+      readingXP = Math.round(100 * (dbLicaoData || diaAtual.data ? getRecencyMult(dbLicaoData || diaAtual.data) : 1.0));
+      res.xpTotal += readingXP; // Add it to res directly so it shows up in the UI score summary
+    }
+
     const novaDone = prog.done.includes(diaAtual.id) ? prog.done : [...prog.done, diaAtual.id];
     const novoXP = prog.xp + res.xpTotal;
     const novoStreak = prog.done.includes(diaAtual.id) ? prog.streak : prog.streak + 1;
@@ -142,7 +159,7 @@ export default function App() {
        const { saveProgress, waitForAuthInit } = await import('./firebase');
        const user = await waitForAuthInit();
        if (user) {
-          await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar);
+          await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre);
        }
     } catch(e) {
        console.error("Error updating online progress:", e);
@@ -163,17 +180,27 @@ export default function App() {
     setTela('login');
   };
 
-  const loadLatestRanking = async () => {
+  const [rankingType, setRankingType] = useState('week');
+
+  const loadLatestRanking = async (type: string = 'week') => {
+    setRankingType(type);
     const l = licao || LICOES[LICOES.length - 1];
     try {
-      const { getWeeklyRanking, waitForAuthInit } = await import('./firebase');
+      const { getWeeklyRanking, getSeasonRanking, waitForAuthInit } = await import('./firebase');
       const user = await waitForAuthInit();
       if (user) {
-        const dbRanking = await getWeeklyRanking(l.semana);
-        if (dbRanking.length > 0) {
+        let dbRanking;
+        if (type === 'week') {
+          dbRanking = await getWeeklyRanking(l.semana);
+        } else {
+          dbRanking = await getSeasonRanking(l.trimestre);
+        }
+        if (dbRanking && dbRanking.length > 0) {
           setRanking(dbRanking);
-          ss('ranking', dbRanking);
-          setProg((prev: any) => ({ ...prev, pos: calcPos(dbRanking, jogador?.id, prev.xp || 0) }));
+          if (type === 'week') {
+             ss('ranking', dbRanking);
+             setProg((prev: any) => ({ ...prev, pos: calcPos(dbRanking, jogador?.id, prev.xp || 0) }));
+          }
         }
       }
     } catch(e) {
@@ -257,7 +284,7 @@ export default function App() {
       const { saveProgress, waitForAuthInit } = await import('./firebase');
       const user = await waitForAuthInit();
       if (user) {
-        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar);
+        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre);
       }
     } catch(e) { console.error(e) }
   };
@@ -271,7 +298,7 @@ export default function App() {
       if (user) {
         await saveUser(novoJ);
         const l = licao || LICOES[LICOES.length - 1];
-        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar);
+        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre);
       }
       
       let r = [...ranking];
@@ -292,11 +319,11 @@ export default function App() {
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); }} onRanking={loadLatestRanking} onConfig={() => setTela('config')} onChangeLicao={handleChangeLicao} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); }} onRanking={() => loadLatestRanking('week')} onConfig={() => setTela('config')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} onSaveStudy={handleSaveStudy} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
-      {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={loadLatestRanking} onHome={() => setTela('home')} />}
-      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} onBack={() => setTela('home')} />}
+      {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
+      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} />}
       {tela === 'admin' && <Admin licao={licao} onImport={handleImport} onClear={handleClear} onBack={() => setTela('home')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
