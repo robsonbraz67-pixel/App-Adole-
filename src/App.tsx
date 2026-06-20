@@ -20,28 +20,28 @@ export default function App() {
     if (!jogador?.id) return;
     
     let unsub = () => {};
-    let lastNotifTime = 0;
     
     import('./firebase').then(({ listenToUserNotifications }) => {
+       let lastNotifTime = parseInt(localStorage.getItem('lastNotifTime_' + jogador.id) || '0', 10);
+
        unsub = listenToUserNotifications(jogador.id, (notification) => {
           if (notification && notification.timestamp > lastNotifTime) {
-             const now = new Date().getTime();
-             if (now - notification.timestamp < 5 * 60 * 1000 || lastNotifTime !== 0) {
-                 if ('Notification' in window && Notification.permission === 'granted') {
-                    navigator.serviceWorker.ready.then(reg => {
-                       reg.showNotification(notification.title || 'Nova Notificação', {
-                          body: notification.body || '',
-                          icon: '/icon-192.png',
-                          badge: '/icon-192.png'
-                       });
-                    }).catch(() => {
-                        setInAppNotif({ title: notification.title, body: notification.body, id: Date.now() });
-                    });
-                 } else {
-                    setInAppNotif({ title: notification.title, body: notification.body, id: Date.now() });
-                 }
+             // Sempre mostrar a notificação no app (In-App)
+             setInAppNotif({ title: notification.title, body: notification.body, id: Date.now() });
+
+             // Tentar mostrar notificação do sistema caso tenha permissão e esteja com o app focado/minimizado
+             if ('Notification' in window && Notification.permission === 'granted') {
+                navigator.serviceWorker.ready.then(reg => {
+                   reg.showNotification(notification.title || 'Nova Notificação', {
+                      body: notification.body || '',
+                      icon: '/icon-192.png',
+                      badge: '/icon-192.png'
+                   });
+                }).catch(e => console.log('SW Notification failed:', e));
              }
+
              lastNotifTime = notification.timestamp;
+             localStorage.setItem('lastNotifTime_' + jogador.id, lastNotifTime.toString());
           }
        });
     });
