@@ -161,3 +161,41 @@ export const formatDiaSemana = (dia: string): string => {
   return dia;
 };
 
+export const scheduleStudyReminder = async (userName: string, lessonTitle: string) => {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+  
+  try {
+    let perm = Notification.permission;
+    if (perm !== 'granted') {
+       perm = await Notification.requestPermission();
+    }
+    
+    if (perm === 'granted') {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg) {
+        const title = `Olá, ${userName}! 🌟`;
+        const options: any = {
+           body: `Hora do estudo: ${lessonTitle} - continue com sua sequência no SabatinaQuest!`,
+           icon: '/icon-192.png',
+           badge: '/icon-192.png',
+        };
+        
+        const targetTime = new Date().getTime() + 24 * 60 * 60 * 1000;
+        
+        if ('showTrigger' in Notification.prototype) {
+           options.showTrigger = new (window as any).TimestampTrigger(targetTime);
+           await reg.showNotification(title, options);
+        } else {
+           console.log("Notification Triggers not supported. You will receive notifications only when the app is open.");
+           // Optional: simple timeout if they keep it open for 24h
+           setTimeout(() => {
+             reg.showNotification(title, options);
+           }, 24 * 60 * 60 * 1000);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error scheduling reminder", e);
+  }
+};
+

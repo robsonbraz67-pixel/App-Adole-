@@ -187,6 +187,13 @@ export default function App() {
        console.error("Error updating online progress:", e);
     }
     
+    try {
+      const { scheduleStudyReminder } = await import('./utils');
+      await scheduleStudyReminder(jogador.nome, l.titulo || 'Estudo Diário');
+    } catch(e) {
+      console.error(e);
+    }
+    
     setTela('resultado');
   };
 
