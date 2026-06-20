@@ -912,11 +912,11 @@ export const Config = ({ jogador, onSave, onBack, onLogout }: any) => {
           </div>
 
           <div style={{marginTop: 24}}>
-             <div style={{fontSize: 12, fontWeight: 700, color:'#B9ACE6', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Notificações</div>
+             <div style={{fontSize: 12, fontWeight: 700, color:'#B9ACE6', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Notificações do Sistema</div>
              <button 
                onClick={async () => {
                  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-                   alert("Notificações não são suportadas neste navegador.");
+                   alert("Notificações Push não são suportadas diretamente no Safari antigo.\n\nNo iPhone/iPad (iOS 16.4+):\n1. Toque em 'Compartilhar' no menu do Safari.\n2. Escolha 'Adicionar à Tela de Início'.\n3. Abra o app pela Tela de Início e ative as notificações!");
                    return;
                  }
                  const perm = await Notification.requestPermission();
@@ -931,7 +931,9 @@ export const Config = ({ jogador, onSave, onBack, onLogout }: any) => {
              >
                🔔 HABILITAR NOTIFICAÇÕES
              </button>
-             <div style={{fontSize: 11, color: '#B9ACE6', marginTop: 8, textAlign:'center'}}>Necessário para receber lembretes de estudo se a aba estiver fechada.</div>
+             <div style={{fontSize: 11, color: '#B9ACE6', marginTop: 8, textAlign:'center'}}>
+                Para iOS/iPhone: É necessário "Adicionar à Tela de Início" primeiro. Quando o app estiver fechado, os avisos chegarão pelo sistema do seu celular! Mas não se preocupe: novos avisos também aparecerão na tela quando você abrir o app.
+             </div>
           </div>
         </div>
 

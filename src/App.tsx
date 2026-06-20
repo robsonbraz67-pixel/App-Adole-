@@ -12,6 +12,7 @@ export default function App() {
   const [diaAtual, setDiaAtual] = useState<any>(null);
   const [resultado, setResultado] = useState<any>(null);
   const [logoTaps, setLogoTaps] = useState(0);
+  const [inAppNotif, setInAppNotif] = useState<{title: string, body: string, id: number} | null>(null);
   
   const semKey = (l: any) => 'prog_' + (l?.semana || 'w');
 
@@ -24,7 +25,6 @@ export default function App() {
     import('./firebase').then(({ listenToUserNotifications }) => {
        unsub = listenToUserNotifications(jogador.id, (notification) => {
           if (notification && notification.timestamp > lastNotifTime) {
-             // Only show if it's recent (last 5 minutes) or if it arrived during the session
              const now = new Date().getTime();
              if (now - notification.timestamp < 5 * 60 * 1000 || lastNotifTime !== 0) {
                  if ('Notification' in window && Notification.permission === 'granted') {
@@ -34,9 +34,11 @@ export default function App() {
                           icon: '/icon-192.png',
                           badge: '/icon-192.png'
                        });
+                    }).catch(() => {
+                        setInAppNotif({ title: notification.title, body: notification.body, id: Date.now() });
                     });
                  } else {
-                    alert(`${notification.title}\n\n${notification.body}`);
+                    setInAppNotif({ title: notification.title, body: notification.body, id: Date.now() });
                  }
              }
              lastNotifTime = notification.timestamp;
@@ -46,6 +48,13 @@ export default function App() {
     
     return () => unsub();
   }, [jogador?.id]);
+
+  useEffect(() => {
+    if (inAppNotif) {
+      const timer = setTimeout(() => setInAppNotif(null), 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [inAppNotif]);
 
   useEffect(() => {
     let unmounted = false;
@@ -388,6 +397,39 @@ export default function App() {
       {tela === 'admin' && <Admin licao={licao} onImport={handleImport} onClear={handleClear} onBack={() => setTela('home')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
+      
+      {inAppNotif && (
+        <div style={{
+           position: 'fixed',
+           top: 20,
+           left: '50%',
+           transform: 'translateX(-50%)',
+           background: 'rgba(25,18,48,0.95)',
+           border: '1px solid rgba(245,200,66,0.3)',
+           padding: '16px 20px',
+           borderRadius: 16,
+           zIndex: 9999,
+           boxShadow: '0 8px 30px rgba(0,0,0,0.5), 0 0 15px rgba(245,200,66,0.2)',
+           display: 'flex',
+           flexDirection: 'column',
+           minWidth: 300,
+           maxWidth: '90%',
+           animation: 'fadeInDown 0.4s ease-out forwards'
+        }}>
+           <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
+              <div>
+                 <div style={{fontSize: 14, fontWeight: 800, color: '#F5C842', marginBottom: 4}}>{inAppNotif.title}</div>
+                 <div style={{fontSize: 13, color: '#E2D9F3', lineHeight: 1.4}}>{inAppNotif.body}</div>
+              </div>
+              <button 
+                onClick={() => setInAppNotif(null)} 
+                style={{background:'none', border:'none', color:'#B9ACE6', fontSize: 18, cursor:'pointer', padding: '0 0 0 12px'}}
+              >
+                ✕
+              </button>
+           </div>
+        </div>
+      )}
     </>
   );
 }
