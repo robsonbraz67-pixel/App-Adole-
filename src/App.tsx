@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DEMO } from './data';
+import { DEMO, LICOES } from './data';
 import { gs, ss, calcPos, rankDemo, PROG0, playSound } from './utils';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config } from './components';
 
@@ -19,7 +19,7 @@ export default function App() {
     let unmounted = false;
     const initApp = async () => {
       const j = gs('jogador');
-      const l = gs('licao_atual', DEMO);
+      const l = gs('licao_atual', LICOES[LICOES.length - 1]);
       setLicao(l);
 
       let r = gs('ranking') || rankDemo();
@@ -78,7 +78,7 @@ export default function App() {
 
   const handleLogin = async (j: any) => {
     setJogador(j);
-    const l = gs('licao_atual', DEMO);
+    const l = gs('licao_atual', LICOES[LICOES.length - 1]);
     setLicao(l);
     
     let p = gs(semKey(l), PROG0);
@@ -110,7 +110,7 @@ export default function App() {
 
   const handleDoneQuiz = async (res: any) => {
     setResultado(res);
-    const l = licao || DEMO;
+    const l = licao || LICOES[LICOES.length - 1];
     const novaDone = prog.done.includes(diaAtual.id) ? prog.done : [...prog.done, diaAtual.id];
     const novoXP = prog.xp + res.xpTotal;
     const novoStreak = prog.done.includes(diaAtual.id) ? prog.streak : prog.streak + 1;
@@ -164,7 +164,7 @@ export default function App() {
   };
 
   const loadLatestRanking = async () => {
-    const l = licao || DEMO;
+    const l = licao || LICOES[LICOES.length - 1];
     try {
       const { getWeeklyRanking, waitForAuthInit } = await import('./firebase');
       const user = await waitForAuthInit();
@@ -190,9 +190,45 @@ export default function App() {
     setTela('home');
   };
 
+  const handleChangeLicao = async (newLicao: any) => {
+    ss('licao_atual', newLicao);
+    setLicao(newLicao);
+    
+    // Load local prog/ranking 
+    let p = gs(semKey(newLicao), PROG0);
+    let r = rankDemo();
+    
+    setRanking(r);
+    setProg({ ...p, pos: calcPos(r, jogador.id, p.xp || 0) });
+    
+    try {
+      const { getWeeklyRanking, getProgress, waitForAuthInit } = await import('./firebase');
+      const user = await waitForAuthInit();
+      if (user) {
+        // Fetch ranking
+        const dbRanking = await getWeeklyRanking(newLicao.semana);
+        if (dbRanking.length > 0) {
+          r = dbRanking;
+          setRanking(r);
+        }
+        
+        // Fetch progress
+        const dbProg = await getProgress(jogador.id, newLicao.semana);
+        if (dbProg) {
+          p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
+          ss(semKey(newLicao), p);
+        }
+        
+        setProg({ ...p, pos: calcPos(r, jogador.id, p.xp || 0) });
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
   const handleClear = () => {
     if (window.confirm('Limpar todo o progresso desta semana?')) {
-      const k = semKey(licao || DEMO);
+      const k = semKey(licao || LICOES[LICOES.length - 1]);
       localStorage.removeItem(k);
       setProg({ ...PROG0, pos: calcPos(ranking, jogador?.id, 0) });
       alert('🗑️ Progresso limpo localmente!');
@@ -209,7 +245,7 @@ export default function App() {
   };
 
   const handleSaveStudy = async (nota: string, hl: any) => {
-    const l = licao || DEMO;
+    const l = licao || LICOES[LICOES.length - 1];
     const diaHist = prog.history[diaAtual.id] || {};
     const np = {
       ...prog,
@@ -234,7 +270,7 @@ export default function App() {
       const user = await waitForAuthInit();
       if (user) {
         await saveUser(novoJ);
-        const l = licao || DEMO;
+        const l = licao || LICOES[LICOES.length - 1];
         await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar);
       }
       
@@ -256,7 +292,7 @@ export default function App() {
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); }} onRanking={loadLatestRanking} onConfig={() => setTela('config')} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); }} onRanking={loadLatestRanking} onConfig={() => setTela('config')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} onSaveStudy={handleSaveStudy} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={loadLatestRanking} onHome={() => setTela('home')} />}

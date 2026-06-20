@@ -1,78 +1,120 @@
 export const DEMO = {
-  titulo:"Vivendo Como Comunidade Viva",
-  semana:"2026-W23",trimestre:"3T2026",
-  dias:[
+  titulo: "Lição 13 - Luz do Mundo (20 a 26 de Junho)",
+  semana: "2026-W25",
+  trimestre: "3T2026",
+  dias: [
     {
-      id:1,diaSemana:"Sáb",data:"2026-05-30",
-      titulo:"A Igreja: Corpo de Cristo",
-      conteudo:"A Igreja não é um edifício, uma instituição ou uma organização humana. Ela é o corpo vivo de Cristo na Terra — uma comunidade de pessoas redimidas e transformadas pela graça de Deus.\n\nPaulo descreve essa realidade em 1 Coríntios 12: assim como o corpo humano tem muitos membros, cada um com sua função específica, a Igreja é composta por crentes com dons diferentes, mas todos unidos em Cristo, que é a Cabeça.\n\nEssa metáfora ensina algo profundo: nenhum membro é dispensável. O olho não pode dizer ao pé 'não preciso de você'. Cada parte tem papel insubstituível no funcionamento saudável do corpo.\n\nSer membro da Igreja significa muito mais do que comparecer aos cultos. Significa pertencer a uma família espiritual onde nos responsabilizamos uns pelos outros, celebramos juntos, sofremos juntos e crescemos juntos na fé.",
-      versiculoChave:{texto:"Pois assim como o corpo é um e tem muitos membros, e todos os membros do corpo, embora sejam muitos, são um só corpo, assim também Cristo.",referencia:"1 Coríntios 12:12"},
-      perguntas:[
-        {id:"d1q1",pergunta:"Qual metáfora Paulo usa para descrever a Igreja em 1 Coríntios 12?",opcoes:["Um exército em guerra","Um corpo humano","Um jardim florescendo","Uma escola de sábios"],correta:1,explicacao:"Paulo usa a metáfora do corpo humano — com muitos membros unidos — para descrever a Igreja."},
-        {id:"d1q2",pergunta:"Quem é a Cabeça da Igreja?",opcoes:["O pastor principal","O apóstolo Paulo","Cristo Jesus","O Espírito Santo"],correta:2,explicacao:"Cristo é a Cabeça do corpo — a Igreja."},
-        {id:"d1q3",pergunta:"O que significa ser membro da Igreja?",opcoes:["Pagar dízimos regularmente","Pertencer a uma família espiritual com responsabilidades mútuas","Frequentar todos os cultos","Ter um cargo de liderança"],correta:1,explicacao:"Ser membro significa pertencer a uma família espiritual onde nos responsabilizamos uns pelos outros."},
-        {id:"d1q4",pergunta:"Algum membro da Igreja pode ser considerado dispensável?",opcoes:["Sim, os mais fracos","Sim, com menos dons","Não, cada parte tem papel insubstituível","Depende do contexto"],correta:2,explicacao:"Nenhum membro é dispensável — cada parte tem papel insubstituível no corpo."}
+      id: 1, diaSemana: "Sáb", data: "2026-06-20",
+      titulo: "TEASER",
+      conteudo: "O último capítulo do livro Os Embaixadores faz um chamado inspirador para darmos continuidade ao legado dos heróis espirituais. Ellen White escreveu: 'O inimigo fez de tudo para deter a obra confiada aos construtores do Senhor. Todavia, Deus levantou obreiros que defenderam a fé com clareza e poder. Como os apóstolos, muitos morreram cumprindo seu dever. Contudo, a edificação do templo prosseguiu firmemente... trouxeram, ao fundamento, material que será preservado pela eternidade' (Página 273).\n\nAgora é o tempo de tomar a decisão de dedicar-se completamente ao Senhor e ao Seu serviço. Todos são chamados para ser testemunhas. Deus deseja que todos sejamos ativos no evangelismo – não importa nossos traços de personalidade. Pela graça divina, podemos nos tornar embaixadores de Cristo.",
+      versiculoChave: { texto: "Juntos, somos sua casa, edificados sobre os alicerces dos apóstolos...", referencia: "Efésios 2:19-22" },
+      perguntas: [
+        { id: "d1q1", pergunta: "Segundo o texto, o que o inimigo fez em relação à obra?", opcoes: ["Ignorou os construtores", "Fez de tudo para deter a obra", "Ajudou na edificação do templo", "Desanimou apenas os apóstolos"], correta: 1, explicacao: "O inimigo fez de tudo para deter a obra confiada aos construtores do Senhor." },
+        { id: "d1q2", pergunta: "O texto nos chama, pela graça divina, a nos tornarmos o quê?", opcoes: ["Apenas ouvintes", "Embaixadores de Cristo", "Construtores de templos físicos", "Juízes do mundo"], correta: 1, explicacao: "Pela graça divina, podemos nos tornar embaixadores de Cristo." },
+        { id: "d1q3", pergunta: "O que continuou a acontecer contudo, segundo Ellen White?", opcoes: ["A edificação do templo prosseguiu firmemente", "A igreja desistiu de sua missão", "Os apóstolos fugiram todos", "A fé foi esquecida por séculos"], correta: 0, explicacao: "A edificação do templo prosseguiu firmemente." },
+        { id: "d1q4", pergunta: "Deus deseja que todos sejamos ativos no:", opcoes: ["Isolamento monástico", "Julgamento alheio", "Evangelismo", "Estudo secular profundo"], correta: 2, explicacao: "Deus deseja que todos sejamos ativos no evangelismo." }
       ]
     },
     {
-      id:2,diaSemana:"Dom",data:"2026-05-31",
-      titulo:"Unidos na Diversidade",
-      conteudo:"Uma das maiores riquezas da Igreja de Cristo é sua diversidade. Pessoas de diferentes culturas, línguas e histórias encontram-se unidas sob o mesmo Senhor, com a mesma fé e o mesmo Espírito.\n\nPaulo exorta os efésios a manter 'a unidade do Espírito pelo vínculo da paz' (Efésios 4:3). Essa unidade não é uniformidade — não significa que todos devemos pensar da mesma forma. É uma unidade na essência, na missão e no amor.\n\nA diversidade na Igreja é reflexo da criação de Deus. Assim como Ele criou milhões de espécies diferentes, a Sua Igreja é rica em variedade de pessoas e perspectivas únicas.\n\nO desafio é transformar o potencial conflito que a diversidade gera em força. Isso exige humildade, paciência e amor — frutos do Espírito que nos capacitam a celebrar as diferenças.",
-      versiculoChave:{texto:"Esforçai-vos por manter a unidade do Espírito pelo vínculo da paz.",referencia:"Efésios 4:3"},
-      perguntas:[
-        {id:"d2q1",pergunta:"O que Paulo exorta em Efésios 4:3?",opcoes:["Que todos tenham os mesmos dons","Manter a unidade do Espírito pelo vínculo da paz","Evitar conflitos a qualquer custo","Separar membros por cultura"],correta:1,explicacao:"Paulo exorta a manter a unidade do Espírito pelo vínculo da paz."},
-        {id:"d2q2",pergunta:"Unidade na Igreja significa:",opcoes:["Que todos pensem exatamente igual","Uniformidade de opiniões","União na essência, missão e amor — não uniformidade","Eliminar diferenças culturais"],correta:2,explicacao:"Unidade não é uniformidade — é união na essência, missão e amor."},
-        {id:"d2q3",pergunta:"O que transforma diversidade em força?",opcoes:["Regras rígidas","Liderança autoritária","Humildade, paciência e amor","Separação em grupos similares"],correta:2,explicacao:"Humildade, paciência e amor nos capacitam a transformar diversidade em força."},
-        {id:"d2q4",pergunta:"A diversidade da Igreja é reflexo de:",opcoes:["Uniformidade desejável","A diversidade da criação de Deus","Falta de organização","Desordem histórica"],correta:1,explicacao:"Assim como Deus criou espécies diversas, a Sua Igreja é rica em variedade de pessoas."}
+      id: 2, diaSemana: "Dom", data: "2026-06-21",
+      titulo: "ROTEIRO ORIGINAL",
+      conteudo: "Os textos bíblicos para o estudo desta semana se concentram em Mateus 16:18, Efésios 2:19-22 e Apocalipse 7:9-17. Leia em sua Bíblia sobre o chamado de Pedro, a explicação de Paulo sobre quem é realmente a pedra angular e a visão que João teve de uma grande multidão vestida de branco diante do trono e do Cordeiro.\n\nQue palavras ou frases lhe dão um senso de esperança? Qual é a ideia principal em cada texto? Qual é o tema presente nos três textos? Como você pode ser luz em um mundo escuro durante esta semana?",
+      versiculoChave: { texto: "A explicação de Paulo sobre quem é realmente a pedra angular...", referencia: "Efésios 2:19-22" },
+      perguntas: [
+        { id: "d2q1", pergunta: "O estudo desta semana se concentra em quais textos bíblicos?", opcoes: ["Gênesis, Êxodo e Levítico", "Mateus 16, Efésios 2 e Apocalipse 7", "Marcos 10, Atos 2 e Romanos 8", "João 3, 1 Coríntios 13 e Hebreus 11"], correta: 1, explicacao: "Estaremos estudando Mateus 16:18, Efésios 2:19-22 e Apocalipse 7:9-17." },
+        { id: "d2q2", pergunta: "A explicação do Apóstolo Paulo nesses capítulos é sobre?", opcoes: ["Viagens missionárias", "Como construir tendas", "Quem é realmente a pedra angular e como a Igreja é edificada", "Como enfrentar reis em tribunais"], correta: 2, explicacao: "Ele orienta sobre quem é realmente a pedra angular na construção da Igreja." },
+        { id: "d2q3", pergunta: "O que João viu em Apocalipse 7?", opcoes: ["Uma cidade destruída", "Uma grande multidão vestida de branco", "Um exército terrestre", "Muitas pedras preciosas caindo"], correta: 1, explicacao: "A visão de João foi de uma grande multidão vestida de branco em redenção." },
+        { id: "d2q4", pergunta: "A ideia principal proposta como reflexão pessoal é:", opcoes: ["Como ser luz num mundo escuro nesta semana?", "Como arrecadar dinheiro?", "Como ler mais rápido?", "Como evitar os problemas da vida?"], correta: 0, explicacao: "Como você pode ser luz em um mundo escuro durante esta semana." }
       ]
     },
     {
-      id:3,diaSemana:"Ter",data:"2026-06-02",
-      titulo:"Cuidando Uns dos Outros",
-      conteudo:"Uma comunidade viva não existe apenas para si mesma. Ela existe para cuidar e sustentar seus membros nos momentos de alegria e, especialmente, nos momentos de dificuldade.\n\nPaulo escreve em Gálatas 6:2: 'Levai os fardos uns dos outros e assim cumprireis a lei de Cristo.' O fardo não é apenas peso físico — é qualquer carga emocional, espiritual ou relacional que uma pessoa carrega sozinha quando não deveria.\n\nCuidar uns dos outros requer percepção — olhos atentos para enxergar quem sofre em silêncio. Requer presença — estar lá, mesmo sem palavras. Requer ação — a visita, a refeição, o telefonema.\n\nJesus disse que os outros conhecerão que somos Seus discípulos pelo amor que temos uns pelos outros (João 13:35). O cuidado mútuo não é opcional — é evidência de que o Espírito habita em nós.",
-      versiculoChave:{texto:"Levai os fardos uns dos outros e assim cumprireis a lei de Cristo.",referencia:"Gálatas 6:2"},
-      perguntas:[
-        {id:"d3q1",pergunta:"O que Paulo chama de 'fardos' em Gálatas 6:2?",opcoes:["Apenas dívidas financeiras","Qualquer carga emocional, espiritual ou relacional","Somente doenças físicas","Problemas familiares graves"],correta:1,explicacao:"Fardos incluem qualquer peso — emocional, espiritual ou relacional — que alguém carrega sozinho."},
-        {id:"d3q2",pergunta:"Como Jesus disse que reconhecerão Seus discípulos?",opcoes:["Pelas obras milagrosas","Pelo amor que têm uns pelos outros","Pela obediência às leis","Pelos dízimos e ofertas"],correta:1,explicacao:"Em João 13:35, Jesus diz que os outros conhecerão Seus discípulos pelo amor mútuo."},
-        {id:"d3q3",pergunta:"Cuidar uns dos outros requer:",opcoes:["Dinheiro abundante","Percepção, presença e ação","Formação teológica","Autorização da liderança"],correta:1,explicacao:"O cuidado requer percepção (enxergar), presença (estar lá) e ação (fazer algo concreto)."},
-        {id:"d3q4",pergunta:"O cuidado mútuo na vida cristã é:",opcoes:["Opcional para quem tem o dom","Exclusivo dos líderes","Uma evidência de que o Espírito habita em nós","Recomendado só em crises"],correta:2,explicacao:"Cuidar uns dos outros não é opcional — é evidência do Espírito Santo na comunidade."}
+      id: 3, diaSemana: "Seg", data: "2026-06-22",
+      titulo: "ZOOM",
+      conteudo: "Leia o Texto-Chave desta semana, que se encontra em Efésios 2:19-22.\n\nDe acordo com um dicionário de definições, a pedra angular era a pedra fundamental utilizada nas antigas construções, caracterizada por ser a primeira a ser assentada na esquina do edifício, formando um ângulo reto entre duas paredes. A partir da pedra angular, eram definidas as colocações das outras pedras, alinhando toda a construção. O apóstolo Paulo esclarece que Jesus é a pedra angular, que torna o edifício bem ajustado e consolidado.\n\nAinda usando o exemplo de construções e pedras, Ellen White escreveu: 'Os apóstolos edificaram sobre a Rocha Eterna. Para esse fundamento, trouxeram as pedras que tiraram do mundo... Contudo, com fé e coragem, continuaram avançando' (Os Embaixadores, p. 273).\n\nTodos nós podemos ser 'pedras' úteis na edificação da igreja. Só precisamos permitir que o Construtor-Mestre nos coloque no lugar certo!",
+      versiculoChave: { texto: "Jesus Cristo é a principal pedra de esquina...", referencia: "Efésios 2:20" },
+      perguntas: [
+        { id: "d3q1", pergunta: "Na antiguidade, o que era a 'pedra angular'?", opcoes: ["A pedra de tropeço", "A primeira pedra assentada que alinhava toda a construção", "A pedra usada para decoração", "O último tijolo do telhado"], correta: 1, explicacao: "Era a primeira pedra assentada na esquina, alinhando o restante do edifício." },
+        { id: "d3q2", pergunta: "Quem o apóstolo Paulo diz ser a pedra angular?", opcoes: ["Pedro", "Senhores de Roma", "O próprio Paulo", "Jesus"], correta: 3, explicacao: "Paulo esclarece que Jesus é a pedra angular." },
+        { id: "d3q3", pergunta: "Nós podemos ser o quê na edificação da igreja, segundo a mensagem?", opcoes: ["Estatísticas do reino", "'Pedras' úteis", "Tijolos de palha", "Árvores no jardim"], correta: 1, explicacao: "Todos nós podemos ser 'pedras' úteis na edificação da igreja." },
+        { id: "d3q4", pergunta: "O que precisamos permitir que o Construtor-Mestre faça?", opcoes: ["Nos deixe de fora", "Nos coloque onde nós quisermos", "Nos coloque no lugar certo", "Nos deixe para sempre parados"], correta: 2, explicacao: "Permitir que o Construtor-Mestre nos coloque no lugar certo!" }
       ]
     },
     {
-      id:4,diaSemana:"Qua",data:"2026-06-03",
-      titulo:"Servindo em Amor",
-      conteudo:"Em Marcos 10:45, Jesus estabelece o padrão definitivo: 'O Filho do Homem não veio para ser servido, mas para servir e dar a sua vida em resgate de muitos.' Se o próprio Filho de Deus veio como servo, o que nos resta senão seguir Seu exemplo?\n\nO serviço cristão é fundamentalmente diferente do voluntariado comum. Não é motivado por culpa ou busca de reconhecimento. É movido pelo amor genuíno — que transborda de ter sido amado por Deus sem merecer.\n\nNa comunidade cristã viva, cada membro encontra seu lugar de serviço. Não existem serviços grandes ou pequenos — existe fidelidade no lugar onde Deus nos colocou. A pessoa que prepara o lanche, organiza as cadeiras, canta com toda a força — todos são igualmente valiosos.\n\nServir também nos transforma. Quebramos o egocentrismo e descobrimos a alegria paradoxal de que dar é mais bendito do que receber.",
-      versiculoChave:{texto:"Porque o próprio Filho do Homem não veio para ser servido, mas para servir e dar a sua vida em resgate de muitos.",referencia:"Marcos 10:45"},
-      perguntas:[
-        {id:"d4q1",pergunta:"Por que Jesus disse que veio ao mundo (Marcos 10:45)?",opcoes:["Para ser adorado","Para ensinar as Escrituras","Para servir e dar Sua vida como resgate","Para estabelecer um reino terreno"],correta:2,explicacao:"Jesus veio não para ser servido, mas para servir e dar Sua vida em resgate de muitos."},
-        {id:"d4q2",pergunta:"O que diferencia o serviço cristão do voluntariado comum?",opcoes:["É exclusivamente em igrejas","É motivado pelo amor — não por culpa ou reconhecimento","Exige treinamento formal","É remunerado espiritualmente"],correta:1,explicacao:"O serviço cristão é motivado pelo amor genuíno que transborda de ser amado por Deus."},
-        {id:"d4q3",pergunta:"Na comunidade cristã, qual serviço é mais valioso?",opcoes:["O de pregação","O administrativo","Todos são igualmente valiosos perante Deus","Os mais visíveis"],correta:2,explicacao:"Não existem serviços grandes ou pequenos — existe fidelidade no lugar onde Deus nos colocou."},
-        {id:"d4q4",pergunta:"Qual é o efeito de servir em nós mesmos?",opcoes:["Gera cansaço","Nos transforma, quebrando o egocentrismo","Nos torna superiores","Não tem efeito"],correta:1,explicacao:"Servir nos transforma — quebramos o egocentrismo e descobrimos que dar é mais bendito que receber."}
+      id: 4, diaSemana: "Ter", data: "2026-06-23",
+      titulo: "MAKING OF",
+      conteudo: "A igreja, no tempo dos apóstolos, defendia conceitos totalmente diferentes da cultura vigente. Na igreja cristã não havia divisão social, nem discriminação de mulheres. Em vez de serem rejeitados, os pobres e doentes eram acolhidos.\n\nUma interpretação equivocada a respeito das palavras de Jesus - 'Você é Pedro e sobre esta pedra edificarei a Minha igreja' - levou a Igreja Católica Romana a considerar o apóstolo o primeiro papa. A explicação a respeito de quem é a pedra angular esclarece esse assunto (Ef 2:19-22).\n\nNo ano 40 d.C., estimava-se que apenas 1 em cada 1.000 pessoas no Império Romano era seguidora de Jesus. Em 350 d.C., surpreendentemente 56% da população romana se declarava cristã. Um índice de crescimento de 40% por década!\n\nTanto Pedro como Paulo terminaram seu ministério em Roma. Paulo foi decapitado. Pedro, por sua vez, como judeu e estrangeiro, foi açoitado e crucificado de cabeça para baixo. Em Atos 2:47 lemos que a igreja cristã tinha 'a simpatia do povo'.",
+      versiculoChave: { texto: "louvando a Deus e tendo a simpatia de todo o povo...", referencia: "Atos 2:47" },
+      perguntas: [
+        { id: "d4q1", pergunta: "Segundo o texto, qual interpretação equivocada foi feita sobre as palavras 'Você é Pedro...'?", opcoes: ["A Igreja não precisaria de líderes", "A Igreja Católica a usou para considerar o apóstolo o primeiro papa", "Que a pedra fundamental era o próprio livro de Gênesis", "Qualquer discípulo batizava mais que ele"], correta: 1, explicacao: "Levou-se a interpretar que Pedro era considerado o primeiro papa." },
+        { id: "d4q2", pergunta: "Como a igreja no tempo dos apóstolos lidava com a estrutura da sociedade e cultura?", opcoes: ["Copiava os costumes escravagistas de Roma", "Rejeitava os pobres e doentes", "Não havia divisão social nem discriminação", "Segregava mulheres em cerimônias diárias"], correta: 2, explicacao: "A igreja primitiva não tinha divisão social, e acolhia as mulheres, doentes e pobres." },
+        { id: "d4q3", pergunta: "Como o apóstolo Pedro morreu em Roma?", opcoes: ["Decapitado velozmente", "Apedrejado longe da praça de Roma", "Açoitado e crucificado de cabeça para baixo", "Morreu durante o sono velho e descansado"], correta: 2, explicacao: "Pedro foi açoitado e crucificado de cabeça para baixo porque não se considerava digno de morrer como Cristo." },
+        { id: "d4q4", pergunta: "Em Atos 2:47 é dito que a igreja inicial cristã tinha...", opcoes: ["A repulsa popular", "Muito ouro e prédios", "A simpatia do povo", "Apenas pessoas ricas"], correta: 2, explicacao: "A Igreja desfrutava da simpatia de todo o povo." }
       ]
     },
     {
-      id:5,diaSemana:"Qui",data:"2026-06-04",
-      titulo:"Perdão e Restauração",
-      conteudo:"Nenhuma comunidade humana está imune ao conflito e à mágoa. A pergunta não é se surgirão feridas, mas como a comunidade vai lidar com elas.\n\nPedro perguntou a Jesus: 'Quantas vezes perdoarei a meu irmão?' Jesus respondeu: 'Não te digo que até sete vezes, mas até setenta vezes sete.' (Mateus 18:21-22). O perdão cristão não tem limite numérico.\n\nMas perdoar não é sinônimo de fraqueza ou fingir que tudo está bem. Perdoar é uma decisão de não deixar a mágoa controlar nossa vida. É libertar a si mesmo do peso do ressentimento.\n\nA restauração envolve a comunidade caminhando junto com quem errou e com quem foi ferido — sem condenar nenhum dos dois. Uma comunidade que sabe restaurar é verdadeiramente viva.",
-      versiculoChave:{texto:"Não te digo que até sete vezes, mas até setenta vezes sete.",referencia:"Mateus 18:22"},
-      perguntas:[
-        {id:"d5q1",pergunta:"Quantas vezes Jesus disse que devemos perdoar?",opcoes:["Sete vezes","Três vezes ao dia","Setenta vezes sete","Apenas uma vez"],correta:2,explicacao:"Jesus respondeu 'setenta vezes sete' — o perdão cristão não tem limite."},
-        {id:"d5q2",pergunta:"O que o perdão NÃO significa?",opcoes:["Uma decisão voluntária","Libertar-se do ressentimento","Fraqueza ou fingir que tudo está bem","Abrir porta para restauração"],correta:2,explicacao:"Perdoar não é fraqueza — é uma decisão de não deixar a mágoa controlar nossa vida."},
-        {id:"d5q3",pergunta:"O que significa restauração além do perdão?",opcoes:["Esquecer o ocorrido","A comunidade caminhar junto com ambos no processo de cura","Evitar falar sobre o assunto","Retornar ao estado anterior"],correta:1,explicacao:"Restauração é a comunidade acompanhando ambos os lados no processo de cura."},
-        {id:"d5q4",pergunta:"Qual foi a pergunta de Pedro sobre perdão?",opcoes:["Como amar meu inimigo?","O que é misericórdia?","Quantas vezes perdoarei se ele pecar contra mim?","Quem é meu próximo?"],correta:2,explicacao:"Pedro perguntou quantas vezes deveria perdoar o irmão — Jesus respondeu 'setenta vezes sete'."}
+      id: 5, diaSemana: "Qua", data: "2026-06-24",
+      titulo: "EXTRAS",
+      conteudo: "Nos primeiros séculos as pessoas compreenderam a visão de Cristo para a igreja. Espectadores ficaram maravilhados com a graça radical que os cristãos mostraram para com todas as pessoas – o enfermo, o pobre, o marginalizado. E esse grupo radical de crentes nem mesmo possuía um nome.\n\nEles eram simplesmente chamados ecclesia – o que não significa 'prédio' ou 'serviço de adoração' ou a 'torre da igreja'. Significa 'assembleia' porque igreja é isto – é uma reunião de pessoas comuns comprometidas a fazer brilhar a luz de Jesus aonde quer que forem.\n\nA igreja é uma força-tarefa com a missão de iluminar um mundo escuro. É o corpo de Cristo, do qual somos membros. Quando estamos servindo, amando, doando, encorajando, ajudando outros e fazendo brilhar a luz – então somos a igreja! Isso significa que somos os únicos evangelistas que Jesus tem para Sua igreja.",
+      versiculoChave: { texto: "Vós sois a luz do mundo. Não se pode esconder a cidade edificada sobre um monte.", referencia: "Mateus 5:14" },
+      perguntas: [
+        { id: "d5q1", pergunta: "O que a palavra grega 'ecclesia' significa no contexto dos primeiros crentes?", opcoes: ["Prédio monumental luxuoso", "Serviço de música puramente acapela e sacra", "A torre mais alta e divina de todas", "Assembleia/reunião de pessoas comuns"], correta: 3, explicacao: "Significa assembleia, uma reunião de pessoas prontas a fazer o bem aonde estiverem." },
+        { id: "d5q2", pergunta: "Para quem os crentes mostravam uma impressionante graça radical?", opcoes: ["Apenas para com autoridades do Império", "Somente a quem fosse da própria nacionalidade deles", "Para o enfermo, o pobre e o marginalizado em geral", "Somente famílias de sangue sem enfermidades contagiosas"], correta: 2, explicacao: "Mostravam amor para o enfermo, o pobre e o marginalizado de todos." },
+        { id: "d5q3", pergunta: "Quando somos verdadeiramente a igreja de Cristo na terra?", opcoes: ["Enquanto estamos ouvindo palestras em locais silenciosos", "Apenas sentados apreciando boa cantoria de domingo", "Quando praticamos as boas obras com força política", "Quando amamos, ajudamos os outros e doamos com encorajamento"], correta: 3, explicacao: "Amando, doando, encorajando e ajudando outros." },
+        { id: "d5q4", pergunta: "Quem são os 'únicos evangelistas' que Jesus tem para Sua igreja, pela lógica do texto?", opcoes: ["Os príncipes, governantes no mundo atual", "Nós - pessoas comprometidas com Sua graça no agir em união", "Sábios dedicados exclusivamente em cavernas no alto deserto", "Inteligências de luz angelicais nos enviando inspirações e livros"], correta: 1, explicacao: "Nós somos a única missão da força da igreja (missionários físicos) que Ele conta aqui e hoje." }
       ]
     },
     {
-      id:6,diaSemana:"Sexta",data:"2026-06-05",
-      titulo:"Vivendo Como Comunidade Viva",
-      conteudo:"Chegamos ao último dia da semana. Exploramos o que significa ser Igreja — o corpo de Cristo, unido na diversidade, cuidando uns dos outros, servindo em amor, praticando o perdão.\n\nUma comunidade viva não é aquela com os melhores programas ou o maior templo. É aquela onde as pessoas se importam genuinamente umas com as outras. Onde os que chegam pela primeira vez sentem que pertencem. Onde os que estão sofrendo encontram acolhida.\n\nJesus disse: 'Onde dois ou três estão reunidos em meu nome, aí estou eu no meio deles.' (Mateus 18:20). A presença de Cristo é o elemento definitivo que transforma um grupo de pessoas em comunidade viva.\n\nA questão que fica é pessoal: que tipo de membro da comunidade sou eu? Contribuo para o calor e o cuidado desta comunidade? Uma comunidade só é viva quando cada um decide ser agente ativo de vida, amor e serviço.",
-      versiculoChave:{texto:"Porque onde dois ou três estiverem reunidos em meu nome, aí estou no meio deles.",referencia:"Mateus 18:20"},
-      perguntas:[
-        {id:"d6q1",pergunta:"O que define uma comunidade viva?",opcoes:["Os melhores programas e maior templo","Pessoas que se importam genuinamente umas com as outras","A banda de louvor","O número de membros"],correta:1,explicacao:"Uma comunidade viva é aquela onde as pessoas se importam genuinamente umas com as outras."},
-        {id:"d6q2",pergunta:"Em Mateus 18:20, o que Jesus promete?",opcoes:["Que as orações serão respondidas","Que Ele estará no meio deles","Que receberão dons","Que terão prosperidade"],correta:1,explicacao:"Jesus promete Sua presença: 'aí estou eu no meio deles'."},
-        {id:"d6q3",pergunta:"Qual reflexão pessoal a lição propõe?",opcoes:["Qual o melhor programa da igreja","Que tipo de membro sou eu","Como trazer mais pessoas","Qual é meu dom espiritual"],correta:1,explicacao:"A lição convida à reflexão: contribuo para o calor e cuidado da comunidade?"},
-        {id:"d6q4",pergunta:"A semana cobriu os temas:",opcoes:["Apenas cultos e programas","Unidade, cuidado, serviço, perdão e crescimento","Somente evangelismo","Apenas doutrina"],correta:1,explicacao:"Corpo de Cristo, unidade, cuidado mútuo, serviço e perdão — a semana completa."}
+      id: 6, diaSemana: "Qui", data: "2026-06-25",
+      titulo: "PANORÂMICA",
+      conteudo: "Leia o último capítulo (58) do livro Os Embaixadores, cujo título é 'Futuro Glorioso'. As palavras de Ellen White são emocionantes. Veja o que ela disse no primeiro parágrafo: 'Muitos séculos se passaram desde que os apóstolos descansaram de seus trabalhos, mas a história de seus sacrifícios por Cristo ainda está entre os tesouros mais preciosos da igreja. Quando esses mensageiros da cruz saíram para pregar o evangelho, Deus revelou Sua glória como ninguém jamais tinha visto antes. Eles levaram o evangelho a todas as nações em uma única geração' (Os Embaixadores, p. 272).\n\nQue sonho! Mesmo sendo tão poucos, os apóstolos levaram o evangelho a todas as nações em uma única geração. [...] '[Cristo] nos manda sair e falar as Suas palavras, sentindo Seu santo toque em nossos lábios. Não há nada que o Salvador deseje mais do que pessoas que representem Seu Espírito e caráter para o mundo... Se ela for fiel a Ele, obedecendo a todos os Seus mandamentos, nenhum poder será capaz de resistir a ela.' (Os Embaixadores, p. 274)",
+      versiculoChave: { texto: "Ide por todo o mundo, pregai o evangelho a toda criatura.", referencia: "Marcos 16:15" },
+      perguntas: [
+        { id: "d6q1", pergunta: "Segundo citação de Os Embaixadores, o que os apóstolos conquistaram milagrosamente?", opcoes: ["Ficaram ricos e famosos no Império durante o resto dos dias", "Levaram o evangelho a todas as nações em uma única geração!", "Conquistaram todo o senado romano a favor de isenções aos pobres escravos cristãos convertidos sem custo nenhum do erário romano", "Venceram táticas de guerras espalhando as novidades dos cristãos pelas nações europeias."], correta: 1, explicacao: "Eles levaram o evangelho a todas as nações num curto período de tempo equivalente a uma única geração da humanidade viva na época da pregação evangélica." },
+        { id: "d6q2", pergunta: "Qual o título do capítulo final citado no texto do devocional?", opcoes: ["Morte dos Apóstolos Escritos pelo Futuro Maior", "A Grande Tribulação Final Antes e Ainda Antes do Seu Fim", "O Fim dos Heróis Antigos da Profecia Final e Apocalipse do Começo Certo", "Futuro Glorioso"], correta: 3, explicacao: "Futuro Glorioso é o nome do capítulo." },
+        { id: "d6q3", pergunta: "O que o Salvador mais deseja da igreja?", opcoes: ["Festivais grandiosos nas catedrais de ouro", "Que sejamos ricos", "Pessoas que representem o Seu Espírito e caráter", "Discussões teológicas em conselhos do Sinédrio"], correta: 2, explicacao: "Ele deseja pessoas que o representem perante o mundo, reproduzindo Seu caráter entre si e os demais do nosso redil ou não amando uns aos outros. Tudo isso é revelado ali." },
+        { id: "d6q4", pergunta: "O que acontecerá se a igreja for fiel a Cristo e obediente?", opcoes: ["Fará paz com o mundo", "Nenhum poder será capaz de resistir a ela", "Terá fim em breve", "Se tornará irrelevante logo no primeiro obstáculo no Império da época e também até agora de nossa história na humanidade atual."], correta: 1, explicacao: "Nenhum poder fará nada contra essa força que transita e irradia o evangelho fiel de Sua promessa real ali nas Escrituras à nós todos no hoje das nossas vivências." }
+      ]
+    },
+    {
+      id: 7, diaSemana: "Sexta", data: "2026-06-26",
+      titulo: "OFF",
+      conteudo: "Depois de relembrarmos o significado de igreja e nos emocionarmos com a maneira maravilhosa como os apóstolos cumpriram sua missão, resta-nos perguntar: Como podemos ajudar? De que forma a estrutura desse grande templo pode ser completada?\n\nA resposta está na página 274, do livro Os Embaixadores. 'Nós, que estamos vivendo nesta época, devemos levar para o fundamento material que resista à prova de fogo – ouro, prata e pedras preciosas. [...] O cristão que apresenta a Palavra da vida fielmente está levando ao fundamento material que resistirá e, no reino, ele será honrado como um construtor sábio. [...] Se a igreja se revestir do manto da justiça de Cristo e abandonar toda aliança com o mundo, ela estará pronta para o amanhecer de um dia glorioso. A verdade, ao passar por aqueles que a rejeitam, vencerá. Quando a mensagem de Deus encontrar oposição, Ele dará força adicional. Cheia do poder divino, ela atravessará as barreiras mais fortes e vencerá todo obstáculo.'",
+      versiculoChave: { texto: "Ora, se alguém edifica sobre o fundamento com ouro, prata, pedras preciosas, madeira, feno, palha...", referencia: "1 Coríntios 3:12" },
+      perguntas: [
+        { id: "d7q1", pergunta: "Segundo Os Embaixadores, o que deve ser levado como fundamento material para resistir à prova de fogo?", opcoes: ["Materiais perenes tais como: pedras não preciosas, apenas palha em abundância.", "Metais e pedras de todos os tipos para enfeite geral e feno bem amarrado nas laterais do muro de pedras que desabavam à noite fria e triste das horas do dia.", "Muitas das antigas filosofias", "Ouro, prata e pedras preciosas"], correta: 3, explicacao: "Esse 'ouro, prata e pedras preciosas' figuram como crentes maduros alcançando vida resistente que levamos no fundamento de nossos esforços!" },
+        { id: "d7q2", pergunta: "O cristão que apresenta a Palavra fielmente será honrado como o quê?", opcoes: ["Sábio doutor nas cortes", "Senhor de província em locais importantes das cortes", "Mártir glorioso para sempre em todo local daquela era dos apóstolos, o primeiro papa na terra de nossa época antiga para a atualidade sem dúvida alguma no processo histórico.", "Construtor sábio"], correta: 3, explicacao: "Será honrado, por Cristo, como construtor sábio!" },
+        { id: "d7q3", pergunta: "O que a igreja deve abandonar para estar pronta para um dia glorioso?", opcoes: ["Obras de caridade em áreas carentes do continente inteiro da civilização ocidental.", "Aliança com o mundo e qualquer conformismo de caráter secular nocivo", "Roupas sem sofisticação e falta de dinheiro do tesouro real que ajudou muito. Por que não aproveitar a riqueza temporal para si ali em nossos prazeres passageiros naquelas oportunidades abertas por ele sem perigo das consequências ali? ", "Suas características originais que marcaram sua criação por Jesus com os apóstolos naquele dia do princípio das grandes novidades sem volta."], correta: 1, explicacao: "Deve abandonar toda aliança com o mundo com coragem e persistir confiando nEle em seu todo e seu Espírito perante todos os obstáculos da humanidade, etc." },
+        { id: "d7q4", pergunta: "O que acontecerá quando a mensagem de Deus encontrar oposição?", opcoes: ["Ele recuará em todos os sentidos de nossa experiência nos campos em que houver qualquer ameaça militar nas cidades inimigas.", "Não fará diferença nenhuma para ninguém dos seguidores mais fanáticos.", "Deus apenas dará castigo ao povo que Ele ama de volta com severidade de um juiz impiedoso, sem nenhuma dó das suas intenções reais sem compaixão àquele tempo com as pessoas da Terra", "Ele dará força adicional, atravessando as barreiras e obstáculos."], correta: 3, explicacao: "Deus dará força e vencerá os obstáculos e barreiras cheia do poder." }
       ]
     }
   ]
 };
+
+const gerarLicoesSimuladas = () => {
+  const licoes = [];
+  // Vamos gerar 13 lições para simular a temporada. 
+  // A lição 13 é a atual (DEMO). As anteriores vão ser de semanas anteriores (W13 a W24).
+  for (let i = 1; i <= 13; i++) {
+    const licao = JSON.parse(JSON.stringify(DEMO));
+    licao.titulo = `Lição ${i} - Título da Lição ${i}`;
+    licao.semana = `2026-W${12 + i}`;
+    
+    // Atualizar datas para fazerem sentido
+    const dIni = new Date(2026, 2, 28); // Sábado de W13...
+    dIni.setDate(dIni.getDate() + (i - 1) * 7);
+    
+    licao.dias.forEach((d: any, idx: number) => {
+      const dAtual = new Date(dIni);
+      dAtual.setDate(dAtual.getDate() + idx);
+      d.data = dAtual.toISOString().split('T')[0];
+    });
+    
+    if (i === 13) {
+      licao.titulo = "Lição 13 - Luz do Mundo (20 a 26 de Junho)";
+    }
+    licoes.push(licao);
+  }
+  return licoes;
+};
+
+export const LICOES = gerarLicoesSimuladas();

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { DEMO } from './data';
+import { DEMO, LICOES } from './data';
 import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, rankDemo, calcPos, PROG0, shareApp, playSound, formatDiaSemana } from './utils';
 
 /* ===== CONFETTI ===== */
@@ -138,7 +138,7 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 };
 
 /* ===== HOME ===== */
-export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig }: any) => {
+export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onChangeLicao }: any) => {
   const diaId = getDiaId(licao.dias);
   const diaAtual = licao.dias.find((d: any) => d.id === diaId);
   
@@ -199,7 +199,25 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig }: an
       </div>
 
       <div className="sec">
-        <div className="sec-title">Cronograma de Estudos da Semana</div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <div className="sec-title" style={{marginBottom:0}}>Cronograma de Estudos da Semana</div>
+        </div>
+        
+        <div style={{marginBottom:16}}>
+          <select 
+            value={licao.semana}
+            onChange={e => {
+              const selected = LICOES.find((l: any) => l.semana === e.target.value);
+              if (selected && onChangeLicao) onChangeLicao(selected);
+            }}
+            style={{width:'100%', padding:'12px', borderRadius:12, background:'rgba(255,255,255,.05)', color:'#fff', border:'1px solid rgba(255,255,255,.1)', fontSize:14}}
+          >
+            {LICOES.map((l: any, i: number) => (
+              <option key={l.semana} value={l.semana} style={{background:'#1E1248'}}>{l.titulo}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="days-grid">
           {licao.dias.map((dia: any) => {
             const st = getSt(dia);
