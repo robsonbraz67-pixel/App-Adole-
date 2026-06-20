@@ -417,7 +417,7 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
     clearInterval(timerRef.current);
     const t = elT !== undefined ? elT : elapsed;
     const ok = idx === q.correta;
-    const xp = xpSpeed(t, ok);
+    const xp = xpSpeed(t, ok, dia.data);
     setAns(idx);
     
     if (ok) {

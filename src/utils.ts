@@ -17,11 +17,44 @@ export const uid = () => Math.random().toString(36).slice(2, 10);
 
 export const AVTS = ['🦁','🐯','🦊','🐺','🦅','🐬','🌟','🔥','⚡','🎯','👑','🚀'];
 
-export const xpSpeed = (t: number, ok: boolean) => {
+export const xpSpeed = (t: number, ok: boolean, diaData?: string) => {
   if (!ok) return 0;
-  if (t <= 7) return 100;
-  if (t <= 14) return 60;
-  return 30;
+  
+  let scoreTempo = 100 - ((t / 20) * 25);
+  if (scoreTempo < 75) scoreTempo = 75;
+  if (scoreTempo > 100) scoreTempo = 100;
+  
+  let mult = 1.0;
+  if (diaData) {
+    const hoje = new Date();
+    const offset = hoje.getTimezoneOffset() * 60000;
+    const hLocal = new Date(hoje.getTime() - offset);
+    const hojeStr = hLocal.toISOString().split('T')[0];
+    
+    if (diaData === hojeStr) {
+      mult = 1.0;
+    } else {
+      const dayOfWeek = hoje.getDay();
+      const distToSat = (dayOfWeek + 1) % 7;
+      const startOfWeek = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() - distToSat);
+      startOfWeek.setHours(0, 0, 0, 0);
+      
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(endOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+      
+      const [y, m, d] = diaData.split('-').map(Number);
+      const targetLocal = new Date(y, m - 1, d);
+      
+      if (targetLocal >= startOfWeek && targetLocal <= endOfWeek) {
+        mult = 0.90;
+      } else {
+        mult = 0.75;
+      }
+    }
+  }
+  
+  return Math.round(scoreTempo * mult);
 };
 
 export const getDiaId = (dias: any[]) => {
