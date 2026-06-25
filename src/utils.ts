@@ -59,7 +59,10 @@ export const xpSpeed = (t: number, ok: boolean, diaData?: string) => {
 };
 
 export const getDiaId = (dias: any[]) => {
-  const h = new Date().toISOString().split('T')[0];
+  const hoje = new Date();
+  const offset = hoje.getTimezoneOffset() * 60000;
+  const hLocal = new Date(hoje.getTime() - offset);
+  const h = hLocal.toISOString().split('T')[0];
   const d = dias.find((x: any) => x.data === h);
   return d ? d.id : dias[dias.length - 1].id;
 };
