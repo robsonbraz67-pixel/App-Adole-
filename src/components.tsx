@@ -410,7 +410,7 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
   const [qi, setQi] = useState(0);
   const [ans, setAns] = useState<number | null>(null);
   const [resps, setResps] = useState<any[]>([]);
-  const [tempo, setTempo] = useState(20);
+  const [tempo, setTempo] = useState(40);
   const [elapsed, setElapsed] = useState(0);
   const [xpMsg, setXpMsg] = useState<string | null>(null);
   const timerRef = useRef<any>(null);
@@ -422,12 +422,12 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
 
   const startTimer = useCallback(() => {
     clearInterval(timerRef.current);
-    setTempo(20);
+    setTempo(40);
     setElapsed(0);
     startRef.current = Date.now();
     timerRef.current = setInterval(() => {
       const e = (Date.now() - startRef.current) / 1000;
-      const r = Math.max(0, 20 - e);
+      const r = Math.max(0, 40 - e);
       setTempo(r);
       setElapsed(e);
       if (r <= 0) {
@@ -477,7 +477,7 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
     }, 2500);
   };
 
-  const tPct = tempo / 20 * 100;
+  const tPct = tempo / 40 * 100;
   const tColor = tPct > 50 ? '#2ECC71' : tPct > 25 ? '#F5C842' : '#E31C3D';
   const xpSoFar = resps.reduce((s, r) => s + r.xp, 0);
 
@@ -569,8 +569,16 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
 };
 
 /* ===== RANKING ===== */
-export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack }: any) => {
-  const sorted = [...ranking].map(r => r.id === jogador.id ? { ...r, nome: jogador.nome, avatar: jogador.avatar } : r).sort((a, b) => b.xp - a.xp).slice(0, 10);
+export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao }: any) => {
+  const sorted = [...ranking].map(r => {
+    const isMe = r.id === jogador.id;
+    const nome = isMe ? jogador.nome : r.nome;
+    const avatar = isMe ? jogador.avatar : r.avatar;
+    const dias = isMe && type === 'week' ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
+    const xp = isMe && type === 'week' ? (prog.xp || 0) : (r.xp || 0);
+    return { ...r, nome, avatar, dias, xp };
+  }).sort((a, b) => b.xp - a.xp).slice(0, 10);
+
   const myIdx = sorted.findIndex(r => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
 
@@ -598,7 +606,8 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack }: 
               </div>
               <div style={{fontWeight:800,fontSize:12,maxWidth:66,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[1].nome}</div>
               <div className="pod-base p2">🥈</div>
-              <div style={{fontWeight:900,color:'#F5C842',fontSize:12}}>{sorted[1].xp} XP</div>
+              <div style={{fontWeight:900,color:'#F5C842',fontSize:12,lineHeight:1.1}}>{sorted[1].xp} XP</div>
+              <div style={{fontSize:10,color:'#B9ACE6',marginTop:1}}>📅 {sorted[1].dias || 0} d</div>
             </div>
             <div className="pod-col">
               <div style={{fontSize:18,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
@@ -607,7 +616,8 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack }: 
               </div>
               <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[0].nome}</div>
               <div className="pod-base p1">🥇</div>
-              <div style={{fontWeight:900,color:'#F5C842',fontSize:14}}>{sorted[0].xp} XP</div>
+              <div style={{fontWeight:900,color:'#F5C842',fontSize:14,lineHeight:1.1}}>{sorted[0].xp} XP</div>
+              <div style={{fontSize:11,color:'#F5C842',fontWeight:800,marginTop:1}}>📅 {sorted[0].dias || 0} d</div>
             </div>
             <div className="pod-col">
               <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
@@ -615,13 +625,18 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack }: 
               </div>
               <div style={{fontWeight:800,fontSize:11,maxWidth:58,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[2].nome}</div>
               <div className="pod-base p3">🥉</div>
-              <div style={{fontWeight:900,color:'#F5C842',fontSize:12}}>{sorted[2].xp} XP</div>
+              <div style={{fontWeight:900,color:'#F5C842',fontSize:12,lineHeight:1.1}}>{sorted[2].xp} XP</div>
+              <div style={{fontSize:10,color:'#B9ACE6',marginTop:1}}>📅 {sorted[2].dias || 0} d</div>
             </div>
           </div>
         </div>
       )}
       <div className="sec" style={{marginTop:4}}>
-        <div className="sec-title">Classificação completa</div>
+        <div className="sec-title" style={{textTransform:'none', letterSpacing:'normal'}}>
+          {type === 'week' 
+            ? `📖 Lição: ${licao?.titulo || 'Carregando...'}` 
+            : `🏆 Geral: ${licao?.trimestre || 'Carregando...'}`}
+        </div>
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
           {sorted.map((r, i) => {
             const eu = r.id === jogador.id;
@@ -632,10 +647,12 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack }: 
                   {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
                 </div>
                 <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontWeight:800,fontSize:14,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.nome}{eu ? ' 👈' : ''}</div>
-                  <div style={{fontSize:12,color:'#B9ACE6'}}>📅 {r.dias} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
+                  <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#fff'}}>{r.nome}{eu ? ' 👈' : ''}</div>
+                  <div style={{fontSize:12,color:'#B9ACE6',marginTop:2}}>
+                    📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}
+                  </div>
                 </div>
-                <div style={{fontWeight:900,color:'#F5C842',fontSize:15}}>{r.xp} XP</div>
+                <div style={{fontWeight:900,color:'#F5C842',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
               </div>
             );
           })}
@@ -646,7 +663,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack }: 
         <div className="purple-card" style={{textAlign:'center'}}>
           <div style={{fontSize:13,color:'#B9ACE6',marginBottom:4}}>Sua posição</div>
           <div style={{fontWeight:900,fontSize:32,color:'#F5C842'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
-          {myIdx !== -1 && <div style={{fontSize:13,color:'#B9ACE6'}}>📅 {sorted[myIdx].dias} dias • ⭐ {sorted[myIdx].xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}</div>}
+          {myIdx !== -1 && <div style={{fontSize:13,color:'#B9ACE6'}}>📅 {sorted[myIdx].dias} dia{sorted[myIdx].dias!==1?'s':''} • ⭐ {sorted[myIdx].xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}</div>}
         </div>
       </div>
     </div>

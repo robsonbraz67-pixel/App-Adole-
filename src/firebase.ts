@@ -142,7 +142,12 @@ export const getWeeklyRanking = async (week: string) => {
   const snap = await getDocs(q);
   const results: any[] = [];
   snap.forEach(doc => {
-    results.push({ id: doc.data().userId, ...doc.data() });
+    const data = doc.data();
+    results.push({ 
+      id: data.userId, 
+      ...data, 
+      dias: data.done?.length || 0 
+    });
   });
   // Sort descending by XP locally, since we only query by week to save index requirements
   return results.sort((a, b) => b.xp - a.xp);

@@ -49,7 +49,7 @@ export const getRecencyMult = (diaData: string) => {
 export const xpSpeed = (t: number, ok: boolean, diaData?: string) => {
   if (!ok) return 0;
   
-  let scoreTempo = 100 - ((t / 20) * 25);
+  let scoreTempo = 100 - ((t / 40) * 25);
   if (scoreTempo < 75) scoreTempo = 75;
   if (scoreTempo > 100) scoreTempo = 100;
   
