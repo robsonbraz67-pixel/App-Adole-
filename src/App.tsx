@@ -83,7 +83,7 @@ export default function App() {
     let unmounted = false;
     const initApp = async () => {
       const j = gs('jogador');
-      const l = gs('licao_atual', LICOES[LICOES.length - 1]);
+      const l = gs('licao_atual', LICOES[0]);
       setLicao(l);
 
       let r = gs('ranking_' + l.semana, []);
@@ -160,7 +160,7 @@ export default function App() {
 
   const handleLogin = async (j: any) => {
     setJogador(j);
-    const l = gs('licao_atual', LICOES[LICOES.length - 1]);
+    const l = gs('licao_atual', LICOES[0]);
     setLicao(l);
 
     let p = gs(semKey(l), PROG0);
@@ -199,7 +199,7 @@ export default function App() {
 
   const handleDoneQuiz = async (res: any) => {
     setResultado(res);
-    const l = licao || LICOES[LICOES.length - 1];
+    const l = licao || LICOES[0];
 
     let dbLicaoData = null;
     try {
@@ -280,7 +280,7 @@ export default function App() {
 
   const loadLatestRanking = async (type: string = 'week') => {
     setRankingType(type);
-    const l = licao || LICOES[LICOES.length - 1];
+    const l = licao || LICOES[0];
     try {
       const user = await waitForAuthInit();
       if (user) {
@@ -360,7 +360,7 @@ export default function App() {
   };
 
   const handleSaveStudy = async (nota: string, hl: any) => {
-    const l = licao || LICOES[LICOES.length - 1];
+    const l = licao || LICOES[0];
     const diaHist = prog.history[diaAtual.id] || {};
     const np = {
       ...prog,
@@ -392,7 +392,7 @@ export default function App() {
     try {
       const user = await waitForAuthInit();
       if (user) {
-        const l = licao || LICOES[LICOES.length - 1];
+        const l = licao || LICOES[0];
         await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, !!novoJ.isAdmin);
       }
     } catch(e) { console.error(e); }

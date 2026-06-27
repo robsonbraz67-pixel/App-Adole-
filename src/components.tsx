@@ -203,7 +203,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAd
             }}
             className="licao-select"
           >
-            {LICOES.map((l: any, i: number) => (
+            {LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin).map((l: any, i: number) => (
               <option key={l.semana} value={l.semana} style={{background:'#1E1248'}}>{l.titulo}</option>
             ))}
           </select>
