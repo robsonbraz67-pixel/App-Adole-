@@ -15,6 +15,25 @@ export default function App() {
   const [logoTaps, setLogoTaps] = useState(0);
   const [inAppNotif, setInAppNotif] = useState<{title: string, body: string, id: number} | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => (localStorage.getItem('theme') as 'light' | 'dark' | 'auto') || 'auto');
+  const [showNotifPrompt, setShowNotifPrompt] = useState(false);
+
+  const shouldAskNotif = () => {
+    if (!('Notification' in window)) return false;
+    if (Notification.permission !== 'default') return false;
+    const last = parseInt(localStorage.getItem('notifAskedAt') || '0', 10);
+    return Date.now() - last > 7 * 24 * 60 * 60 * 1000;
+  };
+
+  const handleNotifAccept = async () => {
+    localStorage.setItem('notifAskedAt', Date.now().toString());
+    setShowNotifPrompt(false);
+    await Notification.requestPermission();
+  };
+
+  const handleNotifDismiss = () => {
+    localStorage.setItem('notifAskedAt', Date.now().toString());
+    setShowNotifPrompt(false);
+  };
 
   useEffect(() => {
     if (theme === 'auto') {
@@ -123,7 +142,10 @@ export default function App() {
         setProg({ ...p, pos: calcPos(r, j.id, p.xp || 0) });
       }
 
-      if (!unmounted) setTela(j ? 'home' : 'login');
+      if (!unmounted) {
+        setTela(j ? 'home' : 'login');
+        if (j && shouldAskNotif()) setShowNotifPrompt(true);
+      }
     };
 
     initApp();
@@ -159,6 +181,7 @@ export default function App() {
     } else {
       setTela('home');
     }
+    if (shouldAskNotif()) setShowNotifPrompt(true);
   };
 
   const handleDoneQuiz = async (res: any) => {
@@ -389,6 +412,34 @@ export default function App() {
       {tela === 'admin' && <Admin licao={licao} onImport={handleImport} onClear={handleClear} onBack={() => setTela('home')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
+
+      {showNotifPrompt && (
+        <div style={{
+          position: 'fixed', bottom: 80, left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'var(--card)', border: '1px solid var(--hdr-border)',
+          borderRadius: 16, padding: '16px 20px',
+          zIndex: 9998, boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
+          display: 'flex', flexDirection: 'column', gap: 12,
+          minWidth: 300, maxWidth: '90%',
+          animation: 'fadeInDown 0.4s ease-out forwards'
+        }}>
+          <div style={{fontSize: 14, fontWeight: 800, color: 'var(--gold)', fontFamily:'Poppins,sans-serif'}}>
+            🔔 Ativar notificações?
+          </div>
+          <div style={{fontSize: 13, color: 'var(--txt2)', lineHeight: 1.4}}>
+            Receba lembretes de estudo e avisos importantes da sua turma.
+          </div>
+          <div style={{display: 'flex', gap: 10}}>
+            <button onClick={handleNotifAccept} className="btn btn-primary" style={{flex:1, padding:'10px', fontSize:13}}>
+              Ativar
+            </button>
+            <button onClick={handleNotifDismiss} className="btn btn-ghost" style={{flex:1, padding:'10px', fontSize:13, color:'var(--mut)'}}>
+              Agora não
+            </button>
+          </div>
+        </div>
+      )}
 
       {inAppNotif && (
         <div style={{
