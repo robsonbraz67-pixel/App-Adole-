@@ -86,19 +86,25 @@ export default function App() {
       const l = gs('licao_atual', LICOES[LICOES.length - 1]);
       setLicao(l);
 
-      let r = gs('ranking') || rankDemo();
+      let r = gs('ranking_' + l.semana, []);
       try {
         const user = await waitForAuthInit();
         if (user) {
           const dbRanking = await getWeeklyRanking(l.semana);
-          if (dbRanking.length > 0) {
-            r = dbRanking;
-            ss('ranking', r);
-          }
+          r = dbRanking;
         }
       } catch(e) {
         console.error("Error loading ranking:", e);
       }
+      
+      if (l.semana === '2026-W25') {
+         const demo = rankDemo();
+         demo.forEach((d: any) => {
+            if (!r.find((m: any) => m.id === d.id)) r.push(d);
+         });
+         r.sort((a: any, b: any) => b.xp - a.xp);
+      }
+      ss('ranking_' + l.semana, r);
       if (unmounted) return;
       setRanking(r);
 
@@ -158,7 +164,14 @@ export default function App() {
     setLicao(l);
 
     let p = gs(semKey(l), PROG0);
-    let r = gs('ranking') || rankDemo();
+    let r = gs('ranking_' + l.semana, []);
+    if (l.semana === '2026-W25') {
+       const demo = rankDemo();
+       demo.forEach((d: any) => {
+          if (!r.find((m: any) => m.id === d.id)) r.push(d);
+       });
+       r.sort((a: any, b: any) => b.xp - a.xp);
+    }
 
     try {
       await saveUser(j);
@@ -229,7 +242,7 @@ export default function App() {
     }
     r.sort((a, b) => b.xp - a.xp);
 
-    ss('ranking', r);
+    ss('ranking_' + l.semana, r);
     ss(semKey(l), np);
     setRanking(r);
     setProg({ ...np, pos: calcPos(r, jogador.id, novoXP) });
@@ -271,18 +284,25 @@ export default function App() {
     try {
       const user = await waitForAuthInit();
       if (user) {
-        let dbRanking;
+        let dbRanking: any[] = [];
         if (type === 'week') {
           dbRanking = await getWeeklyRanking(l.semana);
         } else {
           dbRanking = await getSeasonRanking(l.trimestre);
         }
-        if (dbRanking && dbRanking.length > 0) {
-          setRanking(dbRanking);
-          if (type === 'week') {
-             ss('ranking', dbRanking);
-             setProg((prev: any) => ({ ...prev, pos: calcPos(dbRanking, jogador?.id, prev.xp || 0) }));
-          }
+        if (l.semana === '2026-W25' && type === 'week') {
+           const demo = rankDemo();
+           demo.forEach((d: any) => {
+              if (!dbRanking.find((m: any) => m.id === d.id)) {
+                 dbRanking.push(d);
+              }
+           });
+           dbRanking.sort((a, b) => b.xp - a.xp);
+        }
+        setRanking(dbRanking);
+        if (type === 'week') {
+           ss('ranking_' + l.semana, dbRanking);
+           setProg((prev: any) => ({ ...prev, pos: calcPos(dbRanking, jogador?.id, prev.xp || 0) }));
         }
       }
     } catch(e) {
@@ -297,7 +317,7 @@ export default function App() {
     setLicao(newLicao);
 
     let p = gs(semKey(newLicao), PROG0);
-    let r = rankDemo();
+    let r = gs('ranking_' + newLicao.semana, []);
 
     setRanking(r);
     setProg({ ...p, pos: calcPos(r, jogador.id, p.xp || 0) });
@@ -306,10 +326,16 @@ export default function App() {
       const user = await waitForAuthInit();
       if (user) {
         const dbRanking = await getWeeklyRanking(newLicao.semana);
-        if (dbRanking.length > 0) {
-          r = dbRanking;
-          setRanking(r);
+        r = dbRanking;
+        
+        if (newLicao.semana === '2026-W25') {
+           const demo = rankDemo();
+           demo.forEach((d: any) => {
+              if (!r.find((m: any) => m.id === d.id)) r.push(d);
+           });
+           r.sort((a: any, b: any) => b.xp - a.xp);
         }
+        setRanking(r);
 
         const dbProg = await getProgress(jogador.id, newLicao.semana);
         if (dbProg) {
@@ -376,7 +402,7 @@ export default function App() {
     if (idx !== -1) {
       r[idx].nome = novoJ.nome;
       r[idx].avatar = novoJ.avatar;
-      ss('ranking', r);
+      ss('ranking_' + licao.semana, r);
       setRanking(r);
     }
     setTela('home');

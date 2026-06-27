@@ -67,51 +67,31 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getGoogleRedirectResult, getUser, getAllUsers, toggleAdmin, sendManualNotification } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, sendManualNotification } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    const checkRedirect = async () => {
-      try {
-        const result = await getGoogleRedirectResult();
-        if (cancelled || !result) { setLoading(false); return; }
-        const user = result.user;
-        let j: any;
-        const dbUser = await getUser(user.uid);
-        if (dbUser) {
-          j = { ...dbUser };
-        } else {
-          j = { id: user.uid, nome: user.displayName || 'Visitante', turma: 'Visitante', avatar: '🦁', email: user.email, criadoEm: new Date().toISOString(), isNew: true };
-        }
-        ss('jogador', j);
-        let r = gs('ranking') || rankDemo();
-        if (!r.find((x: any) => x.id === j.id)) {
-          r.push({ id: j.id, nome: j.nome, avatar: j.avatar, xp: 0, dias: 0 });
-          ss('ranking', r);
-        }
-        if (!cancelled) onLogin(j);
-      } catch (e: any) {
-        console.error(e);
-        if (!cancelled) { setErr(e.message || 'Erro ao realizar login'); setLoading(false); }
-      }
-    };
-    checkRedirect();
-    return () => { cancelled = true; };
-  }, []);
 
   const goGoogle = async () => {
     setLoading(true);
     setErr('');
     try {
-      await signInWithGoogle();
+      const result = await signInWithGoogle();
+      const user = result.user;
+      let j: any;
+      const dbUser = await getUser(user.uid);
+      if (dbUser) {
+        j = { ...dbUser };
+      } else {
+        j = { id: user.uid, nome: user.displayName || 'Visitante', turma: 'Visitante', avatar: '🦁', email: user.email, criadoEm: new Date().toISOString(), isNew: true };
+      }
+      ss('jogador', j);
+      onLogin(j);
     } catch (e: any) {
       console.error(e);
       if (e.code === 'auth/unauthorized-domain') {
-        setErr('Hospedagem não autorizada no Firebase. Acesse o console do Firebase (projeto gen-lang-client-0268878137) > Authentication > Settings > Authorized domains e adicione este site na lista.');
+        setErr('Hospedagem não autorizada no Firebase. Acesse o console do Firebase > Authentication > Settings > Authorized domains e adicione este site na lista.');
       } else {
         setErr(e.message || 'Erro ao realizar login');
       }

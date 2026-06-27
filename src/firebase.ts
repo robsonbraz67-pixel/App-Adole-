@@ -1,13 +1,11 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
-export const auth = initializeAuth(app, {
-  persistence: [indexedDBLocalPersistence, browserLocalPersistence],
-});
+export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
 let authInitialized = false;
@@ -28,9 +26,7 @@ export const waitForAuthInit = () => {
 };
 
 
-export const signInWithGoogle = () => signInWithRedirect(auth, googleProvider);
-
-export const getGoogleRedirectResult = () => getRedirectResult(auth);
+export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
 
 export const logout = async () => {
   try {
@@ -128,7 +124,7 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     avatar,
     isAdmin: !!isAdmin,
     updatedAt: serverTimestamp()
-  });
+  }, { merge: true });
 };
 
 export const getProgress = async (userId: string, week: string) => {

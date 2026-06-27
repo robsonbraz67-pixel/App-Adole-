@@ -34,7 +34,7 @@ service cloud.firestore {
         && data.id is string
         && data.nome is string && data.nome.size() > 0 && data.nome.size() <= 50
         && (!data.keys().hasAny(['turma']) || data.turma is string)
-        && data.avatar is string && data.avatar.size() > 0 && data.avatar.size() <= 10
+        && data.avatar is string && data.avatar.size() > 0 && data.avatar.size() <= 1048576
         && data.email is string && data.email.size() > 0 && data.email.size() <= 100
         && (!data.keys().hasAny(['criadoEm']) || data.criadoEm is string)
         && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
@@ -70,11 +70,12 @@ service cloud.firestore {
         && (!data.keys().hasAny(['trimestre']) || data.trimestre is string)
         && data.xp is number
         && data.streak is number
-        && data.nome is string && data.nome.size() <= 50
-        && data.avatar is string && data.avatar.size() <= 10
-        && (!data.keys().hasAny(['done']) || data.done is list && data.done.size() <= 7)
+        && data.nome is string
+        && data.avatar is string
+        && (!data.keys().hasAny(['done']) || data.done is list)
         && (!data.keys().hasAny(['history']) || data.history is map)
-        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time);
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
+        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool);
     }
 
     match /progress/{progressId} {
@@ -84,7 +85,7 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && progressId == incoming().userId + '_' + incoming().week
         && isOwner(incoming().userId)
-        && incoming().keys().hasOnly(['userId', 'week', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'updatedAt'])
+        && incoming().keys().hasOnly(['userId', 'week', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));
         
@@ -92,8 +93,7 @@ service cloud.firestore {
         && isOwner(existing().userId)
         && incoming().userId == existing().userId
         && incoming().week == existing().week
-        && (!existing().keys().hasAny(['trimestre']) || incoming().trimestre == existing().trimestre || !incoming().keys().hasAny(['trimestre']))
-        && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'updatedAt'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'updatedAt'])
         && isValidProgress(incoming());
 
       allow delete: if false;
