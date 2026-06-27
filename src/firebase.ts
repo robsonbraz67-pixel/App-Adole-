@@ -90,11 +90,15 @@ export const toggleAdmin = async (userId: string, targetValue: boolean) => {
 };
 
 export const getAdminIds = async (): Promise<Set<string>> => {
-  const q = query(collection(db, 'users'), where('isAdmin', '==', true));
-  const snap = await getDocs(q);
-  const ids = new Set<string>();
-  snap.forEach(d => ids.add(d.id));
-  return ids;
+  try {
+    const q = query(collection(db, 'users'), where('isAdmin', '==', true));
+    const snap = await getDocs(q);
+    const ids = new Set<string>();
+    snap.forEach(d => ids.add(d.id));
+    return ids;
+  } catch {
+    return new Set<string>();
+  }
 };
 
 export const sendManualNotification = async (userIds: string[], title: string, body: string) => {
