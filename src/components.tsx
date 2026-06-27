@@ -581,6 +581,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     ? admins.findIndex((r: any) => r.id === jogador.id)
     : regular.findIndex((r: any) => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
+  const podium = [...regular, ...admins].sort((a: any, b: any) => b.xp - a.xp).slice(0, 3);
 
   return (
     <div className="scr">
@@ -589,44 +590,44 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         <div style={{fontWeight:900,fontSize:17}}>🏆 Ranking</div>
         <button className="btn btn-ghost btn-sm" onClick={shareApp} style={{width:'auto',padding:'8px',fontSize:14}}>🔗</button>
       </div>
-      
+
       <div style={{padding:'4px 16px 12px'}}>
         <div style={{display:'flex',background:'var(--g3)',borderRadius:12,padding:4}}>
           <div onClick={() => onChangeType('week')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='week'?'rgba(247,198,0,.15)':'transparent',color:type==='week'?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>Da Semana</div>
           <div onClick={() => onChangeType('season')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='season'?'rgba(247,198,0,.15)':'transparent',color:type==='season'?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>Da Temporada</div>
         </div>
       </div>
-      
-      {regular.length >= 3 && (
+
+      {podium.length >= 3 && (
         <div style={{padding:'8px 16px 0'}}>
           <div className="podium">
             <div className="pod-col">
               <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
-                {regular[1].avatar?.length > 10 ? <img src={regular[1].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[1].avatar}</span>}
+                {podium[1].avatar?.length > 10 ? <img src={podium[1].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{podium[1].avatar}</span>}
               </div>
-              <div style={{fontWeight:800,fontSize:12,maxWidth:66,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[1].nome}</div>
+              <div style={{fontWeight:800,fontSize:12,maxWidth:66,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{podium[1].nome}</div>
               <div className="pod-base p2">🥈</div>
-              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{regular[1].xp} XP</div>
-              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {regular[1].dias || 0} d</div>
+              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{podium[1].xp} XP</div>
+              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {podium[1].dias || 0} d</div>
             </div>
             <div className="pod-col">
               <div style={{fontSize:18,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
               <div style={{width: 56, height: 56, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 32, overflow:'hidden', margin:'0 auto 4px', flexShrink:0, border:'2px solid #F5C842'}}>
-                {regular[0].avatar?.length > 10 ? <img src={regular[0].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[0].avatar}</span>}
+                {podium[0].avatar?.length > 10 ? <img src={podium[0].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{podium[0].avatar}</span>}
               </div>
-              <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[0].nome}</div>
+              <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{podium[0].nome}</div>
               <div className="pod-base p1">🥇</div>
-              <div style={{fontWeight:900,color:'var(--gold)',fontSize:14,lineHeight:1.1}}>{regular[0].xp} XP</div>
-              <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {regular[0].dias || 0} d</div>
+              <div style={{fontWeight:900,color:'var(--gold)',fontSize:14,lineHeight:1.1}}>{podium[0].xp} XP</div>
+              <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {podium[0].dias || 0} d</div>
             </div>
             <div className="pod-col">
               <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
-                {regular[2].avatar?.length > 10 ? <img src={regular[2].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[2].avatar}</span>}
+                {podium[2].avatar?.length > 10 ? <img src={podium[2].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{podium[2].avatar}</span>}
               </div>
-              <div style={{fontWeight:800,fontSize:11,maxWidth:58,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[2].nome}</div>
+              <div style={{fontWeight:800,fontSize:11,maxWidth:58,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{podium[2].nome}</div>
               <div className="pod-base p3">🥉</div>
-              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{regular[2].xp} XP</div>
-              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {regular[2].dias || 0} d</div>
+              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{podium[2].xp} XP</div>
+              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {podium[2].dias || 0} d</div>
             </div>
           </div>
         </div>
