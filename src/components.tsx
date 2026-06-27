@@ -856,14 +856,14 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
     r.onload = ev => {
       img.onload = () => {
         const cvs = document.createElement('canvas');
-        const MAX = 150;
+        const MAX = 96;
         let w = img.width; let h = img.height;
         if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
         else { if (h > MAX) { w *= MAX / h; h = MAX; } }
         cvs.width = w; cvs.height = h;
         const ctx = cvs.getContext('2d');
         ctx?.drawImage(img, 0, 0, w, h);
-        setAvatar(cvs.toDataURL('image/jpeg', 0.8));
+        setAvatar(cvs.toDataURL('image/jpeg', 0.65));
       };
       img.src = ev.target?.result as string;
     };

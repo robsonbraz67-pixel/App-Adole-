@@ -98,6 +98,10 @@ export default function App() {
             const dbUser = await getUser(j.id);
             if (dbUser) {
                const updatedJ = { ...j, ...dbUser };
+               if (j.avatar?.startsWith('data:') && !dbUser.avatar?.startsWith('data:')) {
+                 updatedJ.avatar = j.avatar;
+                 saveUser(updatedJ).catch(console.error);
+               }
                setJogador(updatedJ);
                ss('jogador', updatedJ);
             }
@@ -342,23 +346,32 @@ export default function App() {
   const handleUpdateConfig = async (novoJ: any) => {
     setJogador(novoJ);
     ss('jogador', novoJ);
+
+    try {
+      const user = await waitForAuthInit();
+      if (user) await saveUser(novoJ);
+    } catch(e) {
+      console.error(e);
+      alert('Erro ao salvar perfil. Verifique sua conexão e tente novamente.');
+      return;
+    }
+
     try {
       const user = await waitForAuthInit();
       if (user) {
-        await saveUser(novoJ);
         const l = licao || LICOES[LICOES.length - 1];
         await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre);
       }
+    } catch(e) { console.error(e); }
 
-      let r = [...ranking];
-      const idx = r.findIndex(x => x.id === novoJ.id);
-      if (idx !== -1) {
-        r[idx].nome = novoJ.nome;
-        r[idx].avatar = novoJ.avatar;
-        ss('ranking', r);
-        setRanking(r);
-      }
-    } catch(e) { console.error(e) }
+    let r = [...ranking];
+    const idx = r.findIndex(x => x.id === novoJ.id);
+    if (idx !== -1) {
+      r[idx].nome = novoJ.nome;
+      r[idx].avatar = novoJ.avatar;
+      ss('ranking', r);
+      setRanking(r);
+    }
     setTela('home');
   };
 
