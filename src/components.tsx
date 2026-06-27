@@ -722,7 +722,10 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
 };
 
 /* ===== ADMIN ===== */
-export const Admin = ({ licao, onBack }: any) => {
+const SUPER_ADMIN_EMAIL = 'robsonbraz67@gmail.com';
+
+export const Admin = ({ licao, jogador, onBack }: any) => {
+  const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   
@@ -801,13 +804,15 @@ export const Admin = ({ licao, onBack }: any) => {
                      <div style={{display:'flex', alignItems:'center', gap: 10}}>
                         <div style={{fontSize:20}}>{u.avatar}</div>
                         <div>
-                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️</span>}</div>
+                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>}</div>
                            <div style={{fontSize:11, color:'var(--mut)'}}>{u.email}</div>
                         </div>
                      </div>
-                     <button onClick={() => handleToggleAdmin(u.id, !!u.isAdmin)} style={{background: u.isAdmin ? 'rgba(227,28,61,.2)' : 'rgba(79,184,92,.2)', color: u.isAdmin ? '#FF6B6B' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>
-                        {u.isAdmin ? 'Remover Adm' : 'Tornar Adm'}
-                     </button>
+                     {isSuperAdmin && u.email?.toLowerCase() !== SUPER_ADMIN_EMAIL && (
+                       <button onClick={() => handleToggleAdmin(u.id, !!u.isAdmin)} style={{background: u.isAdmin ? 'rgba(227,28,61,.2)' : 'rgba(79,184,92,.2)', color: u.isAdmin ? '#FF6B6B' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>
+                          {u.isAdmin ? 'Remover Adm' : 'Tornar Adm'}
+                       </button>
+                     )}
                   </div>
                 ))}
               </div>

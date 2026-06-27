@@ -1,11 +1,13 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
-export const auth = getAuth(app);
+export const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+});
 export const googleProvider = new GoogleAuthProvider();
 
 let authInitialized = false;
@@ -83,6 +85,14 @@ export const toggleAdmin = async (userId: string, targetValue: boolean) => {
   await setDoc(userRef, { isAdmin: targetValue }, { merge: true });
 };
 
+export const getAdminIds = async (): Promise<Set<string>> => {
+  const q = query(collection(db, 'users'), where('isAdmin', '==', true));
+  const snap = await getDocs(q);
+  const ids = new Set<string>();
+  snap.forEach(d => ids.add(d.id));
+  return ids;
+};
+
 export const sendManualNotification = async (userIds: string[], title: string, body: string) => {
   const now = new Date().getTime();
   for (const uid of userIds) {
@@ -129,51 +139,32 @@ export const getProgress = async (userId: string, week: string) => {
 };
 
 export const getWeeklyRanking = async (week: string) => {
-  const progressCol = collection(db, 'progress');
-  const q = query(
-    progressCol, 
-    where('week', '==', week)
-  );
-  const snap = await getDocs(q);
+  const [snap, adminIds] = await Promise.all([
+    getDocs(query(collection(db, 'progress'), where('week', '==', week))),
+    getAdminIds(),
+  ]);
   const results: any[] = [];
   snap.forEach(doc => {
     const data = doc.data();
-    results.push({ 
-      id: data.userId, 
-      ...data, 
-      dias: data.done?.length || 0 
-    });
+    results.push({ id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: adminIds.has(data.userId) });
   });
-  // Sort descending by XP locally, since we only query by week to save index requirements
   return results.sort((a, b) => b.xp - a.xp);
 };
 
 export const getSeasonRanking = async (trimestre: string) => {
-  const progressCol = collection(db, 'progress');
-  const q = query(
-    progressCol, 
-    where('trimestre', '==', trimestre)
-  );
-  const snap = await getDocs(q);
-  
+  const [snap, adminIds] = await Promise.all([
+    getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre))),
+    getAdminIds(),
+  ]);
   const userTotals: Record<string, any> = {};
-  
   snap.forEach(doc => {
     const data = doc.data();
     const uid = data.userId;
     if (!userTotals[uid]) {
-      userTotals[uid] = {
-        id: uid,
-        nome: data.nome,
-        avatar: data.avatar,
-        xp: 0,
-        dias: 0 // completed days for the whole season
-      };
+      userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: adminIds.has(uid) };
     }
-    
     userTotals[uid].xp += (data.xp || 0);
     userTotals[uid].dias += (data.done?.length || 0);
   });
-  
   return Object.values(userTotals).sort((a, b) => b.xp - a.xp);
 };
