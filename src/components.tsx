@@ -274,17 +274,14 @@ export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any)
     if (!selection || selection.rangeCount === 0) return setSel(null);
     const text = selection.toString().trim();
     if (text.length > 2) {
-      let currentElement = selection.anchorNode?.nodeType === 3 ? selection.anchorNode.parentElement : selection.anchorNode as HTMLElement;
-      let pIdx = -1;
-      const pNode = currentElement?.closest('[data-pidx]');
-      if (pNode) {
-        pIdx = parseInt(pNode.getAttribute('data-pidx') as string, 10);
-      }
-      if (pIdx !== -1) {
-        setSel({ pIndex: pIdx, text });
-      } else {
-        setSel(null);
-      }
+      const anchorEl = selection.anchorNode?.nodeType === 3 ? selection.anchorNode.parentElement : selection.anchorNode as HTMLElement;
+      const focusEl  = selection.focusNode?.nodeType  === 3 ? selection.focusNode.parentElement  : selection.focusNode  as HTMLElement;
+      const anchorP = anchorEl?.closest('[data-pidx]');
+      const focusP  = focusEl?.closest('[data-pidx]');
+      if (!anchorP || !focusP || anchorP !== focusP) return setSel(null);
+      const pIdx = parseInt(anchorP.getAttribute('data-pidx') as string, 10);
+      if (pIdx !== -1) setSel({ pIndex: pIdx, text });
+      else setSel(null);
     } else {
       setSel(null);
     }
@@ -855,16 +852,22 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
       img.onload = () => {
         const cvs = document.createElement('canvas');
         const MAX = 96;
-        let w = img.width; let h = img.height;
-        if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
-        else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        if (!w || !h) return;
+        if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
+        else { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
         cvs.width = w; cvs.height = h;
         const ctx = cvs.getContext('2d');
-        ctx?.drawImage(img, 0, 0, w, h);
-        setAvatar(cvs.toDataURL('image/jpeg', 0.65));
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = cvs.toDataURL('image/jpeg', 0.65);
+        if (dataUrl && dataUrl.length > 100) setAvatar(dataUrl);
       };
+      img.onerror = () => alert('Não foi possível ler a imagem. Tente outro arquivo.');
       img.src = ev.target?.result as string;
     };
+    r.onerror = () => alert('Erro ao carregar a foto. Tente novamente.');
     r.readAsDataURL(f);
   };
 
