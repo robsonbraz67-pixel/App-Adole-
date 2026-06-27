@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { DEMO, LICOES } from './data';
+import { LICOES } from './data';
 import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, rankDemo, calcPos, PROG0, shareApp, playSound, formatDiaSemana } from './utils';
 
 /* ===== CONFETTI ===== */
@@ -968,4 +968,3 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
     </div>
   );
 };
-
