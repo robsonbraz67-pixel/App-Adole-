@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -26,15 +26,9 @@ export const waitForAuthInit = () => {
 };
 
 
-export const signInWithGoogle = async () => {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
-  } catch (error) {
-    console.error('Error signing in with Google', error);
-    throw error;
-  }
-};
+export const signInWithGoogle = () => signInWithRedirect(auth, googleProvider);
+
+export const getGoogleRedirectResult = () => getRedirectResult(auth);
 
 export const logout = async () => {
   try {
