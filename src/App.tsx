@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { DEMO, LICOES } from './data';
-import { gs, ss, calcPos, rankDemo, PROG0, playSound } from './utils';
+import { LICOES } from './data';
+import { gs, ss, calcPos, rankDemo, PROG0, playSound, getRecencyMult, scheduleStudyReminder } from './utils';
+import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config } from './components';
 
 export default function App() {
@@ -13,39 +14,31 @@ export default function App() {
   const [resultado, setResultado] = useState<any>(null);
   const [logoTaps, setLogoTaps] = useState(0);
   const [inAppNotif, setInAppNotif] = useState<{title: string, body: string, id: number} | null>(null);
-  
+
   const semKey = (l: any) => 'prog_' + (l?.semana || 'w');
 
   useEffect(() => {
     if (!jogador?.id) return;
-    
-    let unsub = () => {};
-    
-    import('./firebase').then(({ listenToUserNotifications }) => {
-       let lastNotifTime = parseInt(localStorage.getItem('lastNotifTime_' + jogador.id) || '0', 10);
 
-       unsub = listenToUserNotifications(jogador.id, (notification) => {
-          if (notification && notification.timestamp > lastNotifTime) {
-             // Sempre mostrar a notificação no app (In-App)
-             setInAppNotif({ title: notification.title, body: notification.body, id: Date.now() });
+    let lastNotifTime = parseInt(localStorage.getItem('lastNotifTime_' + jogador.id) || '0', 10);
 
-             // Tentar mostrar notificação do sistema caso tenha permissão e esteja com o app focado/minimizado
-             if ('Notification' in window && Notification.permission === 'granted') {
-                navigator.serviceWorker.ready.then(reg => {
-                   reg.showNotification(notification.title || 'Nova Notificação', {
-                      body: notification.body || '',
-                      icon: '/icon-192.png',
-                      badge: '/icon-192.png'
-                   });
-                }).catch(e => console.log('SW Notification failed:', e));
-             }
-
-             lastNotifTime = notification.timestamp;
-             localStorage.setItem('lastNotifTime_' + jogador.id, lastNotifTime.toString());
+    const unsub = listenToUserNotifications(jogador.id, (notification) => {
+       if (notification && notification.timestamp > lastNotifTime) {
+          setInAppNotif({ title: notification.title, body: notification.body, id: Date.now() });
+          if ('Notification' in window && Notification.permission === 'granted') {
+             navigator.serviceWorker.ready.then(reg => {
+                reg.showNotification(notification.title || 'Nova Notificação', {
+                   body: notification.body || '',
+                   icon: '/icon-192.png',
+                   badge: '/icon-192.png'
+                });
+             }).catch(e => console.log('SW Notification failed:', e));
           }
-       });
+          lastNotifTime = notification.timestamp;
+          localStorage.setItem('lastNotifTime_' + jogador.id, lastNotifTime.toString());
+       }
     });
-    
+
     return () => unsub();
   }, [jogador?.id]);
 
@@ -65,7 +58,6 @@ export default function App() {
 
       let r = gs('ranking') || rankDemo();
       try {
-        const { getWeeklyRanking, waitForAuthInit } = await import('./firebase');
         const user = await waitForAuthInit();
         if (user) {
           const dbRanking = await getWeeklyRanking(l.semana);
@@ -82,22 +74,20 @@ export default function App() {
 
       if (j) {
         setJogador(j);
-        
+
         let p = gs(semKey(l), PROG0);
         try {
-          const { getProgress, getUser, waitForAuthInit } = await import('./firebase');
           const user = await waitForAuthInit();
           if (user) {
             if (user.uid !== j.id) {
-               // Local storage user doesn't match firebase auth user. Clear local and restart.
                localStorage.removeItem('jogador');
                window.location.reload();
                return;
             }
             const dbUser = await getUser(j.id);
             if (dbUser) {
-               setJogador({ ...j, ...dbUser });
-               let updatedJ = { ...j, ...dbUser };
+               const updatedJ = { ...j, ...dbUser };
+               setJogador(updatedJ);
                ss('jogador', updatedJ);
             }
             const dbProg = await getProgress(j.id, l.semana);
@@ -106,8 +96,6 @@ export default function App() {
               ss(semKey(l), p);
             }
           } else {
-             // User is not authenticated in Firebase, but we have a local player.
-             // We should enforce login if they have local progress to sync
              localStorage.removeItem('jogador');
              window.location.reload();
              return;
@@ -115,15 +103,12 @@ export default function App() {
         } catch(e) {
           console.error("Error loading progress:", e);
         }
-        
+
         if (unmounted) return;
         setProg({ ...p, pos: calcPos(r, j.id, p.xp || 0) });
       }
 
-      
-      setTimeout(() => {
-        if (!unmounted) setTela(j ? 'home' : 'login');
-      }, 500);
+      if (!unmounted) setTela(j ? 'home' : 'login');
     };
 
     initApp();
@@ -134,14 +119,13 @@ export default function App() {
     setJogador(j);
     const l = gs('licao_atual', LICOES[LICOES.length - 1]);
     setLicao(l);
-    
+
     let p = gs(semKey(l), PROG0);
     let r = gs('ranking') || rankDemo();
 
     try {
-      const { saveUser, getProgress } = await import('./firebase');
       await saveUser(j);
-      
+
       const dbProg = await getProgress(j.id, l.semana);
       if (dbProg) {
         p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
@@ -150,7 +134,7 @@ export default function App() {
     } catch(e) {
       console.error("Error saving user profile or loading progress:", e);
     }
-    
+
     setRanking(r);
     setProg({ ...p, pos: calcPos(r, j.id, p.xp || 0) });
     if (j.isNew) {
@@ -165,7 +149,7 @@ export default function App() {
   const handleDoneQuiz = async (res: any) => {
     setResultado(res);
     const l = licao || LICOES[LICOES.length - 1];
-    
+
     let dbLicaoData = null;
     try {
       const selectedLicaoData = LICOES.find((x:any) => x.semana === l.semana);
@@ -173,36 +157,30 @@ export default function App() {
         dbLicaoData = selectedLicaoData.dias.find((d: any) => d.id === diaAtual.id)?.data;
       }
     } catch(e) {}
-    
-    // Bonificação da leitura reduzida pelo tempo (mesma lógica)
+
     let readingXP = 0;
     const isRepeat = prog.done.includes(diaAtual.id);
     if (!isRepeat) {
-      const { getRecencyMult } = await import('./utils');
       readingXP = Math.round(100 * (dbLicaoData || diaAtual.data ? getRecencyMult(dbLicaoData || diaAtual.data) : 1.0));
-      res.xpTotal += readingXP; // Add it to res directly so it shows up in the UI score summary
+      res.xpTotal += readingXP;
     }
 
     const novaDone = isRepeat ? prog.done : [...prog.done, diaAtual.id];
-    
-    // If repeat attempt (only possible for admins), don't update their XP to prevent infinite accumulation or loss of reading XP
     const novoXP = isRepeat ? prog.xp : prog.xp + res.xpTotal;
     const novoStreak = isRepeat ? prog.streak : prog.streak + 1;
-    
+
     const np = {
       ...prog,
       xp: novoXP,
       streak: novoStreak,
       done: novaDone,
-      history: { ...prog.history, [diaAtual.id]: { 
-         ...prog.history[diaAtual.id], 
-         // Keep old XP on repeat, or give new if first time 
-         xp: isRepeat ? (prog.history[diaAtual.id]?.xp || 0) : res.xpTotal, 
-         // Keep old acertos on repeat, or give new if first time
-         acertos: isRepeat ? (prog.history[diaAtual.id]?.acertos || 0) : res.acertos 
+      history: { ...prog.history, [diaAtual.id]: {
+         ...prog.history[diaAtual.id],
+         xp: isRepeat ? (prog.history[diaAtual.id]?.xp || 0) : res.xpTotal,
+         acertos: isRepeat ? (prog.history[diaAtual.id]?.acertos || 0) : res.acertos
       } }
     };
-    
+
     let r = [...ranking];
     const idx = r.findIndex((x: any) => x.id === jogador.id);
     if (idx !== -1) {
@@ -212,14 +190,13 @@ export default function App() {
       r.push({ id: jogador.id, nome: jogador.nome, avatar: jogador.avatar, xp: novoXP, dias: novaDone.length });
     }
     r.sort((a, b) => b.xp - a.xp);
-    
+
     ss('ranking', r);
     ss(semKey(l), np);
     setRanking(r);
     setProg({ ...np, pos: calcPos(r, jogador.id, novoXP) });
-    
+
     try {
-       const { saveProgress, waitForAuthInit } = await import('./firebase');
        const user = await waitForAuthInit();
        if (user) {
           await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre);
@@ -227,21 +204,19 @@ export default function App() {
     } catch(e) {
        console.error("Error updating online progress:", e);
     }
-    
+
     try {
-      const { scheduleStudyReminder } = await import('./utils');
       await scheduleStudyReminder(jogador.nome, l.titulo || 'Estudo Diário');
     } catch(e) {
       console.error(e);
     }
-    
+
     setTela('resultado');
   };
 
   const handleLogout = async () => {
     localStorage.removeItem('jogador');
     try {
-      const { logout } = await import('./firebase');
       await logout();
     } catch(e) {
       console.error("Logout error", e);
@@ -256,7 +231,6 @@ export default function App() {
     setRankingType(type);
     const l = licao || LICOES[LICOES.length - 1];
     try {
-      const { getWeeklyRanking, getSeasonRanking, waitForAuthInit } = await import('./firebase');
       const user = await waitForAuthInit();
       if (user) {
         let dbRanking;
@@ -290,32 +264,28 @@ export default function App() {
   const handleChangeLicao = async (newLicao: any) => {
     ss('licao_atual', newLicao);
     setLicao(newLicao);
-    
-    // Load local prog/ranking 
+
     let p = gs(semKey(newLicao), PROG0);
     let r = rankDemo();
-    
+
     setRanking(r);
     setProg({ ...p, pos: calcPos(r, jogador.id, p.xp || 0) });
-    
+
     try {
-      const { getWeeklyRanking, getProgress, waitForAuthInit } = await import('./firebase');
       const user = await waitForAuthInit();
       if (user) {
-        // Fetch ranking
         const dbRanking = await getWeeklyRanking(newLicao.semana);
         if (dbRanking.length > 0) {
           r = dbRanking;
           setRanking(r);
         }
-        
-        // Fetch progress
+
         const dbProg = await getProgress(jogador.id, newLicao.semana);
         if (dbProg) {
           p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
           ss(semKey(newLicao), p);
         }
-        
+
         setProg({ ...p, pos: calcPos(r, jogador.id, p.xp || 0) });
       }
     } catch(e) {
@@ -351,7 +321,6 @@ export default function App() {
     ss(semKey(l), np);
     setProg(np);
     try {
-      const { saveProgress, waitForAuthInit } = await import('./firebase');
       const user = await waitForAuthInit();
       if (user) {
         await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre);
@@ -363,14 +332,13 @@ export default function App() {
     setJogador(novoJ);
     ss('jogador', novoJ);
     try {
-      const { saveUser, saveProgress, waitForAuthInit } = await import('./firebase');
       const user = await waitForAuthInit();
       if (user) {
         await saveUser(novoJ);
         const l = licao || LICOES[LICOES.length - 1];
         await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre);
       }
-      
+
       let r = [...ranking];
       const idx = r.findIndex(x => x.id === novoJ.id);
       if (idx !== -1) {
@@ -397,7 +365,7 @@ export default function App() {
       {tela === 'admin' && <Admin licao={licao} onImport={handleImport} onClear={handleClear} onBack={() => setTela('home')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
-      
+
       {inAppNotif && (
         <div style={{
            position: 'fixed',
@@ -421,8 +389,8 @@ export default function App() {
                  <div style={{fontSize: 14, fontWeight: 800, color: '#F5C842', marginBottom: 4}}>{inAppNotif.title}</div>
                  <div style={{fontSize: 13, color: '#E2D9F3', lineHeight: 1.4}}>{inAppNotif.body}</div>
               </div>
-              <button 
-                onClick={() => setInAppNotif(null)} 
+              <button
+                onClick={() => setInAppNotif(null)}
                 style={{background:'none', border:'none', color:'#B9ACE6', fontSize: 18, cursor:'pointer', padding: '0 0 0 12px'}}
               >
                 ✕

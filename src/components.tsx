@@ -1,20 +1,21 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { DEMO, LICOES } from './data';
 import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, rankDemo, calcPos, PROG0, shareApp, playSound, formatDiaSemana } from './utils';
 
 /* ===== CONFETTI ===== */
+const CONFETTI_CORES = ['#F5C842','#E31C3D','#1368CE','#2ECC71','#B9ACE6','#FF6B6B','#FCE08A'];
+
 export const Confetti = ({ show }: { show: boolean }) => {
-  if (!show) return null;
-  const cores = ['#F5C842','#E31C3D','#1368CE','#2ECC71','#B9ACE6','#FF6B6B','#FCE08A'];
-  const ps = Array.from({ length: 60 }, (_, i) => ({
+  const ps = useMemo(() => Array.from({ length: 60 }, (_, i) => ({
     id: i,
     left: Math.random() * 100,
-    color: cores[i % cores.length],
+    color: CONFETTI_CORES[i % CONFETTI_CORES.length],
     dur: 2 + Math.random() * 2,
     delay: Math.random() * .8,
     size: 7 + Math.random() * 9,
     br: Math.random() > .5 ? '50%' : '3px'
-  }));
+  })), []);
+  if (!show) return null;
   return (
     <div className="conf-wrap">
       {ps.map(p => (
@@ -38,13 +39,13 @@ export const Confetti = ({ show }: { show: boolean }) => {
 
 /* ===== SPLASH ===== */
 export const Splash = () => {
-  const stars = Array.from({ length: 35 }, (_, i) => ({
+  const stars = useMemo(() => Array.from({ length: 35 }, (_, i) => ({
     id: i,
     top: Math.random() * 100,
     left: Math.random() * 100,
     sz: Math.random() * 3 + 1,
     op: Math.random() * .6 + .2
-  }));
+  })), []);
   return (
     <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100dvh',background:'linear-gradient(160deg,#1E1248 0%,#2E2160 50%,#3A2A6B 100%)',position:'relative'}}>
       <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none'}}>
@@ -66,7 +67,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, sendManualNotification } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -570,14 +571,14 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
 
 /* ===== RANKING ===== */
 export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao }: any) => {
-  const sorted = [...ranking].map(r => {
+  const sorted = useMemo(() => [...ranking].map((r: any) => {
     const isMe = r.id === jogador.id;
     const nome = isMe ? jogador.nome : r.nome;
     const avatar = isMe ? jogador.avatar : r.avatar;
     const dias = isMe && type === 'week' ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
     const xp = isMe && type === 'week' ? (prog.xp || 0) : (r.xp || 0);
     return { ...r, nome, avatar, dias, xp };
-  }).sort((a, b) => b.xp - a.xp).slice(0, 10);
+  }).sort((a: any, b: any) => b.xp - a.xp).slice(0, 10), [ranking, jogador, type, prog]);
 
   const myIdx = sorted.findIndex(r => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
@@ -689,7 +690,6 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
     let unmounted = false;
     const loadUsers = async () => {
       try {
-        const { getAllUsers } = await import('./firebase');
         const usrs = await getAllUsers();
         if (!unmounted) {
            setUsers(usrs);
@@ -705,20 +705,18 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
 
   const handleToggleAdmin = async (userId: string, currentStatus: boolean) => {
      try {
-        const { toggleAdmin } = await import('./firebase');
         await toggleAdmin(userId, !currentStatus);
         setUsers(users.map(u => u.id === userId ? { ...u, isAdmin: !currentStatus } : u));
      } catch(e) {
         alert('Erro ao atualizar usuário');
      }
   };
-  
+
   const handleSendNotif = async () => {
     if (selectedUsers.length === 0) return alert('Selecione pelo menos um usuário.');
     if (!notifTitle || !notifBody) return alert('Preencha o título e o corpo da notificação.');
     setSendingNotif(true);
     try {
-      const { sendManualNotification } = await import('./firebase');
       await sendManualNotification(selectedUsers, notifTitle, notifBody);
       alert('Notificação enviada com sucesso!');
       setSelectedUsers([]);
@@ -777,7 +775,7 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
         <div style={{background:'rgba(255,255,255,.03)', padding: 12, borderRadius: 12, marginBottom: 24}}>
            {loadingUsers ? <div style={{color:'#B9ACE6', fontSize:14}}>Carregando...</div> : (
               <div style={{display:'flex', flexDirection:'column', gap: 10, maxHeight: 250, overflowY:'auto'}}>
-                {users.sort((a,b) => (b.isAdmin?1:0) - (a.isAdmin?1:0)).map((u: any) => (
+                {[...users].sort((a,b) => (b.isAdmin?1:0) - (a.isAdmin?1:0)).map((u: any) => (
                   <div key={u.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px', background:'rgba(0,0,0,.2)', borderRadius:8}}>
                      <div style={{display:'flex', alignItems:'center', gap: 10}}>
                         <div style={{fontSize:20}}>{u.avatar}</div>
