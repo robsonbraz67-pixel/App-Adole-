@@ -1,10 +1,18 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+const firebaseConfig = {
+  projectId:         import.meta.env.VITE_FB_PROJECT_ID,
+  appId:             import.meta.env.VITE_FB_APP_ID,
+  apiKey:            import.meta.env.VITE_FB_API_KEY,
+  authDomain:        import.meta.env.VITE_FB_AUTH_DOMAIN,
+  storageBucket:     import.meta.env.VITE_FB_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FB_MESSAGING_SENDER_ID,
+};
+const firestoreDatabaseId = import.meta.env.VITE_FB_FIRESTORE_DB;
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
+export const db = getFirestore(app, firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
