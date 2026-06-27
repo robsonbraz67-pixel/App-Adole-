@@ -579,16 +579,27 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
 
 /* ===== RANKING ===== */
 export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao }: any) => {
-  const sorted = useMemo(() => [...ranking].map((r: any) => {
-    const isMe = r.id === jogador.id;
-    const nome = isMe ? jogador.nome : r.nome;
-    const avatar = isMe ? jogador.avatar : r.avatar;
-    const dias = isMe && type === 'week' ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
-    const xp = isMe && type === 'week' ? (prog.xp || 0) : (r.xp || 0);
-    return { ...r, nome, avatar, dias, xp };
-  }).sort((a: any, b: any) => b.xp - a.xp).slice(0, 10), [ranking, jogador, type, prog]);
+  const { regular, admins } = useMemo(() => {
+    const all = [...ranking].map((r: any) => {
+      const isMe = r.id === jogador.id;
+      const nome = isMe ? jogador.nome : r.nome;
+      const avatar = isMe ? jogador.avatar : r.avatar;
+      const dias = isMe && type === 'week' ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
+      const xp = isMe && type === 'week' ? (prog.xp || 0) : (r.xp || 0);
+      const isAdmin = r.isAdmin || (isMe && !!jogador.isAdmin);
+      return { ...r, nome, avatar, dias, xp, isAdmin };
+    });
+    const byXp = (a: any, b: any) => b.xp - a.xp;
+    return {
+      regular: all.filter((r: any) => !r.isAdmin).sort(byXp).slice(0, 10),
+      admins: all.filter((r: any) => r.isAdmin).sort(byXp),
+    };
+  }, [ranking, jogador, type, prog]);
 
-  const myIdx = sorted.findIndex(r => r.id === jogador.id);
+  const myIsAdmin = !!jogador.isAdmin;
+  const myIdx = myIsAdmin
+    ? admins.findIndex((r: any) => r.id === jogador.id)
+    : regular.findIndex((r: any) => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
 
   return (
@@ -606,73 +617,104 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         </div>
       </div>
       
-      {sorted.length >= 3 && (
+      {regular.length >= 3 && (
         <div style={{padding:'8px 16px 0'}}>
           <div className="podium">
             <div className="pod-col">
               <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
-                {sorted[1].avatar?.length > 10 ? <img src={sorted[1].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{sorted[1].avatar}</span>}
+                {regular[1].avatar?.length > 10 ? <img src={regular[1].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[1].avatar}</span>}
               </div>
-              <div style={{fontWeight:800,fontSize:12,maxWidth:66,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[1].nome}</div>
+              <div style={{fontWeight:800,fontSize:12,maxWidth:66,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[1].nome}</div>
               <div className="pod-base p2">🥈</div>
-              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{sorted[1].xp} XP</div>
-              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {sorted[1].dias || 0} d</div>
+              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{regular[1].xp} XP</div>
+              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {regular[1].dias || 0} d</div>
             </div>
             <div className="pod-col">
               <div style={{fontSize:18,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
               <div style={{width: 56, height: 56, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 32, overflow:'hidden', margin:'0 auto 4px', flexShrink:0, border:'2px solid #F5C842'}}>
-                {sorted[0].avatar?.length > 10 ? <img src={sorted[0].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{sorted[0].avatar}</span>}
+                {regular[0].avatar?.length > 10 ? <img src={regular[0].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[0].avatar}</span>}
               </div>
-              <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[0].nome}</div>
+              <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[0].nome}</div>
               <div className="pod-base p1">🥇</div>
-              <div style={{fontWeight:900,color:'var(--gold)',fontSize:14,lineHeight:1.1}}>{sorted[0].xp} XP</div>
-              <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {sorted[0].dias || 0} d</div>
+              <div style={{fontWeight:900,color:'var(--gold)',fontSize:14,lineHeight:1.1}}>{regular[0].xp} XP</div>
+              <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {regular[0].dias || 0} d</div>
             </div>
             <div className="pod-col">
               <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
-                {sorted[2].avatar?.length > 10 ? <img src={sorted[2].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{sorted[2].avatar}</span>}
+                {regular[2].avatar?.length > 10 ? <img src={regular[2].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[2].avatar}</span>}
               </div>
-              <div style={{fontWeight:800,fontSize:11,maxWidth:58,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[2].nome}</div>
+              <div style={{fontWeight:800,fontSize:11,maxWidth:58,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[2].nome}</div>
               <div className="pod-base p3">🥉</div>
-              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{sorted[2].xp} XP</div>
-              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {sorted[2].dias || 0} d</div>
+              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{regular[2].xp} XP</div>
+              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {regular[2].dias || 0} d</div>
             </div>
           </div>
         </div>
       )}
       <div className="sec" style={{marginTop:4}}>
         <div className="sec-title" style={{textTransform:'none', letterSpacing:'normal'}}>
-          {type === 'week' 
-            ? `📖 Lição: ${licao?.titulo || 'Carregando...'}` 
+          {type === 'week'
+            ? `📖 Lição: ${licao?.titulo || 'Carregando...'}`
             : `🏆 Geral: ${licao?.trimestre || 'Carregando...'}`}
         </div>
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {sorted.map((r, i) => {
+          {regular.map((r: any, i: number) => {
             const eu = r.id === jogador.id;
             return (
               <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))':'var(--g2)',border:`2px solid ${eu?'rgba(247,198,0,.4)':'var(--b2)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
-                <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':'#B9ACE6'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
+                <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
                 <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
                   {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
                 </div>
                 <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#fff'}}>{r.nome}{eu ? ' 👈' : ''}</div>
-                  <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>
-                    📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}
-                  </div>
+                  <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--txt)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
+                  <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
                 </div>
                 <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
               </div>
             );
           })}
-          {sorted.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
+          {regular.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
+
+          {admins.length > 0 && (
+            <>
+              <div style={{display:'flex',alignItems:'center',gap:8,margin:'4px 0'}}>
+                <div style={{flex:1,height:1,background:'rgba(229,0,109,.25)'}}/>
+                <div style={{fontSize:11,color:'var(--magenta)',fontWeight:800,letterSpacing:1,fontFamily:'Poppins,sans-serif'}}>🛡️ ADMINISTRADORES</div>
+                <div style={{flex:1,height:1,background:'rgba(229,0,109,.25)'}}/>
+              </div>
+              {admins.map((r: any, i: number) => {
+                const eu = r.id === jogador.id;
+                return (
+                  <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(229,0,109,.12),rgba(229,0,109,.05))':'rgba(229,0,109,.06)',border:`2px solid ${eu?'rgba(229,0,109,.5)':'rgba(229,0,109,.2)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+                    <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:'var(--magenta)'}}>🛡️</div>
+                    <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(229,0,109,.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:'1.5px solid rgba(229,0,109,.3)'}}>
+                      {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
+                    </div>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--magenta)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
+                      <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
+                    </div>
+                    <div style={{fontWeight:900,color:'var(--magenta)',fontSize:15,flexShrink:0,opacity:.75}}>{r.xp || 0} XP</div>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       </div>
       <div className="sec">
         <div className="purple-card" style={{textAlign:'center'}}>
           <div style={{fontSize:13,color:'var(--mut)',marginBottom:4}}>Sua posição</div>
-          <div style={{fontWeight:900,fontSize:32,color:'var(--gold)'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
-          {myIdx !== -1 && <div style={{fontSize:13,color:'var(--mut)'}}>📅 {sorted[myIdx].dias} dia{sorted[myIdx].dias!==1?'s':''} • ⭐ {sorted[myIdx].xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}</div>}
+          {myIsAdmin
+            ? <div style={{fontWeight:900,fontSize:22,color:'var(--magenta)'}}>🛡️ Admin</div>
+            : <div style={{fontWeight:900,fontSize:32,color:'var(--gold)'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
+          }
+          {myIdx !== -1 && (
+            <div style={{fontSize:13,color:'var(--mut)'}}>
+              📅 {(myIsAdmin ? admins : regular)[myIdx]?.dias} dia{(myIsAdmin ? admins : regular)[myIdx]?.dias!==1?'s':''} • ⭐ {(myIsAdmin ? admins : regular)[myIdx]?.xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}
+            </div>
+          )}
         </div>
       </div>
     </div>

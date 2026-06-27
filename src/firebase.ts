@@ -103,7 +103,7 @@ export const listenToUserNotifications = (userId: string, callback: (notificatio
   });
 };
 
-export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string) => {
+export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, isAdmin?: boolean) => {
   const progId = `${userId}_${week}`;
   const progRef = doc(db, 'progress', progId);
   await setDoc(progRef, {
@@ -116,6 +116,7 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     history: prog.history,
     nome,
     avatar,
+    isAdmin: !!isAdmin,
     updatedAt: serverTimestamp()
   });
 };

@@ -237,7 +237,7 @@ export default function App() {
     try {
        const user = await waitForAuthInit();
        if (user) {
-          await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre);
+          await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin);
        }
     } catch(e) {
        console.error("Error updating online progress:", e);
@@ -345,7 +345,7 @@ export default function App() {
     try {
       const user = await waitForAuthInit();
       if (user) {
-        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre);
+        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin);
       }
     } catch(e) { console.error(e) }
   };
@@ -367,7 +367,7 @@ export default function App() {
       const user = await waitForAuthInit();
       if (user) {
         const l = licao || LICOES[LICOES.length - 1];
-        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre);
+        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, !!novoJ.isAdmin);
       }
     } catch(e) { console.error(e); }
 
