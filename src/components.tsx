@@ -3,7 +3,7 @@ import { DEMO, LICOES } from './data';
 import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, rankDemo, calcPos, PROG0, shareApp, playSound, formatDiaSemana } from './utils';
 
 /* ===== CONFETTI ===== */
-const CONFETTI_CORES = ['#F5C842','#E31C3D','#1368CE','#2ECC71','#B9ACE6','#FF6B6B','#FCE08A'];
+const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
 
 export const Confetti = ({ show }: { show: boolean }) => {
   const ps = useMemo(() => Array.from({ length: 60 }, (_, i) => ({
@@ -47,18 +47,18 @@ export const Splash = () => {
     op: Math.random() * .6 + .2
   })), []);
   return (
-    <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100dvh',background:'linear-gradient(160deg,#1E1248 0%,#2E2160 50%,#3A2A6B 100%)',position:'relative'}}>
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100dvh',background:'linear-gradient(160deg,#0D1E35 0%,#1B3A63 50%,#234580 100%)',position:'relative'}}>
       <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none'}}>
         {stars.map(s => <div key={s.id} className="star-dot" style={{top:s.top+'%',left:s.left+'%',width:s.sz,height:s.sz,opacity:s.op}}/>)}
       </div>
       <div style={{textAlign:'center',animation:'popIn .7s ease .3s both',position:'relative',zIndex:1}}>
         <div style={{fontSize:88,marginBottom:16,display:'block',animation:'pulse 1.8s infinite'}}>📖</div>
         <div style={{fontSize:40,fontWeight:900,marginBottom:6}}>
-          <span style={{color:'#F5C842'}}>Sabatina</span><span style={{color:'#B9ACE6'}}>Quest</span>
+          <span style={{color:'var(--gold)'}}>Sabatina</span><span style={{color:'var(--teal)'}}>Quest</span>
         </div>
-        <div style={{color:'#B9ACE6',fontSize:12,letterSpacing:3,textTransform:'uppercase',marginBottom:40}}>Escola Sabatina Teen</div>
-        <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'center',color:'rgba(185,172,230,.6)',fontSize:14}}>
-          <div style={{width:16,height:16,border:'3px solid rgba(245,200,66,.4)',borderTopColor:'#F5C842',borderRadius:'50%',animation:'spin .8s linear infinite'}}/>
+        <div style={{color:'rgba(125,164,200,.8)',fontSize:12,letterSpacing:3,textTransform:'uppercase',marginBottom:40,fontFamily:'Poppins,sans-serif'}}>Escola Sabatina Teen</div>
+        <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'center',color:'rgba(125,164,200,.7)',fontSize:14}}>
+          <div style={{width:16,height:16,border:'3px solid rgba(247,198,0,.4)',borderTopColor:'#F7C600',borderRadius:'50%',animation:'spin .8s linear infinite'}}/>
           Carregando...
         </div>
       </div>
@@ -113,12 +113,12 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 
   return (
     <div style={{padding:'0 20px 100px',animation:'fadeIn .4s ease',minHeight:'100dvh',display:'flex',flexDirection:'column',justifyContent:'center'}}>
-      <div style={{textAlign:'center',padding:'32px 0 20px',borderBottom:'1px solid rgba(245,200,66,.15)',marginBottom:24}}>
+      <div style={{textAlign:'center',padding:'32px 0 20px',borderBottom:'1px solid rgba(247,198,0,.15)',marginBottom:24}}>
         <div style={{fontSize:52,marginBottom:10,animation:'bounce 3s ease-in-out infinite'}}>📖</div>
         <div style={{fontSize:30,fontWeight:900,marginBottom:4}}>
-          <span style={{color:'#F5C842'}}>Sabatina</span><span style={{color:'#B9ACE6'}}>Quest</span>
+          <span style={{color:'var(--gold)'}}>Sabatina</span><span style={{color:'var(--teal)'}}>Quest</span>
         </div>
-        <div style={{display:'inline-block',background:'rgba(245,200,66,.15)',border:'1.5px solid rgba(245,200,66,.35)',borderRadius:20,padding:'4px 14px',fontSize:13,fontWeight:800,color:'#F5C842',letterSpacing:.5,marginTop:6}}>
+        <div style={{display:'inline-block',background:'rgba(247,198,0,.14)',border:'1.5px solid rgba(247,198,0,.32)',borderRadius:20,padding:'4px 14px',fontSize:13,fontWeight:800,color:'var(--gold)',letterSpacing:.5,marginTop:6,fontFamily:'Poppins,sans-serif'}}>
           ✨ Acesso com Google
         </div>
       </div>
@@ -183,18 +183,18 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAd
               </div>
               <div>
                 <div style={{fontWeight:900,fontSize:22,marginBottom:3}}>{jogador.nome}</div>
-                {jogador.turma && <div style={{fontSize:12,color:'#B9ACE6',fontWeight:700,marginBottom:5}}>👥 {jogador.turma}</div>}
+                {jogador.turma && <div style={{fontSize:12,color:'var(--mut)',fontWeight:700,marginBottom:5}}>👥 {jogador.turma}</div>}
                 <div className="xp-badge">⭐ {prog.xp} XP esta semana</div>
               </div>
             </div>
             <div style={{textAlign:'center'}}>
-              <div style={{fontSize:30,fontWeight:900,color:'#F5C842',lineHeight:1}}>#{prog.pos||'?'}</div>
-              <div style={{fontSize:9,color:'#B9ACE6',textTransform:'uppercase',letterSpacing:1,marginTop:2}}>ranking</div>
+              <div style={{fontSize:30,fontWeight:900,color:'var(--gold)',lineHeight:1}}>#{prog.pos||'?'}</div>
+              <div style={{fontSize:9,color:'var(--mut)',textTransform:'uppercase',letterSpacing:1,marginTop:2}}>ranking</div>
             </div>
           </div>
           <div style={{borderTop:'1px solid rgba(245,200,66,.2)',paddingTop:12,display:'flex',gap:10,flexWrap:'wrap'}}>
             <div className="streak-badge">🔥 {prog.streak} dia{prog.streak!==1?'s':''} seguido{prog.streak!==1?'s':''}</div>
-            <div style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.12)',borderRadius:30,padding:'5px 12px',fontSize:14,fontWeight:800}}>
+            <div style={{display:'inline-flex',alignItems:'center',gap:6,background:'var(--g3)',border:'1.5px solid var(--b3)',borderRadius:30,padding:'5px 12px',fontSize:14,fontWeight:800,color:'var(--txt)'}}>
               🎗️ {prog.done.length}/{licao.dias.length} concluídos
             </div>
           </div>
@@ -213,7 +213,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAd
               const selected = LICOES.find((l: any) => l.semana === e.target.value);
               if (selected && onChangeLicao) onChangeLicao(selected);
             }}
-            style={{width:'100%', padding:'12px', borderRadius:12, background:'rgba(255,255,255,.05)', color:'#fff', border:'1px solid rgba(255,255,255,.1)', fontSize:14}}
+            className="licao-select"
           >
             {LICOES.map((l: any, i: number) => (
               <option key={l.semana} value={l.semana} style={{background:'#1E1248'}}>{l.titulo}</option>
@@ -329,7 +329,7 @@ export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any)
         parts.forEach((pt, i) => {
           newRes.push(pt);
           if (i < parts.length - 1) {
-            newRes.push(<span key={i} style={{background: h.color, color: h.color === '#F5C842' || h.color === '#2ECC71' ? '#000' : '#fff', padding: '0 2px', borderRadius: 4}}>{h.text}</span>);
+            newRes.push(<span key={i} style={{background: h.color, color: h.color === '#F7C600' || h.color === '#1E9E86' ? (h.color === '#F7C600' ? '#1A0A00' : '#fff') : '#fff', padding: '0 3px', borderRadius: 3, fontWeight: h.color === '#F7C600' ? 700 : 400}}>{h.text}</span>);
           }
         });
       });
@@ -337,7 +337,7 @@ export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any)
     });
 
     return (
-      <div key={pIdx} data-pidx={pIdx} style={{background:'rgba(255,255,255,.04)',borderRadius:14,padding:16,marginBottom:12,borderLeft:'3px solid rgba(82,118,208,.55)',lineHeight:1.75,fontSize:15,color:'#E2D9F3',fontWeight:500,animation:`fadeIn .4s ease ${pIdx*.07}s both`}}>
+      <div key={pIdx} data-pidx={pIdx} className="para-block" style={{animation:`fadeIn .4s ease ${pIdx*.07}s both`}}>
         {res}
       </div>
     );
@@ -351,9 +351,9 @@ export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any)
   return (
     <div className="scr-full">
       {sel && (
-        <div style={{position:'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background:'rgba(28,20,53,.95)', padding: '10px 16px', borderRadius: 30, display:'flex', gap: 14, boxShadow:'0 10px 30px rgba(0,0,0,.5), inset 0 1px 1px rgba(255,255,255,.1)', zIndex: 1000, border:'1px solid rgba(255,255,255,.1)', animation:'fadeUp .2s ease'}}>
-           {['#F5C842', '#2ECC71', '#5276D0', '#FF6B6B'].map(c => (
-              <div key={c} onClick={() => addHl(c)} style={{width: 32, height: 32, borderRadius: '50%', background: c, border:'2px solid rgba(255,255,255,.8)', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,.5)'}} title="Destacar" />
+        <div style={{position:'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background:'var(--notif-bg)', padding: '10px 16px', borderRadius: 30, display:'flex', gap: 14, boxShadow:'0 10px 30px rgba(0,0,0,.4)', zIndex: 1000, border:'1px solid var(--notif-border)', animation:'fadeUp .2s ease'}}>
+           {['#F7C600', '#1E9E86', '#E5006D', '#4A90D9'].map(c => (
+              <div key={c} onClick={() => addHl(c)} style={{width: 32, height: 32, borderRadius: '50%', background: c, border:'2px solid rgba(255,255,255,.7)', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,.4)'}} title="Destacar" />
            ))}
            <div onClick={() => { setSel(null); window.getSelection()?.removeAllRanges(); }} style={{width: 32, height: 32, borderRadius: '50%', background: '#333', border:'2px solid rgba(255,255,255,.2)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 13}}>❌</div>
         </div>
@@ -363,29 +363,29 @@ export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any)
         <div style={{fontWeight:800,fontSize:14}}>Dia {dia.id} — {formatDiaSemana(dia.diaSemana)}</div>
         <div className="xp-badge" style={{fontSize:12}}>~3 min</div>
       </div>
-      <div style={{padding:'10px 20px',background:'rgba(46,33,96,.8)'}}>
+      <div style={{padding:'10px 20px',background:'var(--hdr-bg)'}}>
         <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
-          <span style={{fontSize:12,color:'#B9ACE6',fontWeight:700}}>Progresso de leitura</span>
-          <span style={{fontSize:12,color:'#F5C842',fontWeight:800}}>{pct}%</span>
+          <span style={{fontSize:12,color:'var(--mut)',fontWeight:700,fontFamily:'Poppins,sans-serif'}}>Progresso de leitura</span>
+          <span style={{fontSize:12,color:'var(--gold)',fontWeight:800,fontFamily:'Poppins,sans-serif'}}>{pct}%</span>
         </div>
         <div className="prog-wrap"><div className="prog-bar" style={{width:pct+'%'}}/></div>
       </div>
       <div ref={ref} onScroll={onScroll} style={{flex:1,overflowY:'auto',padding:'20px 16px 120px'}}>
-        <div style={{fontWeight:900,fontSize:22,marginBottom:20,lineHeight:1.2,color:'#E2D9F3'}}>{dia.titulo}</div>
+        <div style={{fontWeight:900,fontSize:22,marginBottom:20,lineHeight:1.2,color:'var(--txt2)'}}>{dia.titulo}</div>
         {paras.map((p: string, i: number) => renderP(p, i))}
         <div className="verse-card" style={{marginTop:16,marginBottom:24}}>
-          <div style={{fontSize:11,fontWeight:800,color:'#F5C842',textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>💡 Versículo-chave</div>
-          <div style={{fontSize:15,fontStyle:'italic',lineHeight:1.65,color:'#E2D9F3',marginBottom:8,paddingLeft:8}}>"{dia.versiculoChave.texto}"</div>
-          <div style={{fontWeight:800,color:'#F5C842',fontSize:13}}>— {dia.versiculoChave.referencia}</div>
+          <div style={{fontSize:11,fontWeight:800,color:'var(--gold)',textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>💡 Versículo-chave</div>
+          <div style={{fontSize:15,fontStyle:'italic',lineHeight:1.65,color:'var(--txt2)',marginBottom:8,paddingLeft:8}}>"{dia.versiculoChave.texto}"</div>
+          <div style={{fontWeight:800,color:'var(--gold)',fontSize:13}}>— {dia.versiculoChave.referencia}</div>
         </div>
         
-        <div style={{marginBottom: 24, background:'rgba(255,255,255,.03)', padding: '16px', borderRadius: 16, border:'1px solid rgba(255,255,255,.08)'}}>
-          <div style={{fontSize:13,fontWeight:800,color:'#B9ACE6',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>📝 Minhas Anotações</div>
-          <textarea 
-            value={notes} 
-            onChange={e => setNotes(e.target.value)} 
+        <div style={{marginBottom: 24, background:'var(--panel-bg)', padding: '16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
+          <div style={{fontSize:13,fontWeight:800,color:'var(--mut)',textTransform:'uppercase',letterSpacing:1,marginBottom:12,fontFamily:'Poppins,sans-serif'}}>📝 Minhas Anotações</div>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
             placeholder="Escreva aqui ideias, lições ou cole trechos da lição..."
-            style={{width:'100%', minHeight: 120, background:'rgba(0,0,0,.2)', border:'1px solid rgba(255,255,255,.05)', color:'#E2D9F3', fontSize: 15, lineHeight: 1.6, padding: '14px', borderRadius: 12, resize:'vertical', outline:'none'}}
+            style={{width:'100%', minHeight: 120, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize: 15, lineHeight: 1.6, padding: '14px', borderRadius: 12, resize:'vertical', outline:'none', fontFamily:'Lora,Georgia,serif', transition:'background .3s,color .3s'}}
           />
         </div>
 
@@ -485,19 +485,19 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
   return (
     <div className="scr-full">
       {xpMsg && <div className="xp-float">{xpMsg}</div>}
-      <div style={{padding:'14px 20px',background:'rgba(46,33,96,.9)'}}>
+      <div style={{padding:'14px 20px',background:'var(--hdr-bg)'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
             <span>⏱️</span>
             <span style={{fontWeight:900,fontSize:22,color:tColor}}>{Math.ceil(tempo)}s</span>
           </div>
-          <div style={{fontWeight:800,color:'#B9ACE6',fontSize:15}}>{qi + 1}/{pergs.length}</div>
+          <div style={{fontWeight:800,color:'var(--mut)',fontSize:15}}>{qi + 1}/{pergs.length}</div>
           <div className="xp-badge">⭐ {xpSoFar} XP</div>
         </div>
         <div className="timer-wrap"><div className="timer-bar" style={{width:tPct+'%',background:tColor}}/></div>
       </div>
       <div style={{padding:'18px 16px 0',flex:'none'}}>
-        <div style={{background:'rgba(255,255,255,.06)',borderRadius:18,padding:'20px 18px',textAlign:'center',fontWeight:800,fontSize:17,lineHeight:1.4,border:'1.5px solid rgba(245,200,66,.2)',minHeight:100,display:'flex',alignItems:'center',justifyContent:'center'}}>{q.pergunta}</div>
+        <div style={{background:'var(--g5)',borderRadius:18,padding:'20px 18px',textAlign:'center',fontWeight:800,fontSize:17,lineHeight:1.4,border:'1.5px solid rgba(247,198,0,.2)',minHeight:100,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--txt)',fontFamily:'Poppins,sans-serif'}}>{q.pergunta}</div>
       </div>
       <div style={{padding:'14px 16px',flex:1}}>
         <div className="quiz-grid">
@@ -519,7 +519,7 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
         {ans !== null && (
           <div style={{marginTop:14,padding:'12px 16px',borderRadius:14,background:ans === q.correta?'rgba(79,184,92,.15)':'rgba(227,28,61,.15)',border:`1.5px solid ${ans === q.correta?'#4FB85C':'#E31C3D'}`,animation:'popIn .3s ease'}}>
             <div style={{fontWeight:800,fontSize:14,marginBottom:4,color:ans === q.correta?'#4FB85C':'#E31C3D'}}>{ans === q.correta ? '✅ Correto!' : '❌ Incorreto!'}</div>
-            <div style={{fontSize:13,color:'#E2D9F3',lineHeight:1.5}}>{q.explicacao}</div>
+            <div style={{fontSize:13,color:'var(--txt2)',lineHeight:1.5}}>{q.explicacao}</div>
           </div>
         )}
       </div>
@@ -542,20 +542,20 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
       <Confetti show={true}/>
       <div style={{animation:'popIn .5s ease .2s both',fontSize:80,marginTop:20,display:'block',marginBottom:10}}>{ic}</div>
       <div style={{animation:'popIn .5s ease .4s both',fontWeight:900,fontSize:24,marginBottom:4}}>{mg}</div>
-      <div style={{animation:'fadeIn .5s ease .6s both',color:'#B9ACE6',fontSize:14,marginBottom:26}}>{formatDiaSemana(dia.diaSemana)} — {dia.titulo}</div>
+      <div style={{animation:'fadeIn .5s ease .6s both',color:'var(--mut)',fontSize:14,marginBottom:26}}>{formatDiaSemana(dia.diaSemana)} — {dia.titulo}</div>
       <div style={{animation:'fadeUp .5s ease .7s both',display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:22}}>
         {[{e:'✅',l:'Acertos',v:`${acertos}/${total}`},{e:'⭐',l:'XP Ganho',v:`+${xpTotal}`},{e:'⏱️',l:'Tempo médio',v:`${Math.round(tempoMedio)}s`}].map(s => (
           <div key={s.l} className="purple-card" style={{padding:'12px 6px',textAlign:'center'}}>
             <div style={{fontSize:22,marginBottom:4}}>{s.e}</div>
-            <div style={{fontWeight:900,fontSize:18,color:'#F5C842'}}>{s.v}</div>
-            <div style={{fontSize:9,color:'#B9ACE6',fontWeight:700,textTransform:'uppercase',letterSpacing:.5,marginTop:3}}>{s.l}</div>
+            <div style={{fontWeight:900,fontSize:18,color:'var(--gold)'}}>{s.v}</div>
+            <div style={{fontSize:9,color:'var(--mut)',fontWeight:700,textTransform:'uppercase',letterSpacing:.5,marginTop:3}}>{s.l}</div>
           </div>
         ))}
       </div>
       {prog.streak > 0 && <div style={{animation:'fadeIn .5s ease .9s both',marginBottom:14}}><div className="streak-badge" style={{fontSize:16,padding:'8px 20px'}}>🔥 Sequência: {prog.streak} dias!</div></div>}
       {badges.length > 0 && (
         <div style={{animation:'fadeIn .5s ease 1s both',marginBottom:22}}>
-          <div style={{fontSize:11,fontWeight:800,textTransform:'uppercase',letterSpacing:2,color:'#B9ACE6',marginBottom:10}}>Conquistas do dia</div>
+          <div style={{fontSize:11,fontWeight:800,textTransform:'uppercase',letterSpacing:2,color:'var(--mut)',marginBottom:10}}>Conquistas do dia</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
             {badges.map(b => <div key={b.l} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.08)',border:'1.5px solid rgba(255,255,255,.12)',borderRadius:30,padding:'7px 16px',fontSize:14,fontWeight:800}}>{b.e} {b.l}</div>)}
           </div>
@@ -592,9 +592,9 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       </div>
       
       <div style={{padding:'4px 16px 12px'}}>
-        <div style={{display:'flex',background:'rgba(255,255,255,.05)',borderRadius:12,padding:4}}>
-          <div onClick={() => onChangeType('week')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='week'?'rgba(245,200,66,.15)':'transparent',color:type==='week'?'#F5C842':'#B9ACE6'}}>Da Semana</div>
-          <div onClick={() => onChangeType('season')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='season'?'rgba(245,200,66,.15)':'transparent',color:type==='season'?'#F5C842':'#B9ACE6'}}>Da Temporada</div>
+        <div style={{display:'flex',background:'var(--g3)',borderRadius:12,padding:4}}>
+          <div onClick={() => onChangeType('week')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='week'?'rgba(247,198,0,.15)':'transparent',color:type==='week'?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>Da Semana</div>
+          <div onClick={() => onChangeType('season')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='season'?'rgba(247,198,0,.15)':'transparent',color:type==='season'?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>Da Temporada</div>
         </div>
       </div>
       
@@ -607,8 +607,8 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
               </div>
               <div style={{fontWeight:800,fontSize:12,maxWidth:66,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[1].nome}</div>
               <div className="pod-base p2">🥈</div>
-              <div style={{fontWeight:900,color:'#F5C842',fontSize:12,lineHeight:1.1}}>{sorted[1].xp} XP</div>
-              <div style={{fontSize:10,color:'#B9ACE6',marginTop:1}}>📅 {sorted[1].dias || 0} d</div>
+              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{sorted[1].xp} XP</div>
+              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {sorted[1].dias || 0} d</div>
             </div>
             <div className="pod-col">
               <div style={{fontSize:18,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
@@ -617,8 +617,8 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
               </div>
               <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[0].nome}</div>
               <div className="pod-base p1">🥇</div>
-              <div style={{fontWeight:900,color:'#F5C842',fontSize:14,lineHeight:1.1}}>{sorted[0].xp} XP</div>
-              <div style={{fontSize:11,color:'#F5C842',fontWeight:800,marginTop:1}}>📅 {sorted[0].dias || 0} d</div>
+              <div style={{fontWeight:900,color:'var(--gold)',fontSize:14,lineHeight:1.1}}>{sorted[0].xp} XP</div>
+              <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {sorted[0].dias || 0} d</div>
             </div>
             <div className="pod-col">
               <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
@@ -626,8 +626,8 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
               </div>
               <div style={{fontWeight:800,fontSize:11,maxWidth:58,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{sorted[2].nome}</div>
               <div className="pod-base p3">🥉</div>
-              <div style={{fontWeight:900,color:'#F5C842',fontSize:12,lineHeight:1.1}}>{sorted[2].xp} XP</div>
-              <div style={{fontSize:10,color:'#B9ACE6',marginTop:1}}>📅 {sorted[2].dias || 0} d</div>
+              <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{sorted[2].xp} XP</div>
+              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {sorted[2].dias || 0} d</div>
             </div>
           </div>
         </div>
@@ -642,29 +642,29 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           {sorted.map((r, i) => {
             const eu = r.id === jogador.id;
             return (
-              <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(245,200,66,.12),rgba(245,200,66,.04))':'rgba(255,255,255,.04)',border:`2px solid ${eu?'rgba(245,200,66,.42)':'rgba(255,255,255,.07)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`}}>
+              <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))':'var(--g2)',border:`2px solid ${eu?'rgba(247,198,0,.4)':'var(--b2)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
                 <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':'#B9ACE6'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
                 <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
                   {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
                 </div>
                 <div style={{flex:1, minWidth:0}}>
                   <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'#fff'}}>{r.nome}{eu ? ' 👈' : ''}</div>
-                  <div style={{fontSize:12,color:'#B9ACE6',marginTop:2}}>
+                  <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>
                     📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}
                   </div>
                 </div>
-                <div style={{fontWeight:900,color:'#F5C842',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
+                <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
               </div>
             );
           })}
-          {sorted.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'#B9ACE6'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
+          {sorted.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
         </div>
       </div>
       <div className="sec">
         <div className="purple-card" style={{textAlign:'center'}}>
-          <div style={{fontSize:13,color:'#B9ACE6',marginBottom:4}}>Sua posição</div>
-          <div style={{fontWeight:900,fontSize:32,color:'#F5C842'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
-          {myIdx !== -1 && <div style={{fontSize:13,color:'#B9ACE6'}}>📅 {sorted[myIdx].dias} dia{sorted[myIdx].dias!==1?'s':''} • ⭐ {sorted[myIdx].xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}</div>}
+          <div style={{fontSize:13,color:'var(--mut)',marginBottom:4}}>Sua posição</div>
+          <div style={{fontWeight:900,fontSize:32,color:'var(--gold)'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
+          {myIdx !== -1 && <div style={{fontSize:13,color:'var(--mut)'}}>📅 {sorted[myIdx].dias} dia{sorted[myIdx].dias!==1?'s':''} • ⭐ {sorted[myIdx].xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}</div>}
         </div>
       </div>
     </div>
@@ -772,16 +772,16 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
       </div>
       <div style={{padding:'20px 16px'}}>
         <div className="sec-title" style={{marginBottom:8}}>Gerenciar Usuários (Admins)</div>
-        <div style={{background:'rgba(255,255,255,.03)', padding: 12, borderRadius: 12, marginBottom: 24}}>
-           {loadingUsers ? <div style={{color:'#B9ACE6', fontSize:14}}>Carregando...</div> : (
+        <div style={{background:'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24}}>
+           {loadingUsers ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : (
               <div style={{display:'flex', flexDirection:'column', gap: 10, maxHeight: 250, overflowY:'auto'}}>
                 {[...users].sort((a,b) => (b.isAdmin?1:0) - (a.isAdmin?1:0)).map((u: any) => (
                   <div key={u.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px', background:'rgba(0,0,0,.2)', borderRadius:8}}>
                      <div style={{display:'flex', alignItems:'center', gap: 10}}>
                         <div style={{fontSize:20}}>{u.avatar}</div>
                         <div>
-                           <div style={{fontSize:14, fontWeight:800, color:'#E2D9F3'}}>{u.nome} {u.isAdmin && <span style={{color:'#F5C842', fontSize:12}}>🛡️</span>}</div>
-                           <div style={{fontSize:11, color:'#B9ACE6'}}>{u.email}</div>
+                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️</span>}</div>
+                           <div style={{fontSize:11, color:'var(--mut)'}}>{u.email}</div>
                         </div>
                      </div>
                      <button onClick={() => handleToggleAdmin(u.id, !!u.isAdmin)} style={{background: u.isAdmin ? 'rgba(227,28,61,.2)' : 'rgba(79,184,92,.2)', color: u.isAdmin ? '#FF6B6B' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>
@@ -794,28 +794,28 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
         </div>
 
         <div className="sec-title" style={{marginBottom:8}}>Notificações Manuais</div>
-        <div style={{background:'rgba(255,255,255,.03)', padding: 12, borderRadius: 12, marginBottom: 24}}>
-           {loadingUsers ? <div style={{color:'#B9ACE6', fontSize:14}}>Carregando...</div> : (
+        <div style={{background:'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24}}>
+           {loadingUsers ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : (
              <>
                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
-                  <div style={{fontSize:13, color:'#B9ACE6', fontWeight:800}}>Selecione os Destinatários:</div>
+                  <div style={{fontSize:13, color:'var(--mut)', fontWeight:800}}>Selecione os Destinatários:</div>
                   <button onClick={toggleSelectAll} className="btn btn-ghost btn-sm" style={{width:'auto', padding:'4px 8px', fontSize:12, margin:0, minHeight:0}}>{selectedUsers.length === users.length && users.length > 0 ? 'Desmarcar Todos' : 'Selecionar Todos'}</button>
                </div>
                <div style={{display:'flex', flexDirection:'column', gap: 6, maxHeight: 150, overflowY:'auto', marginBottom:16, border:'1px solid rgba(255,255,255,.05)', borderRadius:8, padding:4}}>
                  {users.map((u: any) => (
                    <label key={u.id} style={{display:'flex', alignItems:'center', gap:10, padding:'6px 8px', background:'rgba(0,0,0,.2)', borderRadius:6, cursor:'pointer'}}>
-                     <input type="checkbox" checked={selectedUsers.includes(u.id)} onChange={() => toggleSelectUser(u.id)} style={{accentColor:'#F5C842', width:16, height:16}} />
+                     <input type="checkbox" checked={selectedUsers.includes(u.id)} onChange={() => toggleSelectUser(u.id)} style={{accentColor:'var(--gold)', width:16, height:16}} />
                      <div style={{fontSize:16}}>{u.avatar}</div>
-                     <div style={{fontSize:14, color:'#E2D9F3', fontWeight:600}}>{u.nome}</div>
+                     <div style={{fontSize:14, color:'var(--txt2)', fontWeight:600}}>{u.nome}</div>
                    </label>
                  ))}
                </div>
                
-               <div style={{fontSize:13, color:'#B9ACE6', fontWeight:800, marginBottom:8}}>Título da Notificação:</div>
-               <input type="text" value={notifTitle} onChange={e => setNotifTitle(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'rgba(0,0,0,.2)', border:'1px solid rgba(255,255,255,.1)', color:'#E2D9F3', fontSize:14, marginBottom:12}} placeholder="Ex: Hora do estudo!" />
+               <div style={{fontSize:13, color:'var(--mut)', fontWeight:800, marginBottom:8}}>Título da Notificação:</div>
+               <input type="text" value={notifTitle} onChange={e => setNotifTitle(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:14, marginBottom:12, transition:'background .3s'}} placeholder="Ex: Hora do estudo!" />
                
-               <div style={{fontSize:13, color:'#B9ACE6', fontWeight:800, marginBottom:8}}>Mensagem:</div>
-               <textarea value={notifBody} onChange={e => setNotifBody(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'rgba(0,0,0,.2)', border:'1px solid rgba(255,255,255,.1)', color:'#E2D9F3', fontSize:14, marginBottom:16, minHeight:60, resize:'vertical'}} placeholder="Ex: Venha completar sua lição..." />
+               <div style={{fontSize:13, color:'var(--mut)', fontWeight:800, marginBottom:8}}>Mensagem:</div>
+               <textarea value={notifBody} onChange={e => setNotifBody(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:14, marginBottom:16, minHeight:60, resize:'vertical', transition:'background .3s'}} placeholder="Ex: Venha completar sua lição..." />
                
                <button onClick={handleSendNotif} disabled={sendingNotif} className={`btn btn-gold ${sendingNotif ? 'btn-dis' : ''}`} style={{fontSize:15, padding:'10px'}}>
                   {sendingNotif ? 'Enviando...' : `🚀 Enviar para ${selectedUsers.length} usuário(s)`}
@@ -829,13 +829,13 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
         <button className="btn btn-ghost" style={{marginTop:12,marginBottom:12}} onClick={() => fileRef.current?.click()}>📁 ESCOLHER ARQUIVO .JSON</button>
         <input ref={fileRef} type="file" accept=".json" onChange={handleFile} style={{display:'none'}}/>
         {err && <div style={{background:'rgba(227,28,61,.12)',border:'1.5px solid #E31C3D',borderRadius:12,padding:12,marginBottom:14}}><div style={{color:'#E31C3D',fontWeight:800,fontSize:14}}>❌ {err}</div></div>}
-        {prev && <div style={{background:'rgba(79,184,92,.12)',border:'1.5px solid #4FB85C',borderRadius:12,padding:12,marginBottom:16}}><div style={{color:'#4FB85C',fontWeight:800,fontSize:14,marginBottom:4}}>✅ JSON válido!</div><div style={{fontSize:14,color:'#E2D9F3'}}>📖 {prev.titulo}</div><div style={{fontSize:13,color:'#B9ACE6'}}>📅 {prev.dias} dias | ❓ {prev.perguntas} perguntas</div></div>}
+        {prev && <div style={{background:'rgba(79,184,92,.12)',border:'1.5px solid #4FB85C',borderRadius:12,padding:12,marginBottom:16}}><div style={{color:'#4FB85C',fontWeight:800,fontSize:14,marginBottom:4}}>✅ JSON válido!</div><div style={{fontSize:14,color:'var(--txt2)'}}>📖 {prev.titulo}</div><div style={{fontSize:13,color:'var(--mut)'}}>📅 {prev.dias} dias | ❓ {prev.perguntas} perguntas</div></div>}
         <button className={`btn btn-grn${!prev ? ' btn-dis' : ''}`} style={{marginBottom:12}} onClick={() => prev && onImport(prev.obj)}>✅ IMPORTAR LIÇÃO</button>
         <button className="btn btn-ghost" style={{color:'#FF6B6B',borderColor:'rgba(227,28,61,.3)'}} onClick={onClear}>🗑️ LIMPAR PROGRESSO</button>
         <div style={{marginTop:24,padding:16,background:'rgba(255,255,255,.03)',borderRadius:12}}>
-          <div style={{fontWeight:800,color:'#B9ACE6',fontSize:11,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Lição Atual</div>
-          <div style={{fontSize:14,color:'#E2D9F3'}}>📖 {licao.titulo}</div>
-          <div style={{fontSize:13,color:'#B9ACE6'}}>📅 {licao.dias.length} dias | {licao.trimestre}</div>
+          <div style={{fontWeight:800,color:'var(--mut)',fontSize:11,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Lição Atual</div>
+          <div style={{fontSize:14,color:'var(--txt2)'}}>📖 {licao.titulo}</div>
+          <div style={{fontSize:13,color:'var(--mut)'}}>📅 {licao.dias.length} dias | {licao.trimestre}</div>
         </div>
       </div>
     </div>
@@ -843,7 +843,7 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
 };
 
 /* ===== CONFIG ===== */
-export const Config = ({ jogador, onSave, onBack, onLogout }: any) => {
+export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange }: any) => {
   const [nome, setNome] = useState(jogador.nome || '');
   const [avatar, setAvatar] = useState(jogador.avatar || '🦁');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -879,23 +879,23 @@ export const Config = ({ jogador, onSave, onBack, onLogout }: any) => {
       </div>
       <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:20, flex: 1}}>
         
-        <div style={{background:'rgba(255,255,255,.05)', padding: '20px 16px', borderRadius: 16}}>
-          <div style={{fontWeight:800, marginBottom:20, color:'#E2D9F3'}}>Seu Perfil</div>
+        <div style={{background:'var(--panel-bg)', padding: '20px 16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
+          <div style={{fontWeight:800, marginBottom:20, color:'var(--txt2)'}}>Seu Perfil</div>
           
           <div style={{display:'flex', alignItems:'center', gap:16, marginBottom: 24}}>
             <div style={{width: 72, height: 72, borderRadius: 16, background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 36, overflow:'hidden', flexShrink: 0, boxShadow:'0 4px 10px rgba(0,0,0,.2)'}}>
               {avatar.length > 10 ? <img src={avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{avatar}</span>}
             </div>
             <div style={{flex: 1}}>
-              <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} style={{width:'100%', background:'rgba(245,200,66,.1)', color:'#F5C842', padding:'8px', marginBottom: 8}}>📸 Enviar Imagem</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} style={{width:'100%', background:'rgba(245,200,66,.1)', color:'var(--gold)', padding:'8px', marginBottom: 8}}>📸 Enviar Imagem</button>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
               <div style={{fontSize: 11, color: '#B9ACE6', textAlign:'center', marginBottom: 4}}>OU DIGITE UM EMOJI</div>
-              <input type="text" value={avatar.length < 10 ? avatar : ''} onChange={e => setAvatar(e.target.value)} placeholder="Ex: 👾" style={{width: '100%', padding: '8px', borderRadius: 8, background:'rgba(0,0,0,.3)', color:'#fff', border:'none', textAlign:'center', outline:'none'}} maxLength={2}/>
+              <input type="text" value={avatar.length < 10 ? avatar : ''} onChange={e => setAvatar(e.target.value)} placeholder="Ex: 👾" style={{width: '100%', padding: '8px', borderRadius: 8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', textAlign:'center', outline:'none', transition:'background .3s'}} maxLength={2}/>
             </div>
           </div>
 
           <div style={{marginBottom: 20}}>
-            <div style={{fontSize: 12, fontWeight: 700, color:'#B9ACE6', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Sugestões de Emojis</div>
+            <div style={{fontSize: 12, fontWeight: 700, color:'var(--mut)', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Sugestões de Emojis</div>
             <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap: 8, background:'rgba(0,0,0,.2)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,.05)', maxHeight: 180, overflowY: 'auto'}}>
               {['🦁', '🐯', '🦊', '🐺', '🐨', '🐼', '🦅', '🦉', '🐬', '🐙', '🦖', '👾', '🤖', '👑', '🌟', '⚡', '🔥', '🎯', '🚀', '🎮', '⚽', '🏆', '🎨', '🎸', '🎒', '📚', '🍕', '🍿', '🐶', '🐱', '🐭', '🐹', '🐰', '🐻', '🐻‍❄️', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦇', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🐢', '🐍', '🦕', '🦂', '🐠', '🐟', '🍔', '🍟', '🍩', '🍪', '🍫', '🍬'].map(emo => (
                 <button
@@ -922,12 +922,12 @@ export const Config = ({ jogador, onSave, onBack, onLogout }: any) => {
           </div>
 
           <div>
-             <div style={{fontSize: 12, fontWeight: 700, color:'#B9ACE6', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Nome de Exibição</div>
-             <input type="text" value={nome} onChange={e => setNome(e.target.value)} style={{width:'100%', padding:'14px 16px', borderRadius: 12, background:'rgba(0,0,0,.3)', color:'#fff', border:'1px solid rgba(255,255,255,.1)', fontSize: 16, outline:'none'}} />
+             <div style={{fontSize: 12, fontWeight: 700, color:'var(--mut)', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Nome de Exibição</div>
+             <input type="text" value={nome} onChange={e => setNome(e.target.value)} style={{width:'100%', padding:'14px 16px', borderRadius: 12, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize: 16, outline:'none', transition:'background .3s,color .3s', fontFamily:'Poppins,sans-serif'}} />
           </div>
 
           <div style={{marginTop: 24}}>
-             <div style={{fontSize: 12, fontWeight: 700, color:'#B9ACE6', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Notificações do Sistema</div>
+             <div style={{fontSize: 12, fontWeight: 700, color:'var(--mut)', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Notificações do Sistema</div>
              <button 
                onClick={async () => {
                  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
@@ -942,13 +942,22 @@ export const Config = ({ jogador, onSave, onBack, onLogout }: any) => {
                  }
                }} 
                className="btn btn-ghost" 
-               style={{width:'100%', borderColor:'rgba(255,255,255,.1)', color:'#F5C842', padding:'12px'}}
+               style={{width:'100%', borderColor:'rgba(255,255,255,.1)', color:'var(--gold)', padding:'12px'}}
              >
                🔔 HABILITAR NOTIFICAÇÕES
              </button>
              <div style={{fontSize: 11, color: '#B9ACE6', marginTop: 8, textAlign:'center'}}>
                 Para iOS/iPhone: É necessário "Adicionar à Tela de Início" primeiro. Quando o app estiver fechado, os avisos chegarão pelo sistema do seu celular! Mas não se preocupe: novos avisos também aparecerão na tela quando você abrir o app.
              </div>
+          </div>
+        </div>
+
+        <div style={{background:'var(--panel-bg)', padding: '14px 16px', borderRadius: 14, border:'1px solid var(--panel-border)'}}>
+          <div style={{fontSize: 11, fontWeight: 700, color:'var(--mut)', marginBottom: 10, textTransform:'uppercase', letterSpacing:1, fontFamily:'Poppins,sans-serif'}}>Aparência</div>
+          <div className="theme-toggle">
+            <button className={`theme-btn${theme === 'light' ? ' active' : ''}`} onClick={() => onThemeChange('light')}>☀️ Claro</button>
+            <button className={`theme-btn${theme === 'auto' ? ' active' : ''}`} onClick={() => onThemeChange('auto')}>🌓 Auto</button>
+            <button className={`theme-btn${theme === 'dark' ? ' active' : ''}`} onClick={() => onThemeChange('dark')}>🌙 Escuro</button>
           </div>
         </div>
 

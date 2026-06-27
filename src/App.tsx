@@ -14,6 +14,17 @@ export default function App() {
   const [resultado, setResultado] = useState<any>(null);
   const [logoTaps, setLogoTaps] = useState(0);
   const [inAppNotif, setInAppNotif] = useState<{title: string, body: string, id: number} | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => (localStorage.getItem('theme') as 'light' | 'dark' | 'auto') || 'auto');
+
+  useEffect(() => {
+    if (theme === 'auto') {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.removeItem('theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+    }
+  }, [theme]);
 
   const semKey = (l: any) => 'prog_' + (l?.semana || 'w');
 
@@ -363,7 +374,7 @@ export default function App() {
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} />}
       {tela === 'admin' && <Admin licao={licao} onImport={handleImport} onClear={handleClear} onBack={() => setTela('home')} />}
-      {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} />}
+      {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
 
       {inAppNotif && (
@@ -372,12 +383,12 @@ export default function App() {
            top: 20,
            left: '50%',
            transform: 'translateX(-50%)',
-           background: 'rgba(25,18,48,0.95)',
-           border: '1px solid rgba(245,200,66,0.3)',
+           background: 'var(--notif-bg)',
+           border: '1px solid var(--notif-border)',
            padding: '16px 20px',
            borderRadius: 16,
            zIndex: 9999,
-           boxShadow: '0 8px 30px rgba(0,0,0,0.5), 0 0 15px rgba(245,200,66,0.2)',
+           boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
            display: 'flex',
            flexDirection: 'column',
            minWidth: 300,
@@ -386,12 +397,12 @@ export default function App() {
         }}>
            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start'}}>
               <div>
-                 <div style={{fontSize: 14, fontWeight: 800, color: '#F5C842', marginBottom: 4}}>{inAppNotif.title}</div>
-                 <div style={{fontSize: 13, color: '#E2D9F3', lineHeight: 1.4}}>{inAppNotif.body}</div>
+                 <div style={{fontSize: 14, fontWeight: 800, color: 'var(--gold)', marginBottom: 4, fontFamily:'Poppins,sans-serif'}}>{inAppNotif.title}</div>
+                 <div style={{fontSize: 13, color: 'var(--txt2)', lineHeight: 1.4}}>{inAppNotif.body}</div>
               </div>
               <button
                 onClick={() => setInAppNotif(null)}
-                style={{background:'none', border:'none', color:'#B9ACE6', fontSize: 18, cursor:'pointer', padding: '0 0 0 12px'}}
+                style={{background:'none', border:'none', color:'var(--mut)', fontSize: 18, cursor:'pointer', padding: '0 0 0 12px'}}
               >
                 ✕
               </button>
