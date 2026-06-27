@@ -341,9 +341,9 @@ export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any)
       {sel && (
         <div style={{position:'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background:'var(--notif-bg)', padding: '10px 16px', borderRadius: 30, display:'flex', gap: 14, boxShadow:'0 10px 30px rgba(0,0,0,.4)', zIndex: 1000, border:'1px solid var(--notif-border)', animation:'fadeUp .2s ease'}}>
            {['#F7C600', '#1E9E86', '#E5006D', '#4A90D9'].map(c => (
-              <div key={c} onClick={() => addHl(c)} style={{width: 32, height: 32, borderRadius: '50%', background: c, border:'2px solid rgba(255,255,255,.7)', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,.4)'}} title="Destacar" />
+              <div key={c} onMouseDown={(e) => { e.preventDefault(); addHl(c); }} style={{width: 32, height: 32, borderRadius: '50%', background: c, border:'2px solid rgba(255,255,255,.7)', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,.4)'}} title="Destacar" />
            ))}
-           <div onClick={() => { setSel(null); window.getSelection()?.removeAllRanges(); }} style={{width: 32, height: 32, borderRadius: '50%', background: '#333', border:'2px solid rgba(255,255,255,.2)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 13}}>❌</div>
+           <div onMouseDown={(e) => { e.preventDefault(); setSel(null); window.getSelection()?.removeAllRanges(); }} style={{width: 32, height: 32, borderRadius: '50%', background: '#333', border:'2px solid rgba(255,255,255,.2)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 13}}>❌</div>
         </div>
       )}
       <div className="hdr">

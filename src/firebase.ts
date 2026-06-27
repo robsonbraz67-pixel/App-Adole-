@@ -154,7 +154,7 @@ export const getWeeklyRanking = async (week: string) => {
   const results: any[] = [];
   snap.forEach(doc => {
     const data = doc.data();
-    results.push({ id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: adminIds.has(data.userId) });
+    results.push({ id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId) });
   });
   return results.sort((a, b) => b.xp - a.xp);
 };
@@ -169,7 +169,7 @@ export const getSeasonRanking = async (trimestre: string) => {
     const data = doc.data();
     const uid = data.userId;
     if (!userTotals[uid]) {
-      userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: adminIds.has(uid) };
+      userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: data.isAdmin || adminIds.has(uid) };
     }
     userTotals[uid].xp += (data.xp || 0);
     userTotals[uid].dias += (data.done?.length || 0);
