@@ -1,7 +1,7 @@
 export const DEMO = {
   titulo: "Lição 13 - Luz do Mundo (20 a 26 de Junho)",
   semana: "2026-W25",
-  trimestre: "3T2026",
+  trimestre: "Teste",
   dias: [
     {
       id: 1, diaSemana: "Sáb", data: "2026-06-20",
@@ -90,31 +90,4 @@ export const DEMO = {
   ]
 };
 
-const gerarLicoesSimuladas = () => {
-  const licoes = [];
-  // Vamos gerar 13 lições para simular a temporada. 
-  // A lição 13 é a atual (DEMO). As anteriores vão ser de semanas anteriores (W13 a W24).
-  for (let i = 1; i <= 13; i++) {
-    const licao = JSON.parse(JSON.stringify(DEMO));
-    licao.titulo = `Lição ${i} - Título da Lição ${i}`;
-    licao.semana = `2026-W${12 + i}`;
-    
-    // Atualizar datas para fazerem sentido
-    const dIni = new Date(2026, 2, 28); // Sábado de W13...
-    dIni.setDate(dIni.getDate() + (i - 1) * 7);
-    
-    licao.dias.forEach((d: any, idx: number) => {
-      const dAtual = new Date(dIni);
-      dAtual.setDate(dAtual.getDate() + idx);
-      d.data = dAtual.toISOString().split('T')[0];
-    });
-    
-    if (i === 13) {
-      licao.titulo = "Lição 13 - Luz do Mundo (20 a 26 de Junho)";
-    }
-    licoes.push(licao);
-  }
-  return licoes;
-};
-
-export const LICOES = gerarLicoesSimuladas();
+export const LICOES = [DEMO];

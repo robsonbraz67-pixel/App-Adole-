@@ -292,13 +292,6 @@ export default function App() {
     setTela('ranking');
   };
 
-  const handleImport = (obj: any) => {
-    ss('licao_atual', obj);
-    setLicao(obj);
-    alert('✅ Lição importada!');
-    setTela('home');
-  };
-
   const handleChangeLicao = async (newLicao: any) => {
     ss('licao_atual', newLicao);
     setLicao(newLicao);
@@ -328,15 +321,6 @@ export default function App() {
       }
     } catch(e) {
       console.error(e);
-    }
-  };
-
-  const handleClear = () => {
-    if (window.confirm('Limpar todo o progresso desta semana?')) {
-      const k = semKey(licao || LICOES[LICOES.length - 1]);
-      localStorage.removeItem(k);
-      setProg({ ...PROG0, pos: calcPos(ranking, jogador?.id, 0) });
-      alert('🗑️ Progresso limpo localmente!');
     }
   };
 
@@ -409,7 +393,7 @@ export default function App() {
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} />}
-      {tela === 'admin' && <Admin licao={licao} onImport={handleImport} onClear={handleClear} onBack={() => setTela('home')} />}
+      {tela === 'admin' && <Admin licao={licao} onBack={() => setTela('home')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
 

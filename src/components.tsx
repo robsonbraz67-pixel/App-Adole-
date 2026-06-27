@@ -672,11 +672,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
 };
 
 /* ===== ADMIN ===== */
-export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
-  const [txt, setTxt] = useState('');
-  const [prev, setPrev] = useState<any>(null);
-  const [err, setErr] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
+export const Admin = ({ licao, onBack }: any) => {
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   
@@ -738,31 +734,6 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
      }
   };
   
-  const validate = (s: string) => {
-    setErr('');
-    setPrev(null);
-    try {
-      const p = JSON.parse(s);
-      if (!p.titulo || !Array.isArray(p.dias)) throw new Error('Estrutura inválida: requer titulo e dias[]');
-      const nq = p.dias.reduce((a: number, d: any) => a + (d.perguntas?.length || 0), 0);
-      setPrev({ titulo: p.titulo, dias: p.dias.length, perguntas: nq, obj: p });
-    } catch (e: any) {
-      setErr(e.message);
-    }
-  };
-
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = ev => {
-      const res = ev.target?.result as string;
-      setTxt(res);
-      validate(res);
-    };
-    r.readAsText(f);
-  };
-
   return (
     <div className="scr">
       <div className="hdr">
@@ -824,15 +795,7 @@ export const Admin = ({ licao, onImport, onClear, onBack }: any) => {
            )}
         </div>
 
-        <div className="sec-title" style={{marginBottom:8}}>Cole o JSON da lição:</div>
-        <textarea className="adm-ta" value={txt} onChange={e => { setTxt(e.target.value); validate(e.target.value); }} placeholder={'{\n  "titulo": "Nome da Lição",\n  "semana": "2026-W24",\n  "trimestre": "3T2026",\n  "dias": [...]\n}'}/>
-        <button className="btn btn-ghost" style={{marginTop:12,marginBottom:12}} onClick={() => fileRef.current?.click()}>📁 ESCOLHER ARQUIVO .JSON</button>
-        <input ref={fileRef} type="file" accept=".json" onChange={handleFile} style={{display:'none'}}/>
-        {err && <div style={{background:'rgba(227,28,61,.12)',border:'1.5px solid #E31C3D',borderRadius:12,padding:12,marginBottom:14}}><div style={{color:'#E31C3D',fontWeight:800,fontSize:14}}>❌ {err}</div></div>}
-        {prev && <div style={{background:'rgba(79,184,92,.12)',border:'1.5px solid #4FB85C',borderRadius:12,padding:12,marginBottom:16}}><div style={{color:'#4FB85C',fontWeight:800,fontSize:14,marginBottom:4}}>✅ JSON válido!</div><div style={{fontSize:14,color:'var(--txt2)'}}>📖 {prev.titulo}</div><div style={{fontSize:13,color:'var(--mut)'}}>📅 {prev.dias} dias | ❓ {prev.perguntas} perguntas</div></div>}
-        <button className={`btn btn-grn${!prev ? ' btn-dis' : ''}`} style={{marginBottom:12}} onClick={() => prev && onImport(prev.obj)}>✅ IMPORTAR LIÇÃO</button>
-        <button className="btn btn-ghost" style={{color:'#FF6B6B',borderColor:'rgba(227,28,61,.3)'}} onClick={onClear}>🗑️ LIMPAR PROGRESSO</button>
-        <div style={{marginTop:24,padding:16,background:'rgba(255,255,255,.03)',borderRadius:12}}>
+        <div style={{marginTop:8,padding:16,background:'rgba(255,255,255,.03)',borderRadius:12}}>
           <div style={{fontWeight:800,color:'var(--mut)',fontSize:11,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Lição Atual</div>
           <div style={{fontSize:14,color:'var(--txt2)'}}>📖 {licao.titulo}</div>
           <div style={{fontSize:13,color:'var(--mut)'}}>📅 {licao.dias.length} dias | {licao.trimestre}</div>
