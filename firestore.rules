@@ -60,7 +60,7 @@ service cloud.firestore {
         && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'manualNotification'])
         && isValidUser(incoming()));
         
-      allow delete: if false;
+      allow delete: if isUserAdmin() && request.auth.uid != userId;
     }
 
     function isValidProgress(data) {
@@ -96,7 +96,12 @@ service cloud.firestore {
         && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'updatedAt'])
         && isValidProgress(incoming());
 
-      allow delete: if false;
+      allow delete: if isUserAdmin();
+    }
+
+    match /blockedUsers/{userId} {
+      allow get, list: if isAuthenticated();
+      allow create, update, delete: if isUserAdmin();
     }
 
     function isValidOverride(data) {

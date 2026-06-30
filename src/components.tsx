@@ -67,7 +67,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, sendManualNotification, saveDayOverride } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, sendManualNotification, saveDayOverride, getBlockedIds, toggleRankingBlock, deleteUserAccount } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -806,9 +806,9 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
     let unmounted = false;
     const loadUsers = async () => {
       try {
-        const usrs = await getAllUsers();
+        const [usrs, blockedIds] = await Promise.all([getAllUsers(), getBlockedIds()]);
         if (!unmounted) {
-           setUsers(usrs);
+           setUsers(usrs.map(u => ({ ...u, rankingBlocked: blockedIds.has(u.id) })));
            setLoadingUsers(false);
         }
       } catch (e) {
@@ -825,6 +825,25 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
         setUsers(users.map(u => u.id === userId ? { ...u, isAdmin: !currentStatus } : u));
      } catch(e) {
         alert('Erro ao atualizar usuário');
+     }
+  };
+
+  const handleToggleBlock = async (userId: string, currentStatus: boolean) => {
+     try {
+        await toggleRankingBlock(userId, !currentStatus);
+        setUsers(users.map(u => u.id === userId ? { ...u, rankingBlocked: !currentStatus } : u));
+     } catch(e) {
+        alert('Erro ao atualizar usuário');
+     }
+  };
+
+  const handleDeleteUser = async (userId: string, nome: string) => {
+     if (!window.confirm(`Excluir permanentemente "${nome}"? Essa ação remove a conta e todo o progresso e não pode ser desfeita.`)) return;
+     try {
+        await deleteUserAccount(userId);
+        setUsers(users.filter(u => u.id !== userId));
+     } catch(e) {
+        alert('Erro ao excluir usuário');
      }
   };
 
@@ -871,14 +890,22 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                      <div style={{display:'flex', alignItems:'center', gap: 10}}>
                         <div style={{fontSize:20}}>{u.avatar}</div>
                         <div>
-                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>}</div>
+                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>} {u.rankingBlocked && <span style={{color:'#FF6B6B', fontSize:12}}>🚫 Bloqueado</span>}</div>
                            <div style={{fontSize:11, color:'var(--mut)'}}>{u.email}</div>
                         </div>
                      </div>
                      {isSuperAdmin && u.email?.toLowerCase() !== SUPER_ADMIN_EMAIL && (
-                       <button onClick={() => handleToggleAdmin(u.id, !!u.isAdmin)} style={{background: u.isAdmin ? 'rgba(227,28,61,.2)' : 'rgba(79,184,92,.2)', color: u.isAdmin ? '#FF6B6B' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>
-                          {u.isAdmin ? 'Remover Adm' : 'Tornar Adm'}
-                       </button>
+                       <div style={{display:'flex', flexWrap:'wrap', gap: 6, justifyContent:'flex-end'}}>
+                         <button onClick={() => handleToggleAdmin(u.id, !!u.isAdmin)} style={{background: u.isAdmin ? 'rgba(227,28,61,.2)' : 'rgba(79,184,92,.2)', color: u.isAdmin ? '#FF6B6B' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                            {u.isAdmin ? 'Remover Adm' : 'Tornar Adm'}
+                         </button>
+                         <button onClick={() => handleToggleBlock(u.id, !!u.rankingBlocked)} style={{background: u.rankingBlocked ? 'rgba(79,184,92,.2)' : 'rgba(255,165,0,.2)', color: u.rankingBlocked ? '#4FB85C' : '#FFA500', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                            {u.rankingBlocked ? 'Desbloquear' : 'Bloquear Ranking'}
+                         </button>
+                         <button onClick={() => handleDeleteUser(u.id, u.nome)} style={{background: 'rgba(227,28,61,.2)', color: '#FF6B6B', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                            🗑️ Excluir
+                         </button>
+                       </div>
                      )}
                   </div>
                 ))}
