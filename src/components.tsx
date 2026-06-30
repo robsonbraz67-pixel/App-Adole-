@@ -434,8 +434,8 @@ const EditDayModal = ({ dia, semana, onClose, onSaved }: any) => {
   };
 
   return (
-    <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:16}}>
-      <div style={{background:'var(--panel-bg)', borderRadius:16, padding:20, maxWidth:520, width:'100%', maxHeight:'85vh', overflowY:'auto', boxShadow:'0 10px 40px rgba(0,0,0,.5)'}}>
+    <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,.78)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:16}}>
+      <div style={{background:'var(--card)', border:'1px solid var(--panel-border)', borderRadius:16, padding:20, maxWidth:520, width:'100%', maxHeight:'85vh', overflowY:'auto', boxShadow:'0 10px 40px rgba(0,0,0,.6)'}}>
         <div style={{fontWeight:900, fontSize:17, marginBottom:16, color:'var(--txt2)', fontFamily:'Poppins,sans-serif'}}>✏️ Editar Conteúdo do Dia</div>
 
         <div style={{fontSize:13, color:'var(--mut)', fontWeight:800, marginBottom:8}}>Título:</div>
