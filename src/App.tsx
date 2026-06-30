@@ -1,8 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { LICOES } from './data';
-import { gs, ss, calcPos, rankDemo, PROG0, playSound, getRecencyMult, scheduleStudyReminder } from './utils';
-import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking } from './firebase';
+import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder } from './utils';
+import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config } from './components';
+
+const CACHE_VERSION = '3T2026';
+
+const clearStaleCache = () => {
+  if (localStorage.getItem('cacheVersion') === CACHE_VERSION) return;
+  Object.keys(localStorage)
+    .filter(k => k.startsWith('prog_') || k.startsWith('ranking_'))
+    .forEach(k => localStorage.removeItem(k));
+  localStorage.removeItem('licao_atual');
+  localStorage.setItem('cacheVersion', CACHE_VERSION);
+};
 
 export default function App() {
   const [tela, setTela] = useState('splash');
@@ -82,6 +93,7 @@ export default function App() {
   useEffect(() => {
     let unmounted = false;
     const initApp = async () => {
+      clearStaleCache();
       const j = gs('jogador');
       const l = gs('licao_atual', LICOES[0]);
       setLicao(l);
@@ -95,14 +107,6 @@ export default function App() {
         }
       } catch(e) {
         console.error("Error loading ranking:", e);
-      }
-      
-      if (l.semana === '2026-W25') {
-         const demo = rankDemo();
-         demo.forEach((d: any) => {
-            if (!r.find((m: any) => m.id === d.id)) r.push(d);
-         });
-         r.sort((a: any, b: any) => b.xp - a.xp);
       }
       ss('ranking_' + l.semana, r);
       if (unmounted) return;
@@ -165,13 +169,6 @@ export default function App() {
 
     let p = gs(semKey(l), PROG0);
     let r = gs('ranking_' + l.semana, []);
-    if (l.semana === '2026-W25') {
-       const demo = rankDemo();
-       demo.forEach((d: any) => {
-          if (!r.find((m: any) => m.id === d.id)) r.push(d);
-       });
-       r.sort((a: any, b: any) => b.xp - a.xp);
-    }
 
     try {
       await saveUser(j);
@@ -290,15 +287,6 @@ export default function App() {
         } else {
           dbRanking = await getSeasonRanking(l.trimestre);
         }
-        if (l.semana === '2026-W25' && type === 'week') {
-           const demo = rankDemo();
-           demo.forEach((d: any) => {
-              if (!dbRanking.find((m: any) => m.id === d.id)) {
-                 dbRanking.push(d);
-              }
-           });
-           dbRanking.sort((a, b) => b.xp - a.xp);
-        }
         setRanking(dbRanking);
         if (type === 'week') {
            ss('ranking_' + l.semana, dbRanking);
@@ -327,14 +315,6 @@ export default function App() {
       if (user) {
         const dbRanking = await getWeeklyRanking(newLicao.semana);
         r = dbRanking;
-        
-        if (newLicao.semana === '2026-W25') {
-           const demo = rankDemo();
-           demo.forEach((d: any) => {
-              if (!r.find((m: any) => m.id === d.id)) r.push(d);
-           });
-           r.sort((a: any, b: any) => b.xp - a.xp);
-        }
         setRanking(r);
 
         const dbProg = await getProgress(jogador.id, newLicao.semana);
@@ -414,8 +394,8 @@ export default function App() {
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); }} onRanking={() => loadLatestRanking('week')} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
-      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} onSaveStudy={handleSaveStudy} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={async (d: any) => { const override = await getDayOverride(licao.semana, d.id).catch(() => null); setDiaAtual(override ? { ...d, ...override } : d); setTela('estudo'); }} onRanking={() => loadLatestRanking('week')} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
+      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} />}

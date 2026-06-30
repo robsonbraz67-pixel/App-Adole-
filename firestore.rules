@@ -98,5 +98,19 @@ service cloud.firestore {
 
       allow delete: if false;
     }
+
+    function isValidOverride(data) {
+      return (!data.keys().hasAny(['titulo']) || data.titulo is string)
+        && (!data.keys().hasAny(['conteudo']) || data.conteudo is string)
+        && (!data.keys().hasAny(['versiculoChave']) || (data.versiculoChave is map && data.versiculoChave.keys().hasAll(['texto','referencia'])))
+        && (!data.keys().hasAny(['perguntas']) || data.perguntas is list)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time);
+    }
+
+    match /conteudoOverrides/{docId} {
+      allow get, list: if isAuthenticated();
+      allow create, update: if isUserAdmin() && isValidOverride(incoming());
+      allow delete: if isUserAdmin();
+    }
   }
 }

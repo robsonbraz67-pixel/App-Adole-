@@ -146,6 +146,17 @@ export const getProgress = async (userId: string, week: string) => {
   return snap.exists() ? snap.data() : null;
 };
 
+export const getDayOverride = async (semana: string, diaId: number) => {
+  const ref = doc(db, 'conteudoOverrides', `${semana}_${diaId}`);
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data() : null;
+};
+
+export const saveDayOverride = async (semana: string, diaId: number, data: any) => {
+  const ref = doc(db, 'conteudoOverrides', `${semana}_${diaId}`);
+  await setDoc(ref, { ...data, updatedAt: serverTimestamp() }, { merge: true });
+};
+
 export const getWeeklyRanking = async (week: string) => {
   const [snap, adminIds] = await Promise.all([
     getDocs(query(collection(db, 'progress'), where('week', '==', week))),

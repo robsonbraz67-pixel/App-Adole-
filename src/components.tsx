@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { DEMO, LICOES } from './data';
-import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, rankDemo, calcPos, PROG0, shareApp, playSound, formatDiaSemana } from './utils';
+import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana } from './utils';
 
 /* ===== CONFETTI ===== */
 const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
@@ -67,7 +67,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, sendManualNotification } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, sendManualNotification, saveDayOverride } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -252,12 +252,13 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAd
 };
 
 /* ===== ESTUDO ===== */
-export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any) => {
+export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, onQuiz, onBack }: any) => {
   const initHistory = prog.history?.[dia.id] || {};
   const [notes, setNotes] = useState(initHistory.nota || '');
   const [hl, setHl] = useState<any>(initHistory.hl || {});
   const [pct, setPct] = useState(0);
   const [sel, setSel] = useState<any>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   
   const onScroll = () => {
@@ -346,8 +347,21 @@ export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any)
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={() => wrapLeave(onBack)} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:800,fontSize:14}}>Dia {dia.id} — {formatDiaSemana(dia.diaSemana)}</div>
-        <div className="xp-badge" style={{fontSize:12}}>~3 min</div>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          {jogador?.isAdmin && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditOpen(true)} style={{width:'auto', padding:'4px 8px', margin:0, minHeight:0}} title="Editar conteúdo">✏️</button>
+          )}
+          <div className="xp-badge" style={{fontSize:12}}>~3 min</div>
+        </div>
       </div>
+      {editOpen && (
+        <EditDayModal
+          dia={dia}
+          semana={semana}
+          onClose={() => setEditOpen(false)}
+          onSaved={(updated: any) => { onDayUpdated?.(updated); setEditOpen(false); }}
+        />
+      )}
       <div style={{padding:'10px 20px',background:'var(--hdr-bg)'}}>
         <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
           <span style={{fontSize:12,color:'var(--mut)',fontWeight:700,fontFamily:'Poppins,sans-serif'}}>Progresso de leitura</span>
@@ -391,6 +405,75 @@ export const Estudo = ({ dia, prog, jogador, onSaveStudy, onQuiz, onBack }: any)
   );
 };
 
+/* ===== EDIT DAY MODAL (ADMIN) ===== */
+const EditDayModal = ({ dia, semana, onClose, onSaved }: any) => {
+  const [titulo, setTitulo] = useState(dia.titulo || '');
+  const [conteudo, setConteudo] = useState(dia.conteudo || '');
+  const [vTexto, setVTexto] = useState(dia.versiculoChave?.texto || '');
+  const [vRef, setVRef] = useState(dia.versiculoChave?.referencia || '');
+  const [pergs, setPergs] = useState<any[]>(() => (dia.perguntas || []).map((p: any) => ({ ...p, opcoes: [...(p.opcoes || ['', '', '', ''])] })));
+  const [saving, setSaving] = useState(false);
+
+  const updatePerg = (i: number, field: string, value: any) => {
+    setPergs((prev: any[]) => prev.map((p, idx) => idx === i ? { ...p, [field]: value } : p));
+  };
+  const updateOpcao = (i: number, oi: number, value: string) => {
+    setPergs((prev: any[]) => prev.map((p, idx) => idx === i ? { ...p, opcoes: p.opcoes.map((o: string, oidx: number) => oidx === oi ? value : o) } : p));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const data = { titulo, conteudo, versiculoChave: { texto: vTexto, referencia: vRef }, perguntas: pergs };
+    try {
+      await saveDayOverride(semana, dia.id, data);
+      onSaved({ ...dia, ...data });
+    } catch (e) {
+      alert('Erro ao salvar edição. Verifique sua conexão e tente novamente.');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:16}}>
+      <div style={{background:'var(--panel-bg)', borderRadius:16, padding:20, maxWidth:520, width:'100%', maxHeight:'85vh', overflowY:'auto', boxShadow:'0 10px 40px rgba(0,0,0,.5)'}}>
+        <div style={{fontWeight:900, fontSize:17, marginBottom:16, color:'var(--txt2)', fontFamily:'Poppins,sans-serif'}}>✏️ Editar Conteúdo do Dia</div>
+
+        <div style={{fontSize:13, color:'var(--mut)', fontWeight:800, marginBottom:8}}>Título:</div>
+        <input type="text" value={titulo} onChange={e => setTitulo(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:14, marginBottom:12}} />
+
+        <div style={{fontSize:13, color:'var(--mut)', fontWeight:800, marginBottom:8}}>Conteúdo (parágrafos separados por linha em branco):</div>
+        <textarea value={conteudo} onChange={e => setConteudo(e.target.value)} style={{width:'100%', minHeight:160, padding:'10px', borderRadius:8, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:14, lineHeight:1.5, marginBottom:12, resize:'vertical', fontFamily:'Lora,Georgia,serif'}} />
+
+        <div style={{fontSize:13, color:'var(--mut)', fontWeight:800, marginBottom:8}}>Versículo-chave (texto):</div>
+        <textarea value={vTexto} onChange={e => setVTexto(e.target.value)} style={{width:'100%', minHeight:60, padding:'10px', borderRadius:8, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:14, marginBottom:8, resize:'vertical'}} />
+        <div style={{fontSize:13, color:'var(--mut)', fontWeight:800, marginBottom:8}}>Versículo-chave (referência):</div>
+        <input type="text" value={vRef} onChange={e => setVRef(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:14, marginBottom:16}} />
+
+        <div className="sec-title" style={{marginBottom:8}}>Perguntas do Quiz</div>
+        {pergs.map((p: any, i: number) => (
+          <div key={p.id || i} style={{background:'rgba(0,0,0,.2)', borderRadius:10, padding:12, marginBottom:12}}>
+            <div style={{fontSize:12, color:'var(--mut)', fontWeight:800, marginBottom:6}}>Pergunta {i + 1}:</div>
+            <input type="text" value={p.pergunta} onChange={e => updatePerg(i, 'pergunta', e.target.value)} style={{width:'100%', padding:'8px', borderRadius:6, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:13, marginBottom:8}} />
+            {p.opcoes.map((o: string, oi: number) => (
+              <div key={oi} style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
+                <input type="radio" name={`correta-${i}`} checked={p.correta === oi} onChange={() => updatePerg(i, 'correta', oi)} style={{accentColor:'var(--gold)'}} />
+                <input type="text" value={o} onChange={e => updateOpcao(i, oi, e.target.value)} style={{flex:1, padding:'6px 8px', borderRadius:6, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:13}} />
+              </div>
+            ))}
+            <div style={{fontSize:12, color:'var(--mut)', fontWeight:800, marginTop:4, marginBottom:6}}>Explicação:</div>
+            <input type="text" value={p.explicacao || ''} onChange={e => updatePerg(i, 'explicacao', e.target.value)} style={{width:'100%', padding:'8px', borderRadius:6, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:13}} />
+          </div>
+        ))}
+
+        <div style={{display:'flex', gap:10, marginTop:8}}>
+          <button onClick={handleSave} disabled={saving} className={`btn btn-gold ${saving ? 'btn-dis' : ''}`} style={{flex:1, padding:'10px', fontSize:14}}>{saving ? 'Salvando...' : 'Salvar'}</button>
+          <button onClick={onClose} className="btn btn-ghost" style={{flex:1, padding:'10px', fontSize:14}}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ===== QUIZ ===== */
 export const Quiz = ({ dia, onDone, onBack }: any) => {
   const [qi, setQi] = useState(0);
@@ -402,7 +485,14 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
   const timerRef = useRef<any>(null);
   const startRef = useRef<number>(0);
   
-  const pergs = dia.perguntas;
+  const [shuffledPergs] = useState(() =>
+    (dia.perguntas || []).map((q: any) => {
+      const correctText = q.opcoes[q.correta];
+      const shuffled = [...q.opcoes].sort(() => Math.random() - 0.5);
+      return { ...q, opcoes: shuffled, correta: shuffled.indexOf(correctText) };
+    })
+  );
+  const pergs = shuffledPergs;
   const q = pergs[qi];
   const BTNS = [{cls:'qA',sym:'🔺'},{cls:'qB',sym:'🔷'},{cls:'qC',sym:'🔶'},{cls:'qD',sym:'🟢'}];
 
