@@ -869,11 +869,12 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                 {[...users].sort((a,b) => (b.isAdmin?1:0) - (a.isAdmin?1:0)).map((u: any) => (
                   <div key={u.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px', background:'rgba(0,0,0,.2)', borderRadius:8}}>
                      <div style={{display:'flex', alignItems:'center', gap: 10}}>
-                        <div style={{fontSize:20}}>{u.avatar}</div>
+                        <div style={{fontSize:20, width:28, height:28, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                           {u.avatar?.length > 10 ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{u.avatar}</span>}
+                        </div>
                         <div>
                            <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>}</div>
                            <div style={{fontSize:11, color:'var(--mut)'}}>{u.email}</div>
-                           <div style={{fontSize:10, color:'var(--mut)', fontFamily:'monospace'}}>{u.id}</div>
                         </div>
                      </div>
                      {isSuperAdmin && u.email?.toLowerCase() !== SUPER_ADMIN_EMAIL && (
@@ -901,7 +902,9 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                  {users.map((u: any) => (
                    <label key={u.id} style={{display:'flex', alignItems:'center', gap:10, padding:'6px 8px', background:'rgba(0,0,0,.2)', borderRadius:6, cursor:'pointer'}}>
                      <input type="checkbox" checked={selectedUsers.includes(u.id)} onChange={() => toggleSelectUser(u.id)} style={{accentColor:'var(--gold)', width:16, height:16}} />
-                     <div style={{fontSize:16}}>{u.avatar}</div>
+                     <div style={{fontSize:16, width:22, height:22, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                        {u.avatar?.length > 10 ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{u.avatar}</span>}
+                     </div>
                      <div style={{fontSize:14, color:'var(--txt2)', fontWeight:600}}>{u.nome}</div>
                    </label>
                  ))}
