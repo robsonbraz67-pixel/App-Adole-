@@ -67,7 +67,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, sendManualNotification, saveDayOverride, getBlockedIds, toggleRankingBlock, deleteUserAccount } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, sendManualNotification, saveDayOverride, getBlockedIds, toggleRankingBlock } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -837,16 +837,6 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
      }
   };
 
-  const handleDeleteUser = async (userId: string, nome: string) => {
-     if (!window.confirm(`Excluir permanentemente "${nome}"? Essa ação remove a conta e todo o progresso e não pode ser desfeita.`)) return;
-     try {
-        await deleteUserAccount(userId);
-        setUsers(users.filter(u => u.id !== userId));
-     } catch(e) {
-        alert('Erro ao excluir usuário');
-     }
-  };
-
   const handleSendNotif = async () => {
     if (selectedUsers.length === 0) return alert('Selecione pelo menos um usuário.');
     if (!notifTitle || !notifBody) return alert('Preencha o título e o corpo da notificação.');
@@ -900,10 +890,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                             {u.isAdmin ? 'Remover Adm' : 'Tornar Adm'}
                          </button>
                          <button onClick={() => handleToggleBlock(u.id, !!u.rankingBlocked)} style={{background: u.rankingBlocked ? 'rgba(79,184,92,.2)' : 'rgba(255,165,0,.2)', color: u.rankingBlocked ? '#4FB85C' : '#FFA500', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
-                            {u.rankingBlocked ? 'Desbloquear' : 'Bloquear Ranking'}
-                         </button>
-                         <button onClick={() => handleDeleteUser(u.id, u.nome)} style={{background: 'rgba(227,28,61,.2)', color: '#FF6B6B', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
-                            🗑️ Excluir
+                            {u.rankingBlocked ? 'Mostrar no Ranking' : 'Ocultar do Ranking'}
                          </button>
                        </div>
                      )}

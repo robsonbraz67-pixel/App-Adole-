@@ -121,12 +121,6 @@ export const toggleRankingBlock = async (userId: string, blocked: boolean) => {
   }
 };
 
-export const deleteUserAccount = async (userId: string) => {
-  const progSnap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId)));
-  await Promise.all(progSnap.docs.map(d => deleteDoc(d.ref)));
-  await deleteDoc(doc(db, 'users', userId));
-};
-
 export const sendManualNotification = async (userIds: string[], title: string, body: string) => {
   const now = new Date().getTime();
   for (const uid of userIds) {
