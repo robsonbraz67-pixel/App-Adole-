@@ -17,8 +17,14 @@ export const uid = () => Math.random().toString(36).slice(2, 10);
 
 export const AVTS = ['🦁','🐯','🦊','🐺','🦅','🐬','🌟','🔥','⚡','🎯','👑','🚀'];
 
-// IDs de usuários que não devem aparecer nos rankings (peça o ID na tela Admin)
-export const RANKING_HIDDEN_IDS: string[] = [];
+// Nomes de usuários que não devem aparecer nos rankings
+export const RANKING_HIDDEN_NAMES: string[] = ['André Santana', 'Brenda Roosevelt'];
+
+const normalizeName = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+const hiddenNamesNormalized = new Set(RANKING_HIDDEN_NAMES.map(normalizeName));
+
+export const isRankingHidden = (nome: string) => hiddenNamesNormalized.has(normalizeName(nome));
 
 export const getRecencyMult = (diaData: string) => {
   const hoje = new Date();

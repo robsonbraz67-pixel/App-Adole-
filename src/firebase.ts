@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import { RANKING_HIDDEN_IDS } from './utils';
+import { isRankingHidden } from './utils';
 const firebaseConfig = {
   projectId:         import.meta.env.VITE_FB_PROJECT_ID,
   appId:             import.meta.env.VITE_FB_APP_ID,
@@ -166,7 +166,7 @@ export const getWeeklyRanking = async (week: string) => {
   const results: any[] = [];
   snap.forEach(doc => {
     const data = doc.data();
-    if (RANKING_HIDDEN_IDS.includes(data.userId)) return;
+    if (isRankingHidden(data.nome)) return;
     results.push({ id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId) });
   });
   return results.sort((a, b) => b.xp - a.xp);
@@ -181,7 +181,7 @@ export const getSeasonRanking = async (trimestre: string) => {
   snap.forEach(doc => {
     const data = doc.data();
     const uid = data.userId;
-    if (RANKING_HIDDEN_IDS.includes(uid)) return;
+    if (isRankingHidden(data.nome)) return;
     if (!userTotals[uid]) {
       userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: data.isAdmin || adminIds.has(uid) };
     }
