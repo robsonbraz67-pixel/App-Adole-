@@ -99,11 +99,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /blockedUsers/{userId} {
-      allow get, list: if isAuthenticated();
-      allow create, update, delete: if isUserAdmin();
-    }
-
     function isValidOverride(data) {
       return (!data.keys().hasAny(['titulo']) || data.titulo is string)
         && (!data.keys().hasAny(['conteudo']) || data.conteudo is string)

@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { RANKING_HIDDEN_IDS } from './utils';
 const firebaseConfig = {
   projectId:         import.meta.env.VITE_FB_PROJECT_ID,
   appId:             import.meta.env.VITE_FB_APP_ID,
@@ -101,26 +102,6 @@ export const getAdminIds = async (): Promise<Set<string>> => {
   }
 };
 
-export const getBlockedIds = async (): Promise<Set<string>> => {
-  try {
-    const snap = await getDocs(collection(db, 'blockedUsers'));
-    const ids = new Set<string>();
-    snap.forEach(d => ids.add(d.id));
-    return ids;
-  } catch {
-    return new Set<string>();
-  }
-};
-
-export const toggleRankingBlock = async (userId: string, blocked: boolean) => {
-  const ref = doc(db, 'blockedUsers', userId);
-  if (blocked) {
-    await setDoc(ref, { blocked: true, blockedAt: serverTimestamp() });
-  } else {
-    await deleteDoc(ref);
-  }
-};
-
 export const sendManualNotification = async (userIds: string[], title: string, body: string) => {
   const now = new Date().getTime();
   for (const uid of userIds) {
@@ -178,31 +159,29 @@ export const saveDayOverride = async (semana: string, diaId: number, data: any) 
 };
 
 export const getWeeklyRanking = async (week: string) => {
-  const [snap, adminIds, blockedIds] = await Promise.all([
+  const [snap, adminIds] = await Promise.all([
     getDocs(query(collection(db, 'progress'), where('week', '==', week))),
     getAdminIds(),
-    getBlockedIds(),
   ]);
   const results: any[] = [];
   snap.forEach(doc => {
     const data = doc.data();
-    if (blockedIds.has(data.userId)) return;
+    if (RANKING_HIDDEN_IDS.includes(data.userId)) return;
     results.push({ id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId) });
   });
   return results.sort((a, b) => b.xp - a.xp);
 };
 
 export const getSeasonRanking = async (trimestre: string) => {
-  const [snap, adminIds, blockedIds] = await Promise.all([
+  const [snap, adminIds] = await Promise.all([
     getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre))),
     getAdminIds(),
-    getBlockedIds(),
   ]);
   const userTotals: Record<string, any> = {};
   snap.forEach(doc => {
     const data = doc.data();
     const uid = data.userId;
-    if (blockedIds.has(uid)) return;
+    if (RANKING_HIDDEN_IDS.includes(uid)) return;
     if (!userTotals[uid]) {
       userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: data.isAdmin || adminIds.has(uid) };
     }

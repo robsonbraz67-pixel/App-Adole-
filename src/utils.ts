@@ -17,6 +17,9 @@ export const uid = () => Math.random().toString(36).slice(2, 10);
 
 export const AVTS = ['🦁','🐯','🦊','🐺','🦅','🐬','🌟','🔥','⚡','🎯','👑','🚀'];
 
+// IDs de usuários que não devem aparecer nos rankings (peça o ID na tela Admin)
+export const RANKING_HIDDEN_IDS: string[] = [];
+
 export const getRecencyMult = (diaData: string) => {
   const hoje = new Date();
   const offset = hoje.getTimezoneOffset() * 60000;
