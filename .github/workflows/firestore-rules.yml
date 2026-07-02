@@ -19,14 +19,5 @@ jobs:
         with:
           node-version: 20
 
-      - name: Write service account key
-        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/firebase-sa.json
-
       - name: Deploy Firestore rules
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/firebase-sa.json
-        run: npx firebase-tools@latest deploy --only firestore:rules --non-interactive
-
-      - name: Clean up credentials
-        if: always()
-        run: rm -f /tmp/firebase-sa.json
+        run: npx firebase-tools@latest deploy --only firestore:rules --non-interactive --token "${{ secrets.FIREBASE_TOKEN }}"

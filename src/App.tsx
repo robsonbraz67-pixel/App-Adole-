@@ -251,6 +251,7 @@ export default function App() {
        }
     } catch(e) {
        console.error("Error updating online progress:", e);
+       setInAppNotif({ title: '⚠️ Progresso não sincronizado', body: 'Seu progresso foi salvo localmente, mas não chegou à nuvem. Verifique sua conexão.', id: Date.now() });
     }
 
     try {
@@ -353,7 +354,10 @@ export default function App() {
       if (user) {
         await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin);
       }
-    } catch(e) { console.error(e) }
+    } catch(e) {
+      console.error(e);
+      setInAppNotif({ title: '⚠️ Progresso não sincronizado', body: 'Seu progresso foi salvo localmente, mas não chegou à nuvem. Verifique sua conexão.', id: Date.now() });
+    }
   };
 
   const handleUpdateConfig = async (novoJ: any) => {
