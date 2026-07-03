@@ -38,6 +38,7 @@ service cloud.firestore {
         && data.email is string && data.email.size() > 0 && data.email.size() <= 100
         && (!data.keys().hasAny(['criadoEm']) || data.criadoEm is string)
         && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
+        && (!data.keys().hasAny(['bloqueado']) || data.bloqueado is bool)
         && (!data.keys().hasAny(['manualNotification']) || data.manualNotification is map);
     }
 
@@ -46,7 +47,7 @@ service cloud.firestore {
       
       allow create: if isOwner(userId)
         && incoming().id == userId
-        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'manualNotification'])
+        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'bloqueado', 'manualNotification'])
         && (!incoming().keys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && isValidUser(incoming());
         
@@ -56,11 +57,11 @@ service cloud.firestore {
         && incoming().email == existing().email
         && (!incoming().diff(existing()).affectedKeys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && isValidUser(incoming())) || (
-        isUserAdmin() 
-        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'manualNotification'])
+        isUserAdmin()
+        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'bloqueado', 'manualNotification'])
         && isValidUser(incoming()));
-        
-      allow delete: if false;
+
+      allow delete: if isUserAdmin();
     }
 
     function isValidProgress(data) {

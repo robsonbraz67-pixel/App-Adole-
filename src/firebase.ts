@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { isRankingHidden } from './utils';
 const firebaseConfig = {
   projectId:         import.meta.env.VITE_FB_PROJECT_ID,
@@ -88,6 +88,15 @@ export const getAllUsers = async () => {
 export const toggleAdmin = async (userId: string, targetValue: boolean) => {
   const userRef = doc(db, 'users', userId);
   await setDoc(userRef, { isAdmin: targetValue }, { merge: true });
+};
+
+export const blockUser = async (userId: string, blocked: boolean) => {
+  const userRef = doc(db, 'users', userId);
+  await setDoc(userRef, { bloqueado: blocked }, { merge: true });
+};
+
+export const deleteUser = async (userId: string) => {
+  await deleteDoc(doc(db, 'users', userId));
 };
 
 export const getAdminIds = async (): Promise<Set<string>> => {

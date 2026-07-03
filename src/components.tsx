@@ -67,7 +67,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, sendManualNotification, saveDayOverride } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, blockUser, deleteUser, sendManualNotification, saveDayOverride } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -828,6 +828,25 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
      }
   };
 
+  const handleBlockUser = async (userId: string, currentBlocked: boolean) => {
+     try {
+        await blockUser(userId, !currentBlocked);
+        setUsers(users.map(u => u.id === userId ? { ...u, bloqueado: !currentBlocked } : u));
+     } catch(e) {
+        alert('Erro ao bloquear/desbloquear usuário');
+     }
+  };
+
+  const handleDeleteUser = async (userId: string, nome: string) => {
+     if (!window.confirm(`Excluir "${nome}"? Esta ação não pode ser desfeita.`)) return;
+     try {
+        await deleteUser(userId);
+        setUsers(users.filter(u => u.id !== userId));
+     } catch(e) {
+        alert('Erro ao excluir usuário');
+     }
+  };
+
   const handleSendNotif = async () => {
     if (selectedUsers.length === 0) return alert('Selecione pelo menos um usuário.');
     if (!notifTitle || !notifBody) return alert('Preencha o título e o corpo da notificação.');
@@ -881,6 +900,12 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                        <div style={{display:'flex', flexWrap:'wrap', gap: 6, justifyContent:'flex-end'}}>
                          <button onClick={() => handleToggleAdmin(u.id, !!u.isAdmin)} style={{background: u.isAdmin ? 'rgba(227,28,61,.2)' : 'rgba(79,184,92,.2)', color: u.isAdmin ? '#FF6B6B' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                             {u.isAdmin ? 'Remover Adm' : 'Tornar Adm'}
+                         </button>
+                         <button onClick={() => handleBlockUser(u.id, !!u.bloqueado)} style={{background: u.bloqueado ? 'rgba(79,184,92,.2)' : 'rgba(247,198,0,.15)', color: u.bloqueado ? '#4FB85C' : '#F7C600', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                            {u.bloqueado ? '✅ Desbloquear' : '🚫 Bloquear'}
+                         </button>
+                         <button onClick={() => handleDeleteUser(u.id, u.nome)} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                            🗑️ Excluir
                          </button>
                        </div>
                      )}

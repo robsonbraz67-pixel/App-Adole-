@@ -126,6 +126,15 @@ export default function App() {
             }
             const dbUser = await getUser(j.id);
             if (dbUser) {
+               if (dbUser.bloqueado) {
+                 await logout();
+                 localStorage.removeItem('jogador');
+                 if (!unmounted) {
+                   setTela('login');
+                   setInAppNotif({ title: '🚫 Conta bloqueada', body: 'Sua conta foi bloqueada. Entre em contato com o administrador.', id: Date.now() });
+                 }
+                 return;
+               }
                const updatedJ = { ...j, ...dbUser };
                if (j.avatar?.startsWith('data:') && !dbUser.avatar?.startsWith('data:')) {
                  updatedJ.avatar = j.avatar;
@@ -163,7 +172,6 @@ export default function App() {
   }, []);
 
   const handleLogin = async (j: any) => {
-    setJogador(j);
     const l = gs('licao_atual', LICOES[0]);
     setLicao(l);
 
@@ -171,6 +179,14 @@ export default function App() {
     let r = gs('ranking_' + l.semana, []);
 
     try {
+      const dbUser = await getUser(j.id);
+      if (dbUser?.bloqueado) {
+        await logout();
+        localStorage.removeItem('jogador');
+        setTela('login');
+        setInAppNotif({ title: '🚫 Conta bloqueada', body: 'Sua conta foi bloqueada. Entre em contato com o administrador.', id: Date.now() });
+        return;
+      }
       await saveUser(j);
 
       const dbProg = await getProgress(j.id, l.semana);
@@ -181,6 +197,7 @@ export default function App() {
     } catch(e) {
       console.error("Error saving user profile or loading progress:", e);
     }
+    setJogador(j);
 
     setRanking(r);
     setProg({ ...p, pos: calcPos(r, j.id, p.xp || 0) });
