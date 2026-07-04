@@ -90,6 +90,11 @@ export const toggleAdmin = async (userId: string, targetValue: boolean) => {
   await setDoc(userRef, { isAdmin: targetValue }, { merge: true });
 };
 
+export const toggleGuest = async (userId: string, targetValue: boolean) => {
+  const userRef = doc(db, 'users', userId);
+  await setDoc(userRef, { isGuest: targetValue }, { merge: true });
+};
+
 export const blockUser = async (userId: string, blocked: boolean) => {
   const userRef = doc(db, 'users', userId);
   await setDoc(userRef, { bloqueado: blocked }, { merge: true });
@@ -131,7 +136,7 @@ export const listenToUserNotifications = (userId: string, callback: (notificatio
   });
 };
 
-export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, isAdmin?: boolean) => {
+export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, isAdmin?: boolean, isGuest?: boolean) => {
   const progId = `${userId}_${week}`;
   const progRef = doc(db, 'progress', progId);
   await setDoc(progRef, {
@@ -145,6 +150,7 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     nome,
     avatar,
     isAdmin: !!isAdmin,
+    isGuest: !!isGuest,
     updatedAt: serverTimestamp()
   }, { merge: true });
 };
@@ -176,6 +182,7 @@ export const getWeeklyRanking = async (week: string) => {
   snap.forEach(doc => {
     const data = doc.data();
     if (isRankingHidden(data.nome)) return;
+    if (data.isGuest) return;
     results.push({ id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId) });
   });
   return results.sort((a, b) => b.xp - a.xp);
@@ -191,6 +198,7 @@ export const getSeasonRanking = async (trimestre: string) => {
     const data = doc.data();
     const uid = data.userId;
     if (isRankingHidden(data.nome)) return;
+    if (data.isGuest) return;
     if (!userTotals[uid]) {
       userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: data.isAdmin || adminIds.has(uid) };
     }

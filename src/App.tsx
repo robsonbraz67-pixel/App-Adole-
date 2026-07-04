@@ -172,7 +172,7 @@ export default function App() {
               p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
               ss(semKey(l), p);
             } else if ((p.xp > 0 || (p.done?.length ?? 0) > 0) && dbUser) {
-              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, !!dbUser.isAdmin).catch(console.error);
+              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, !!dbUser.isAdmin, !!dbUser.isGuest).catch(console.error);
             }
 
             // Also sync previous lesson's local progress if it never reached Firestore
@@ -184,7 +184,7 @@ export default function App() {
                 const prevLocal = gs(`prog_${prevL.semana}`, null);
                 if (prevLocal && (prevLocal.xp > 0 || (prevLocal.done?.length ?? 0) > 0)) {
                   getProgress(j.id, prevL.semana).then(prevDb => {
-                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, !!dbUser.isAdmin).catch(console.error);
+                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, !!dbUser.isAdmin, !!dbUser.isGuest).catch(console.error);
                   }).catch(console.error);
                 }
               }
@@ -305,7 +305,7 @@ export default function App() {
     try {
        const user = await waitForAuthInit();
        if (user) {
-          await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin);
+          await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest);
        }
     } catch(e) {
        console.error("Error updating online progress:", e);
@@ -435,7 +435,7 @@ export default function App() {
       const user = await waitForAuthInit();
       if (user) {
         const l = licao || LICOES[0];
-        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, !!novoJ.isAdmin);
+        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, !!novoJ.isAdmin, !!novoJ.isGuest);
       }
     } catch(e) { console.error(e); }
 

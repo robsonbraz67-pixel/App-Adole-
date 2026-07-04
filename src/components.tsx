@@ -67,7 +67,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -999,6 +999,15 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
      }
   };
 
+  const handleToggleGuest = async (userId: string, currentStatus: boolean) => {
+     try {
+        await toggleGuest(userId, !currentStatus);
+        setUsers(users.map(u => u.id === userId ? { ...u, isGuest: !currentStatus } : u));
+     } catch(e) {
+        alert('Erro ao atualizar usuário');
+     }
+  };
+
   const handleBlockUser = async (userId: string, currentBlocked: boolean) => {
      try {
         await blockUser(userId, !currentBlocked);
@@ -1078,7 +1087,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                            {u.avatar?.length > 10 ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{u.avatar}</span>}
                         </div>
                         <div>
-                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>}</div>
+                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>} {u.isGuest && <span style={{color:'#888', fontSize:12}}>👁️ Convidado</span>}</div>
                            <div style={{fontSize:11, color:'var(--mut)'}}>{u.email}</div>
                         </div>
                      </div>
@@ -1086,6 +1095,9 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                        <div style={{display:'flex', flexWrap:'wrap', gap: 6, justifyContent:'flex-end'}}>
                          <button onClick={() => handleToggleAdmin(u.id, !!u.isAdmin)} style={{background: u.isAdmin ? 'rgba(227,28,61,.2)' : 'rgba(79,184,92,.2)', color: u.isAdmin ? '#FF6B6B' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                             {u.isAdmin ? 'Remover Adm' : 'Tornar Adm'}
+                         </button>
+                         <button onClick={() => handleToggleGuest(u.id, !!u.isGuest)} style={{background: u.isGuest ? 'rgba(79,184,92,.2)' : 'rgba(136,136,136,.2)', color: u.isGuest ? '#4FB85C' : '#888', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                            {u.isGuest ? '✅ Remover Convidado' : '👁️ Convidado'}
                          </button>
                          <button onClick={() => handleBlockUser(u.id, !!u.bloqueado)} style={{background: u.bloqueado ? 'rgba(79,184,92,.2)' : 'rgba(247,198,0,.15)', color: u.bloqueado ? '#4FB85C' : '#F7C600', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                             {u.bloqueado ? '✅ Desbloquear' : '🚫 Bloquear'}
