@@ -825,14 +825,20 @@ const gerarNarrativa = (ranking: any[], semana: string): string => {
 const gerarPromptVideo = (ranking: any[], semana: string): string => {
   const r = ranking.filter(u => !u.isAdmin).slice(0, 5);
   if (r.length === 0) return 'Nenhum participante para gerar o prompt.';
+  const temFotos = r.some(u => u.avatar?.startsWith('data:'));
   let p = `Crie um vídeo curto de 30 segundos estilo premiação esportiva para uma turma de jovens cristãos.\n\n`;
   p += `ESTILO VISUAL: Placar animado com estrelas e confetes, cores azul escuro e dourado, tipografia bold.\n`;
   p += `MÚSICA: Trilha épica e motivacional, acelerando na revelação do 1º lugar.\n`;
   p += `FORMATO: Vertical 9:16 (Stories/Reels).\n\n`;
+  if (temFotos) {
+    p += `FOTOS: Cada participante com foto tem a imagem disponível para download no relatório do app.\n`;
+    p += `Use a foto real de cada participante em um quadro circular com bordas douradas.\n\n`;
+  }
   p += `SEQUÊNCIA (revelar do último ao 1º com suspense):\n`;
   [...r].reverse().forEach((u, i) => {
     const pos = r.length - i;
-    p += `— ${pos}º lugar: "${u.nome}" ${u.avatar}  |  ${u.xp} XP  |  ${u.dias} dia${u.dias !== 1 ? 's' : ''} concluído${u.dias !== 1 ? 's' : ''}\n`;
+    const fotoInfo = u.avatar?.startsWith('data:') ? '📸 foto disponível' : `emoji ${u.avatar}`;
+    p += `— ${pos}º lugar: "${u.nome}"  |  ${fotoInfo}  |  ${u.xp} XP  |  ${u.dias} dia${u.dias !== 1 ? 's' : ''} concluído${u.dias !== 1 ? 's' : ''}\n`;
   });
   p += `\nTEXTO DE ABERTURA: "Semana ${semana} — Quem foi o campeão? 🏆"\n`;
   p += `TEXTO DE FECHAMENTO: "Parabéns a todos! Nos vemos na próxima semana! 💪✨"\n`;
@@ -852,7 +858,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const [sendingNotif, setSendingNotif] = useState(false);
 
   // Relatório da semana
-  const [relatorio, setRelatorio] = useState<{ narrativa: string; promptVideo: string } | null>(null);
+  const [relatorio, setRelatorio] = useState<{ narrativa: string; promptVideo: string; ranking: any[] } | null>(null);
   const [loadingRelatorio, setLoadingRelatorio] = useState(false);
 
   useEffect(() => {
@@ -907,6 +913,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
       setRelatorio({
         narrativa: gerarNarrativa(rank, licao.semana),
         promptVideo: gerarPromptVideo(rank, licao.semana),
+        ranking: rank.filter((u: any) => !u.isAdmin).slice(0, 5),
       });
     } catch(e) {
       alert('Erro ao carregar ranking para o relatório.');
@@ -1026,6 +1033,36 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
 
           {relatorio && (
             <>
+              {/* Visual ranking with photos */}
+              <div style={{fontSize:12, fontWeight:800, color:'var(--txt2)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>
+                Pódio — Fotos para o vídeo
+              </div>
+              <div style={{display:'flex', flexWrap:'wrap', gap:10, marginBottom:20}}>
+                {relatorio.ranking.map((u: any, i: number) => (
+                  <div key={u.id} style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4, background:'rgba(0,0,0,.25)', borderRadius:10, padding:'10px 8px', minWidth:72}}>
+                    <div style={{fontSize:11, fontWeight:900, color: i === 0 ? 'var(--gold)' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : 'var(--mut)'}}>
+                      {i + 1}º
+                    </div>
+                    <div style={{width:52, height:52, borderRadius:'50%', overflow:'hidden', border: i === 0 ? '2px solid var(--gold)' : '2px solid rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, background:'rgba(0,0,0,.3)'}}>
+                      {u.avatar?.startsWith('data:')
+                        ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt={u.nome} />
+                        : <span>{u.avatar}</span>}
+                    </div>
+                    <div style={{fontSize:11, fontWeight:700, color:'var(--txt2)', textAlign:'center', maxWidth:68, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{u.nome.split(' ')[0]}</div>
+                    <div style={{fontSize:10, color:'var(--gold)', fontWeight:800}}>{u.xp} XP</div>
+                    {u.avatar?.startsWith('data:') && (
+                      <a
+                        href={u.avatar}
+                        download={`${u.nome.replace(/\s+/g,'_')}.jpg`}
+                        style={{fontSize:10, color:'var(--teal)', textDecoration:'none', fontWeight:700, marginTop:2}}
+                      >
+                        ⬇️ salvar
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+
               <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', marginBottom:6, textTransform:'uppercase', letterSpacing:1}}>
                 Narrativa da Semana
               </div>
