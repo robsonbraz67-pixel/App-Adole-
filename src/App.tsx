@@ -164,8 +164,22 @@ export default function App() {
               p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
               ss(semKey(l), p);
             } else if ((p.xp > 0 || (p.done?.length ?? 0) > 0) && dbUser) {
-              // Local has progress but Firestore doesn't — sync up silently
               saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, !!dbUser.isAdmin).catch(console.error);
+            }
+
+            // Also sync previous lesson's local progress if it never reached Firestore
+            if (dbUser) {
+              const allVisible = (LICOES as any[]).filter((x: any) => !x.isAdminOnly);
+              const curIdx = allVisible.findIndex((x: any) => x.semana === l.semana);
+              if (curIdx > 0) {
+                const prevL = allVisible[curIdx - 1];
+                const prevLocal = gs(`prog_${prevL.semana}`, null);
+                if (prevLocal && (prevLocal.xp > 0 || (prevLocal.done?.length ?? 0) > 0)) {
+                  getProgress(j.id, prevL.semana).then(prevDb => {
+                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, !!dbUser.isAdmin).catch(console.error);
+                  }).catch(console.error);
+                }
+              }
             }
           } else {
              localStorage.removeItem('jogador');
