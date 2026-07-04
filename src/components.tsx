@@ -1716,6 +1716,26 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
   const [avatar, setAvatar] = useState(jogador.avatar || '🦁');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Phone number helpers — store as E164 (5511999999999), display as (11) 99999-9999
+  const e164ToDisplay = (v: string) => {
+    const d = (v || '').replace(/\D/g, '').replace(/^55/, '');
+    if (d.length <= 2) return d;
+    if (d.length <= 7) return `(${d.slice(0,2)}) ${d.slice(2)}`;
+    return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7,11)}`;
+  };
+  const [telefone, setTelefone] = useState(e164ToDisplay(jogador.telefone || ''));
+  const [whatsappOptIn, setWhatsappOptIn] = useState(!!jogador.whatsappOptIn);
+
+  const formatPhone = (v: string) => {
+    const d = v.replace(/\D/g, '').slice(0, 11);
+    if (d.length <= 2) return d;
+    if (d.length <= 7) return `(${d.slice(0,2)}) ${d.slice(2)}`;
+    return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  };
+  const phoneDigits = telefone.replace(/\D/g, '');
+  const telefoneE164 = phoneDigits.length >= 10 ? '55' + phoneDigits : '';
+  const businessNumber = (import.meta.env.VITE_WHATSAPP_BUSINESS_NUMBER as string) || '';
+
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -1800,6 +1820,45 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
              <input type="text" value={nome} onChange={e => setNome(e.target.value)} style={{width:'100%', padding:'14px 16px', borderRadius: 12, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize: 16, outline:'none', transition:'background .3s,color .3s', fontFamily:'Poppins,sans-serif'}} />
           </div>
 
+          <div style={{marginTop: 20}}>
+            <div style={{fontSize: 12, fontWeight: 700, color:'var(--mut)', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>WhatsApp para Lembretes</div>
+            <input
+              type="tel"
+              value={telefone}
+              onChange={e => setTelefone(formatPhone(e.target.value))}
+              placeholder="(61) 99999-9999"
+              style={{width:'100%', padding:'14px 16px', borderRadius: 12, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize: 16, outline:'none', transition:'background .3s,color .3s'}}
+              maxLength={15}
+            />
+            {phoneDigits.length >= 10 && (
+              whatsappOptIn ? (
+                <div style={{marginTop:8, padding:'10px 14px', borderRadius:10, background:'rgba(79,184,92,.12)', border:'1px solid rgba(79,184,92,.3)', display:'flex', alignItems:'center', gap:8}}>
+                  <span>✅</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12, fontWeight:700, color:'#4FB85C'}}>WhatsApp ativo</div>
+                    <div style={{fontSize:11, color:'var(--mut)'}}>Você receberá lembretes diários de estudo às 8h.</div>
+                  </div>
+                  <button onMouseDown={e => { e.preventDefault(); setWhatsappOptIn(false); }} style={{background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:'4px 6px'}}>Desativar</button>
+                </div>
+              ) : businessNumber ? (
+                <a
+                  href={`https://wa.me/${businessNumber}?text=ESTUDO+ON`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setWhatsappOptIn(true)}
+                  style={{display:'block', marginTop:8, padding:'12px', borderRadius:10, background:'rgba(79,184,92,.12)', border:'1px solid rgba(79,184,92,.25)', textAlign:'center', textDecoration:'none', color:'#4FB85C', fontSize:13, fontWeight:700}}
+                >
+                  📱 Ativar lembretes WhatsApp
+                  <div style={{fontSize:11, color:'var(--mut)', fontWeight:400, marginTop:3}}>Toque para confirmar no WhatsApp</div>
+                </a>
+              ) : (
+                <div style={{marginTop:8, padding:'10px 14px', borderRadius:10, background:'rgba(247,198,0,.08)', border:'1px solid rgba(247,198,0,.2)', fontSize:11, color:'var(--mut)'}}>
+                  ⚙️ Configure <code>VITE_WHATSAPP_BUSINESS_NUMBER</code> no Netlify para ativar lembretes automáticos.
+                </div>
+              )
+            )}
+          </div>
+
           <div style={{marginTop: 24}}>
              <div style={{fontSize: 12, fontWeight: 700, color:'var(--mut)', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Notificações do Sistema</div>
              <button 
@@ -1835,7 +1894,7 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
           </div>
         </div>
 
-        <button className="btn btn-gold" onClick={() => onSave({ ...jogador, nome, avatar })} style={{fontSize: 18, marginTop: 10}}>✅ SALVAR ALTERAÇÕES</button>
+        <button className="btn btn-gold" onClick={() => onSave({ ...jogador, nome, avatar, telefone: telefoneE164, whatsappOptIn })} style={{fontSize: 18, marginTop: 10}}>✅ SALVAR ALTERAÇÕES</button>
         
         <div style={{marginTop: 'auto', paddingTop: 40}}>
            <button className="btn btn-ghost" onClick={onLogout} style={{color:'#FF6B6B', borderColor:'rgba(227,28,61,.3)', width:'100%'}}>🚪 Sair da conta (Logout)</button>
