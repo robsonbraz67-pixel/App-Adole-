@@ -900,6 +900,43 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const [relatorio, setRelatorio] = useState<{ narrativa: string; promptVideo: string; ranking: any[] } | null>(null);
   const [loadingRelatorio, setLoadingRelatorio] = useState(false);
 
+  // Sorteador
+  const [sUsers, setSUsers] = useState<any[]>([]);
+  const [sGanhador, setSGanhador] = useState<any | null>(null);
+  const [sIdx, setSIdx] = useState(0);
+  const [sAnimando, setSAnimando] = useState(false);
+  const [sLoading, setSLoading] = useState(false);
+  const sTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (sTimer.current) clearTimeout(sTimer.current); }, []);
+
+  const carregarSorteador = async () => {
+    setSLoading(true); setSGanhador(null);
+    try {
+      const rank = await getWeeklyRanking(licao.semana);
+      setSUsers(rank.filter((u: any) => !u.isAdmin && u.dias === 7));
+    } catch { /* silent */ }
+    setSLoading(false);
+  };
+
+  const iniciarSorteio = () => {
+    if (sUsers.length === 0) return;
+    setSGanhador(null); setSAnimando(true);
+    const winner = Math.floor(Math.random() * sUsers.length);
+    let step = 0; let cur = 0;
+    const TOTAL = 30;
+    const tick = () => {
+      cur = (cur + 1) % sUsers.length;
+      setSIdx(cur); step++;
+      const delay = step < TOTAL * .5 ? 55 : step < TOTAL * .8 ? 110 : 200;
+      if (step >= TOTAL) {
+        setSIdx(winner); setSGanhador(sUsers[winner]); setSAnimando(false); return;
+      }
+      sTimer.current = setTimeout(tick, delay);
+    };
+    sTimer.current = setTimeout(tick, 55);
+  };
+
   useEffect(() => {
     let unmounted = false;
     const loadUsers = async () => {
@@ -1139,6 +1176,65 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
           )}
         </div>
 
+        <div className="sec-title" style={{marginBottom:8}}>Sorteador 🎰</div>
+        <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:24, textAlign:'center'}}>
+          <div style={{fontSize:13, color:'var(--mut)', marginBottom:12}}>
+            Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{licao.semana}</strong>.
+          </div>
+          <button onClick={carregarSorteador} disabled={sLoading} className={`btn btn-ghost ${sLoading ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px 16px', marginBottom:12}}>
+            {sLoading ? 'Carregando...' : '🔄 Carregar Participantes'}
+          </button>
+
+          {sUsers.length === 0 && !sLoading && (
+            <div style={{fontSize:12, color:'var(--mut)'}}>Clique acima para ver os participantes elegíveis.</div>
+          )}
+
+          {sUsers.length > 0 && (
+            <>
+              <div style={{fontSize:12, color:'var(--mut)', marginBottom:8}}>
+                {sUsers.length} participante{sUsers.length !== 1 ? 's' : ''} elegível{sUsers.length !== 1 ? 'is' : ''}:
+              </div>
+              <div style={{display:'flex', flexWrap:'wrap', gap:6, justifyContent:'center', marginBottom:16}}>
+                {sUsers.map(u => (
+                  <div key={u.id} style={{display:'flex', alignItems:'center', gap:4, background:'rgba(255,255,255,.06)', borderRadius:8, padding:'4px 8px'}}>
+                    {u.avatar?.startsWith('data:')
+                      ? <img src={u.avatar} style={{width:20, height:20, borderRadius:'50%', objectFit:'cover'}} alt="" />
+                      : <span style={{fontSize:16}}>{u.avatar || '👤'}</span>}
+                    <span style={{fontSize:12, color:'var(--txt2)', fontWeight:700}}>{u.nome.split(' ')[0]}</span>
+                  </div>
+                ))}
+              </div>
+
+              {(sAnimando || sGanhador) && (
+                <div style={{marginBottom:14, minHeight:120, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
+                  {sAnimando && (
+                    <div style={{animation:'pulse .3s infinite'}}>
+                      {sUsers[sIdx]?.avatar?.startsWith('data:')
+                        ? <img src={sUsers[sIdx].avatar} style={{width:72, height:72, borderRadius:'50%', objectFit:'cover', border:'3px solid var(--gold)'}} alt="" />
+                        : <div style={{fontSize:56}}>{sUsers[sIdx]?.avatar || '👤'}</div>}
+                      <div style={{fontSize:16, fontWeight:800, color:'var(--txt2)', marginTop:6}}>{sUsers[sIdx]?.nome}</div>
+                    </div>
+                  )}
+                  {sGanhador && !sAnimando && (
+                    <div style={{padding:16, background:'rgba(247,198,0,.12)', borderRadius:12, border:'2px solid var(--gold)', animation:'popIn .4s ease', width:'100%'}}>
+                      <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', letterSpacing:1, textTransform:'uppercase', marginBottom:8}}>🏆 Vencedor!</div>
+                      {sGanhador.avatar?.startsWith('data:')
+                        ? <img src={sGanhador.avatar} style={{width:80, height:80, borderRadius:'50%', objectFit:'cover', border:'3px solid var(--gold)'}} alt="" />
+                        : <div style={{fontSize:64}}>{sGanhador.avatar || '👤'}</div>}
+                      <div style={{fontWeight:900, fontSize:22, color:'var(--txt2)', marginTop:6}}>{sGanhador.nome}</div>
+                      <div style={{fontSize:13, color:'var(--gold)', fontWeight:700}}>{sGanhador.xp} XP · {sGanhador.dias} dias</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <button onClick={iniciarSorteio} disabled={sAnimando} className={`btn btn-gold ${sAnimando ? 'btn-dis' : ''}`} style={{fontSize:15, padding:'10px 24px'}}>
+                {sAnimando ? '🎰 Sorteando...' : sGanhador ? '🔁 Sortear Novamente' : '🎰 Sortear!'}
+              </button>
+            </>
+          )}
+        </div>
+
         <div style={{marginTop:8,padding:16,background:'rgba(255,255,255,.03)',borderRadius:12}}>
           <div style={{fontWeight:800,color:'var(--mut)',fontSize:11,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Lição Atual</div>
           <div style={{fontSize:14,color:'var(--txt2)'}}>📖 {licao.titulo}</div>
@@ -1153,13 +1249,55 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
 import { getSeasonRanking } from './firebase';
 
 export const TVMode = ({ licao, jogador }: any) => {
-  const [tab, setTab] = useState<'week' | 'season'>('week');
+  const [tab, setTab] = useState<'week' | 'season' | 'sorteador'>('week');
   const [ranking, setRanking] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState(30);
   const REFRESH = 30;
 
+  // Sorteador TV states
+  const [tvSUsers, setTvSUsers] = useState<any[]>([]);
+  const [tvSGanhador, setTvSGanhador] = useState<any | null>(null);
+  const [tvSIdx, setTvSIdx] = useState(0);
+  const [tvSAnimando, setTvSAnimando] = useState(false);
+  const [tvSLoading, setTvSLoading] = useState(false);
+  const [tvSConfetti, setTvSConfetti] = useState(false);
+  const tvSTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (tvSTimer.current) clearTimeout(tvSTimer.current); }, []);
+
+  const carregarTvSorteador = async () => {
+    setTvSLoading(true); setTvSGanhador(null); setTvSConfetti(false);
+    try {
+      const rank = await getWeeklyRanking(licao.semana);
+      setTvSUsers(rank.filter((u: any) => !u.isAdmin && u.dias === 7));
+    } catch { /* silent */ }
+    setTvSLoading(false);
+  };
+
+  const iniciarTvSorteio = () => {
+    if (tvSUsers.length === 0) return;
+    setTvSGanhador(null); setTvSConfetti(false); setTvSAnimando(true);
+    const winner = Math.floor(Math.random() * tvSUsers.length);
+    let step = 0; let cur = 0;
+    const TOTAL = 35;
+    const tick = () => {
+      cur = (cur + 1) % tvSUsers.length;
+      setTvSIdx(cur); step++;
+      const delay = step < TOTAL * .5 ? 55 : step < TOTAL * .8 ? 110 : 200;
+      if (step >= TOTAL) {
+        setTvSIdx(winner); setTvSGanhador(tvSUsers[winner]); setTvSAnimando(false);
+        setTvSConfetti(true);
+        setTimeout(() => setTvSConfetti(false), 4000);
+        return;
+      }
+      tvSTimer.current = setTimeout(tick, delay);
+    };
+    tvSTimer.current = setTimeout(tick, 55);
+  };
+
   const load = useCallback(async () => {
+    if (tab === 'sorteador') return; // don't reload ranking when in sorteador
     try {
       const r = tab === 'week'
         ? await getWeeklyRanking(licao.semana)
@@ -1170,7 +1308,7 @@ export const TVMode = ({ licao, jogador }: any) => {
     setCountdown(REFRESH);
   }, [licao.semana, licao.trimestre, tab]);
 
-  useEffect(() => { setLoading(true); load(); }, [load]);
+  useEffect(() => { if (tab !== 'sorteador') { setLoading(true); load(); } }, [load, tab]);
 
   useEffect(() => {
     const iv = setInterval(load, REFRESH * 1000);
@@ -1178,7 +1316,7 @@ export const TVMode = ({ licao, jogador }: any) => {
   }, [load]);
 
   useEffect(() => {
-    const iv = setInterval(() => setCountdown(c => (c <= 1 ? REFRESH : c - 1)), 1000);
+    const iv = setInterval(() => { if (tab !== 'sorteador') setCountdown(c => (c <= 1 ? REFRESH : c - 1)); }, 1000);
     return () => clearInterval(iv);
   }, [tab]);
 
@@ -1225,6 +1363,16 @@ export const TVMode = ({ licao, jogador }: any) => {
                 {t === 'week' ? 'Semana' : 'Temporada'}
               </button>
             ))}
+            {jogador?.isAdmin && (
+              <button onClick={() => setTab('sorteador')} style={{
+                background: tab === 'sorteador' ? 'rgba(229,0,109,.25)' : 'transparent',
+                color: tab === 'sorteador' ? '#E5006D' : 'rgba(255,255,255,.5)',
+                border: 'none', borderRadius:6, padding:'4px 12px',
+                fontSize:14, fontWeight:800, cursor:'pointer'
+              }}>
+                🎰
+              </button>
+            )}
           </div>
           {/* Refresh countdown */}
           <div style={{fontSize:12, color:'rgba(255,255,255,.4)', display:'flex', alignItems:'center', gap:5}}>
@@ -1241,7 +1389,98 @@ export const TVMode = ({ licao, jogador }: any) => {
       </div>
 
       {/* Body */}
-      {loading ? (
+      {tab === 'sorteador' ? (
+        <div style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 40px', gap:20, position:'relative', overflow:'hidden'}}>
+          <Confetti show={tvSConfetti} />
+
+          {/* Eligible users list */}
+          {tvSUsers.length > 0 && (
+            <div style={{display:'flex', flexWrap:'wrap', gap:12, justifyContent:'center', maxWidth:800}}>
+              {tvSUsers.map((u, i) => (
+                <div key={u.id} style={{
+                  display:'flex', flexDirection:'column', alignItems:'center', gap:4,
+                  background: tvSGanhador?.id === u.id ? 'rgba(247,198,0,.15)' : 'rgba(255,255,255,.06)',
+                  borderRadius:12, padding:'8px 14px',
+                  border: tvSGanhador?.id === u.id ? '2px solid #F7C600' : '2px solid transparent',
+                  transition:'all .3s'
+                }}>
+                  {u.avatar?.startsWith('data:')
+                    ? <img src={u.avatar} style={{width:44, height:44, borderRadius:'50%', objectFit:'cover'}} alt="" />
+                    : <div style={{fontSize:34}}>{u.avatar || '👤'}</div>}
+                  <div style={{fontSize:13, fontWeight:800, color:'rgba(255,255,255,.85)'}}>{u.nome.split(' ')[0]}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Slot machine display */}
+          <div style={{
+            minHeight:260, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+            background:'rgba(0,0,0,.35)', borderRadius:24, padding:'32px 48px',
+            border: tvSGanhador && !tvSAnimando ? '3px solid #F7C600' : '3px solid rgba(255,255,255,.08)',
+            transition:'border-color .4s', width:'100%', maxWidth:500
+          }}>
+            {tvSLoading && (
+              <div style={{fontSize:18, color:'rgba(255,255,255,.5)'}}>Carregando participantes...</div>
+            )}
+            {!tvSLoading && tvSUsers.length === 0 && !tvSGanhador && (
+              <div style={{fontSize:16, color:'rgba(255,255,255,.4)', textAlign:'center'}}>
+                Clique em "Carregar" para buscar os participantes que completaram os 7 dias.
+              </div>
+            )}
+            {tvSUsers.length > 0 && (tvSAnimando || tvSGanhador) && (
+              <>
+                {tvSAnimando && (
+                  <div style={{textAlign:'center', animation:'pulse .25s infinite'}}>
+                    {tvSUsers[tvSIdx]?.avatar?.startsWith('data:')
+                      ? <img src={tvSUsers[tvSIdx].avatar} style={{width:160, height:160, borderRadius:'50%', objectFit:'cover', border:'4px solid rgba(255,255,255,.3)'}} alt="" />
+                      : <div style={{fontSize:120, lineHeight:1}}>{tvSUsers[tvSIdx]?.avatar || '👤'}</div>}
+                    <div style={{fontSize:40, fontWeight:900, color:'#fff', marginTop:12, letterSpacing:-1}}>{tvSUsers[tvSIdx]?.nome}</div>
+                  </div>
+                )}
+                {tvSGanhador && !tvSAnimando && (
+                  <div style={{textAlign:'center', animation:'popIn .5s ease'}}>
+                    <div style={{fontSize:18, fontWeight:800, color:'#F7C600', letterSpacing:2, textTransform:'uppercase', marginBottom:16}}>🏆 VENCEDOR!</div>
+                    {tvSGanhador.avatar?.startsWith('data:')
+                      ? <img src={tvSGanhador.avatar} style={{width:180, height:180, borderRadius:'50%', objectFit:'cover', border:'5px solid #F7C600', boxShadow:'0 0 40px rgba(247,198,0,.4)'}} alt="" />
+                      : <div style={{fontSize:140, lineHeight:1}}>{tvSGanhador.avatar || '👤'}</div>}
+                    <div style={{fontSize:56, fontWeight:900, color:'#F7C600', marginTop:12, letterSpacing:-2}}>{tvSGanhador.nome}</div>
+                    <div style={{fontSize:20, color:'rgba(255,255,255,.6)', marginTop:6, fontWeight:700}}>{tvSGanhador.xp} XP · {tvSGanhador.dias} dias</div>
+                  </div>
+                )}
+              </>
+            )}
+            {tvSUsers.length > 0 && !tvSAnimando && !tvSGanhador && (
+              <div style={{fontSize:18, color:'rgba(255,255,255,.5)', textAlign:'center'}}>
+                {tvSUsers.length} participante{tvSUsers.length !== 1 ? 's' : ''} elegível{tvSUsers.length !== 1 ? 'is' : ''}.<br/>
+                <span style={{fontSize:14, opacity:.7}}>Pressione "🎰 Sortear!" para iniciar.</span>
+              </div>
+            )}
+          </div>
+
+          {/* Buttons */}
+          <div style={{display:'flex', gap:16, flexWrap:'wrap', justifyContent:'center'}}>
+            <button onClick={carregarTvSorteador} disabled={tvSLoading || tvSAnimando} style={{
+              background:'rgba(255,255,255,.1)', color:'rgba(255,255,255,.8)',
+              border:'1px solid rgba(255,255,255,.2)', borderRadius:12, padding:'12px 24px',
+              fontSize:16, fontWeight:800, cursor:'pointer', opacity: (tvSLoading || tvSAnimando) ? .4 : 1
+            }}>
+              {tvSLoading ? 'Carregando...' : '🔄 Carregar'}
+            </button>
+            {tvSUsers.length > 0 && (
+              <button onClick={iniciarTvSorteio} disabled={tvSAnimando} style={{
+                background: tvSAnimando ? 'rgba(229,0,109,.2)' : 'linear-gradient(135deg, #E5006D, #C50060)',
+                color:'#fff', border:'none', borderRadius:12, padding:'12px 36px',
+                fontSize:20, fontWeight:900, cursor: tvSAnimando ? 'not-allowed' : 'pointer',
+                boxShadow: tvSAnimando ? 'none' : '0 4px 24px rgba(229,0,109,.5)',
+                opacity: tvSAnimando ? .6 : 1, letterSpacing:1
+              }}>
+                {tvSAnimando ? '🎰 Sorteando...' : tvSGanhador ? '🔁 Sortear Novamente' : '🎰 Sortear!'}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : loading ? (
         <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'rgba(255,255,255,.4)'}}>
           Carregando ranking...
         </div>
