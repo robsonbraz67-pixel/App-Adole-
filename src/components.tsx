@@ -296,18 +296,32 @@ export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, 
   const addHl = (color: string) => {
     if (!sel) return;
     setHl((prev: any) => {
-      const list = prev[sel.pIndex] || [];
-      return { ...prev, [sel.pIndex]: [...list, { text: sel.text, color }] };
+      const list = [...(prev[sel.pIndex] || [])];
+      if (sel.hlIdx !== undefined) {
+        list[sel.hlIdx] = { ...list[sel.hlIdx], color };
+      } else {
+        list.push({ text: sel.text, color });
+      }
+      return { ...prev, [sel.pIndex]: list };
     });
     setSel(null);
     window.getSelection()?.removeAllRanges();
   };
 
+  const removeHl = (pIdx: number, hlIdx: number) => {
+    setHl((prev: any) => {
+      const list = [...(prev[pIdx] || [])];
+      list.splice(hlIdx, 1);
+      return { ...prev, [pIdx]: list };
+    });
+    setSel(null);
+  };
+
   const renderP = (p: string, pIdx: number) => {
-    let res = [p];
+    let res: any[] = [p];
     const myHls = hl[pIdx] || [];
-    
-    myHls.forEach((h: any) => {
+
+    myHls.forEach((h: any, hlIdx: number) => {
       const newRes: any[] = [];
       res.forEach((chunk: any) => {
         if (typeof chunk !== 'string') { newRes.push(chunk); return; }
@@ -315,7 +329,16 @@ export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, 
         parts.forEach((pt, i) => {
           newRes.push(pt);
           if (i < parts.length - 1) {
-            newRes.push(<span key={i} style={{background: h.color, color: h.color === '#F7C600' || h.color === '#1E9E86' ? (h.color === '#F7C600' ? '#1A0A00' : '#fff') : '#fff', padding: '0 3px', borderRadius: 3, fontWeight: h.color === '#F7C600' ? 700 : 400}}>{h.text}</span>);
+            const txtColor = h.color === '#F7C600' ? '#1A0A00' : '#fff';
+            newRes.push(
+              <span
+                key={`${hlIdx}-${i}`}
+                style={{background: h.color, color: txtColor, padding:'0 3px', borderRadius:3, fontWeight: h.color === '#F7C600' ? 700 : 400, cursor:'pointer', outline: sel?.hlIdx === hlIdx && sel?.pIndex === pIdx ? '2px solid white' : 'none'}}
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSel({ pIndex: pIdx, text: h.text, hlIdx }); }}
+              >
+                {h.text}
+              </span>
+            );
           }
         });
       });
@@ -337,11 +360,25 @@ export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, 
   return (
     <div className="scr-full">
       {sel && (
-        <div style={{position:'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background:'var(--notif-bg)', padding: '10px 16px', borderRadius: 30, display:'flex', gap: 14, boxShadow:'0 10px 30px rgba(0,0,0,.4)', zIndex: 1000, border:'1px solid var(--notif-border)', animation:'fadeUp .2s ease'}}>
-           {['#F7C600', '#1E9E86', '#E5006D', '#4A90D9'].map(c => (
-              <div key={c} onMouseDown={(e) => { e.preventDefault(); addHl(c); }} style={{width: 32, height: 32, borderRadius: '50%', background: c, border:'2px solid rgba(255,255,255,.7)', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,.4)'}} title="Destacar" />
-           ))}
-           <div onMouseDown={(e) => { e.preventDefault(); setSel(null); window.getSelection()?.removeAllRanges(); }} style={{width: 32, height: 32, borderRadius: '50%', background: '#333', border:'2px solid rgba(255,255,255,.2)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 13}}>❌</div>
+        <div style={{position:'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background:'var(--notif-bg)', padding: '8px 14px', borderRadius: 30, display:'flex', flexDirection:'column', alignItems:'center', gap: 6, boxShadow:'0 10px 30px rgba(0,0,0,.4)', zIndex: 1000, border:'1px solid var(--notif-border)', animation:'fadeUp .2s ease'}}>
+           <div style={{fontSize:10, color:'var(--mut)', fontWeight:700, textTransform:'uppercase', letterSpacing:1}}>
+             {sel.hlIdx !== undefined ? '✏️ Trocar cor ou remover' : '🎨 Destacar'}
+           </div>
+           <div style={{display:'flex', gap:10, alignItems:'center'}}>
+             {['#F7C600', '#1E9E86', '#E5006D', '#4A90D9'].map(c => (
+               <div key={c} onMouseDown={(e) => { e.preventDefault(); addHl(c); }} style={{width: 30, height: 30, borderRadius: '50%', background: c, border: sel.hlIdx !== undefined && (hl[sel.pIndex]?.[sel.hlIdx]?.color === c) ? '3px solid white' : '2px solid rgba(255,255,255,.5)', cursor:'pointer', boxShadow:'0 2px 5px rgba(0,0,0,.4)', transition:'transform .1s'}} />
+             ))}
+             <div
+               onMouseDown={(e) => {
+                 e.preventDefault();
+                 if (sel.hlIdx !== undefined) removeHl(sel.pIndex, sel.hlIdx);
+                 else { setSel(null); window.getSelection()?.removeAllRanges(); }
+               }}
+               style={{width: 30, height: 30, borderRadius: '50%', background: sel.hlIdx !== undefined ? 'rgba(227,28,61,.3)' : '#333', border:'2px solid rgba(255,255,255,.2)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 13}}
+             >
+               {sel.hlIdx !== undefined ? '🗑️' : '❌'}
+             </div>
+           </div>
         </div>
       )}
       <div className="hdr">
