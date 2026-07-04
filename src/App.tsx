@@ -147,6 +147,9 @@ export default function App() {
             if (dbProg) {
               p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
               ss(semKey(l), p);
+            } else if ((p.xp > 0 || (p.done?.length ?? 0) > 0) && dbUser) {
+              // Local has progress but Firestore doesn't — sync up silently
+              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, !!dbUser.isAdmin).catch(console.error);
             }
           } else {
              localStorage.removeItem('jogador');
