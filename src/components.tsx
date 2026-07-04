@@ -791,6 +791,8 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
 /* ===== ADMIN ===== */
 const SUPER_ADMIN_EMAIL = 'robsonbraz67@gmail.com';
 
+const avt = (avatar: string) => avatar?.startsWith('data:') ? '📸' : (avatar || '👤');
+
 const gerarNarrativa = (ranking: any[], semana: string): string => {
   const r = ranking.filter(u => !u.isAdmin);
   if (r.length === 0) return 'Nenhum participante registrado nesta semana ainda.';
@@ -799,22 +801,22 @@ const gerarNarrativa = (ranking: any[], semana: string): string => {
   const segundo = top[1];
   let t = `🏆 CORRIDA DA SEMANA — ${semana}\n\n`;
   if (lider) {
-    t += `${lider.avatar} ${lider.nome} chegou à frente com ${lider.xp} XP`;
+    t += `${avt(lider.avatar)} ${lider.nome} chegou à frente com ${lider.xp} XP`;
     if (lider.streak >= 5) t += ` e uma sequência incrível de ${lider.streak} dias seguidos`;
     t += `!\n\n`;
   }
   if (segundo) {
     const diff = lider.xp - segundo.xp;
-    if (diff < 100) t += `Foi de tirar o fôlego: ${segundo.avatar} ${segundo.nome} ficou a apenas ${diff} XP do topo!\n\n`;
-    else t += `Logo atrás, ${segundo.avatar} ${segundo.nome} com ${segundo.xp} XP deu trabalho!\n\n`;
+    if (diff < 100) t += `Foi de tirar o fôlego: ${avt(segundo.avatar)} ${segundo.nome} ficou a apenas ${diff} XP do topo!\n\n`;
+    else t += `Logo atrás, ${avt(segundo.avatar)} ${segundo.nome} com ${segundo.xp} XP deu trabalho!\n\n`;
   }
   if (top.length >= 3) {
     t += `Completando o pódio:\n`;
-    top.slice(2).forEach((u, i) => { t += `${i + 3}º ${u.avatar} ${u.nome} — ${u.xp} XP\n`; });
+    top.slice(2).forEach((u, i) => { t += `${i + 3}º ${avt(u.avatar)} ${u.nome} — ${u.xp} XP\n`; });
     t += '\n';
   }
   const mvpStreak = [...r].sort((a, b) => b.streak - a.streak)[0];
-  if (mvpStreak?.streak >= 5) t += `🔥 Dedicação da semana: ${mvpStreak.avatar} ${mvpStreak.nome} com ${mvpStreak.streak} dias seguidos!\n\n`;
+  if (mvpStreak?.streak >= 5) t += `🔥 Dedicação da semana: ${avt(mvpStreak.avatar)} ${mvpStreak.nome} com ${mvpStreak.streak} dias seguidos!\n\n`;
   const perfeitos = r.filter(u => u.dias === 7);
   if (perfeitos.length > 0) t += `⭐ Completaram os 7 dias: ${perfeitos.map(u => u.nome).join(', ')}!\n\n`;
   t += `Total: ${r.length} participante${r.length !== 1 ? 's' : ''} nesta semana 💪\n`;
