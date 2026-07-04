@@ -67,7 +67,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, blockUser, deleteUser, sendManualNotification, saveDayOverride } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -791,6 +791,55 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
 /* ===== ADMIN ===== */
 const SUPER_ADMIN_EMAIL = 'robsonbraz67@gmail.com';
 
+const gerarNarrativa = (ranking: any[], semana: string): string => {
+  const r = ranking.filter(u => !u.isAdmin);
+  if (r.length === 0) return 'Nenhum participante registrado nesta semana ainda.';
+  const top = r.slice(0, Math.min(5, r.length));
+  const lider = top[0];
+  const segundo = top[1];
+  let t = `🏆 CORRIDA DA SEMANA — ${semana}\n\n`;
+  if (lider) {
+    t += `${lider.avatar} ${lider.nome} chegou à frente com ${lider.xp} XP`;
+    if (lider.streak >= 5) t += ` e uma sequência incrível de ${lider.streak} dias seguidos`;
+    t += `!\n\n`;
+  }
+  if (segundo) {
+    const diff = lider.xp - segundo.xp;
+    if (diff < 100) t += `Foi de tirar o fôlego: ${segundo.avatar} ${segundo.nome} ficou a apenas ${diff} XP do topo!\n\n`;
+    else t += `Logo atrás, ${segundo.avatar} ${segundo.nome} com ${segundo.xp} XP deu trabalho!\n\n`;
+  }
+  if (top.length >= 3) {
+    t += `Completando o pódio:\n`;
+    top.slice(2).forEach((u, i) => { t += `${i + 3}º ${u.avatar} ${u.nome} — ${u.xp} XP\n`; });
+    t += '\n';
+  }
+  const mvpStreak = [...r].sort((a, b) => b.streak - a.streak)[0];
+  if (mvpStreak?.streak >= 5) t += `🔥 Dedicação da semana: ${mvpStreak.avatar} ${mvpStreak.nome} com ${mvpStreak.streak} dias seguidos!\n\n`;
+  const perfeitos = r.filter(u => u.dias === 7);
+  if (perfeitos.length > 0) t += `⭐ Completaram os 7 dias: ${perfeitos.map(u => u.nome).join(', ')}!\n\n`;
+  t += `Total: ${r.length} participante${r.length !== 1 ? 's' : ''} nesta semana 💪\n`;
+  t += `#SabatinaQuest #EscolaSabatinaTeen`;
+  return t;
+};
+
+const gerarPromptVideo = (ranking: any[], semana: string): string => {
+  const r = ranking.filter(u => !u.isAdmin).slice(0, 5);
+  if (r.length === 0) return 'Nenhum participante para gerar o prompt.';
+  let p = `Crie um vídeo curto de 30 segundos estilo premiação esportiva para uma turma de jovens cristãos.\n\n`;
+  p += `ESTILO VISUAL: Placar animado com estrelas e confetes, cores azul escuro e dourado, tipografia bold.\n`;
+  p += `MÚSICA: Trilha épica e motivacional, acelerando na revelação do 1º lugar.\n`;
+  p += `FORMATO: Vertical 9:16 (Stories/Reels).\n\n`;
+  p += `SEQUÊNCIA (revelar do último ao 1º com suspense):\n`;
+  [...r].reverse().forEach((u, i) => {
+    const pos = r.length - i;
+    p += `— ${pos}º lugar: "${u.nome}" ${u.avatar}  |  ${u.xp} XP  |  ${u.dias} dia${u.dias !== 1 ? 's' : ''} concluído${u.dias !== 1 ? 's' : ''}\n`;
+  });
+  p += `\nTEXTO DE ABERTURA: "Semana ${semana} — Quem foi o campeão? 🏆"\n`;
+  p += `TEXTO DE FECHAMENTO: "Parabéns a todos! Nos vemos na próxima semana! 💪✨"\n`;
+  p += `CALL TO ACTION: "Baixe o SabatinaQuest e entre para o ranking!"`;
+  return p;
+};
+
 export const Admin = ({ licao, jogador, onBack }: any) => {
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
@@ -801,6 +850,10 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const [notifTitle, setNotifTitle] = useState('Você tem uma nova mensagem! 📬');
   const [notifBody, setNotifBody] = useState('Continue seu estudo diário e ganhe mais XP!');
   const [sendingNotif, setSendingNotif] = useState(false);
+
+  // Relatório da semana
+  const [relatorio, setRelatorio] = useState<{ narrativa: string; promptVideo: string } | null>(null);
+  const [loadingRelatorio, setLoadingRelatorio] = useState(false);
 
   useEffect(() => {
     let unmounted = false;
@@ -845,6 +898,20 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
      } catch(e) {
         alert('Erro ao excluir usuário');
      }
+  };
+
+  const handleGerarRelatorio = async () => {
+    setLoadingRelatorio(true);
+    try {
+      const rank = await getWeeklyRanking(licao.semana);
+      setRelatorio({
+        narrativa: gerarNarrativa(rank, licao.semana),
+        promptVideo: gerarPromptVideo(rank, licao.semana),
+      });
+    } catch(e) {
+      alert('Erro ao carregar ranking para o relatório.');
+    }
+    setLoadingRelatorio(false);
   };
 
   const handleSendNotif = async () => {
@@ -946,6 +1013,54 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                </button>
              </>
            )}
+        </div>
+
+        <div className="sec-title" style={{marginBottom:8}}>Corrida da Semana 📊</div>
+        <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:24}}>
+          <div style={{fontSize:13, color:'var(--mut)', marginBottom:12}}>
+            Gera uma narrativa e um prompt de vídeo com base no ranking atual de <strong style={{color:'var(--txt2)'}}>{licao.semana}</strong>.
+          </div>
+          <button onClick={handleGerarRelatorio} disabled={loadingRelatorio} className={`btn btn-gold ${loadingRelatorio ? 'btn-dis' : ''}`} style={{fontSize:14, padding:'10px', marginBottom: relatorio ? 16 : 0}}>
+            {loadingRelatorio ? 'Gerando...' : '🎬 Gerar Relatório + Prompt de Vídeo'}
+          </button>
+
+          {relatorio && (
+            <>
+              <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', marginBottom:6, textTransform:'uppercase', letterSpacing:1}}>
+                Narrativa da Semana
+              </div>
+              <div style={{position:'relative', marginBottom:16}}>
+                <textarea
+                  readOnly
+                  value={relatorio.narrativa}
+                  style={{width:'100%', minHeight:160, padding:'10px', borderRadius:8, background:'rgba(0,0,0,.3)', border:'1px solid rgba(255,255,255,.08)', color:'var(--txt2)', fontSize:13, fontFamily:'monospace', resize:'vertical'}}
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(relatorio.narrativa).then(() => alert('Copiado!'))}
+                  style={{position:'absolute', top:6, right:6, background:'rgba(247,198,0,.2)', color:'var(--gold)', border:'none', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}
+                >
+                  Copiar
+                </button>
+              </div>
+
+              <div style={{fontSize:12, fontWeight:800, color:'var(--teal)', marginBottom:6, textTransform:'uppercase', letterSpacing:1}}>
+                Prompt para IA de Vídeo (Runway / CapCut / Pika)
+              </div>
+              <div style={{position:'relative'}}>
+                <textarea
+                  readOnly
+                  value={relatorio.promptVideo}
+                  style={{width:'100%', minHeight:200, padding:'10px', borderRadius:8, background:'rgba(0,0,0,.3)', border:'1px solid rgba(255,255,255,.08)', color:'var(--txt2)', fontSize:13, fontFamily:'monospace', resize:'vertical'}}
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(relatorio.promptVideo).then(() => alert('Copiado!'))}
+                  style={{position:'absolute', top:6, right:6, background:'rgba(30,158,134,.25)', color:'var(--teal)', border:'none', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}
+                >
+                  Copiar
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{marginTop:8,padding:16,background:'rgba(255,255,255,.03)',borderRadius:12}}>
