@@ -15,6 +15,18 @@ const clearStaleCache = () => {
   localStorage.setItem('cacheVersion', CACHE_VERSION);
 };
 
+const getActiveLicao = () => {
+  const hoje = new Date();
+  const offset = hoje.getTimezoneOffset() * 60000;
+  const h = new Date(hoje.getTime() - offset).toISOString().split('T')[0];
+  const visible = (LICOES as any[]).filter(l => !l.isAdminOnly);
+  const active = visible.find(l => {
+    const dates = l.dias.map((d: any) => d.data);
+    return h >= dates[0] && h <= dates[dates.length - 1];
+  });
+  return active || visible[0];
+};
+
 export default function App() {
   const [tela, setTela] = useState('splash');
   const [jogador, setJogador] = useState<any>(null);
@@ -95,7 +107,11 @@ export default function App() {
     const initApp = async () => {
       clearStaleCache();
       const j = gs('jogador');
-      const l = gs('licao_atual', LICOES[0]);
+      const activeLicao = getActiveLicao();
+      const savedLicao = gs('licao_atual', null);
+      // Auto-switch to current week's lesson; keep saved only if it's the same week or a future week
+      const l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
+      ss('licao_atual', l);
       setLicao(l);
 
       let r = gs('ranking_' + l.semana, []);
