@@ -1112,6 +1112,211 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   );
 };
 
+/* ===== TV MODE ===== */
+import { getSeasonRanking } from './firebase';
+
+export const TVMode = ({ licao, jogador }: any) => {
+  const [tab, setTab] = useState<'week' | 'season'>('week');
+  const [ranking, setRanking] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [countdown, setCountdown] = useState(30);
+  const REFRESH = 30;
+
+  const load = useCallback(async () => {
+    try {
+      const r = tab === 'week'
+        ? await getWeeklyRanking(licao.semana)
+        : await getSeasonRanking(licao.trimestre);
+      setRanking(r.filter((u: any) => !u.isAdmin));
+    } catch(e) { console.error(e); }
+    setLoading(false);
+    setCountdown(REFRESH);
+  }, [licao.semana, licao.trimestre, tab]);
+
+  useEffect(() => { setLoading(true); load(); }, [load]);
+
+  useEffect(() => {
+    const iv = setInterval(load, REFRESH * 1000);
+    return () => clearInterval(iv);
+  }, [load]);
+
+  useEffect(() => {
+    const iv = setInterval(() => setCountdown(c => (c <= 1 ? REFRESH : c - 1)), 1000);
+    return () => clearInterval(iv);
+  }, [tab]);
+
+  const maxXP = ranking[0]?.xp || 1;
+  const medals = ['🥇', '🥈', '🥉'];
+  const podiumColor = ['#F7C600', '#C0C0C0', '#CD7F32'];
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'linear-gradient(160deg, #0a1628 0%, #0f2347 55%, #0d1e3a 100%)',
+      display: 'flex', flexDirection: 'column',
+      fontFamily: 'Poppins, sans-serif', overflow: 'hidden',
+      color: '#fff'
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 28px', flexShrink: 0,
+        borderBottom: '1px solid rgba(247,198,0,.15)',
+        background: 'rgba(0,0,0,.25)'
+      }}>
+        <div style={{display:'flex', alignItems:'center', gap:10}}>
+          <span style={{fontSize:26}}>📖</span>
+          <div>
+            <span style={{color:'#F7C600', fontWeight:900, fontSize:18}}>Sabatina</span>
+            <span style={{color:'#1E9E86', fontWeight:900, fontSize:18}}>Quest</span>
+          </div>
+          <div style={{marginLeft:16, fontSize:13, color:'rgba(255,255,255,.5)', borderLeft:'1px solid rgba(255,255,255,.1)', paddingLeft:16}}>
+            {licao.titulo}
+          </div>
+        </div>
+
+        <div style={{display:'flex', alignItems:'center', gap:12}}>
+          {/* Tab toggle */}
+          <div style={{display:'flex', background:'rgba(255,255,255,.07)', borderRadius:8, padding:3, gap:3}}>
+            {(['week','season'] as const).map(t => (
+              <button key={t} onClick={() => setTab(t)} style={{
+                background: tab === t ? 'rgba(247,198,0,.2)' : 'transparent',
+                color: tab === t ? '#F7C600' : 'rgba(255,255,255,.5)',
+                border: 'none', borderRadius:6, padding:'4px 12px',
+                fontSize:12, fontWeight:800, cursor:'pointer'
+              }}>
+                {t === 'week' ? 'Semana' : 'Temporada'}
+              </button>
+            ))}
+          </div>
+          {/* Refresh countdown */}
+          <div style={{fontSize:12, color:'rgba(255,255,255,.4)', display:'flex', alignItems:'center', gap:5}}>
+            <div style={{
+              width:28, height:28, borderRadius:'50%',
+              border:'2px solid rgba(247,198,0,.3)',
+              borderTopColor:'#F7C600',
+              animation:'spin .8s linear infinite',
+              flexShrink:0
+            }}/>
+            {countdown}s
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      {loading ? (
+        <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'rgba(255,255,255,.4)'}}>
+          Carregando ranking...
+        </div>
+      ) : ranking.length === 0 ? (
+        <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'rgba(255,255,255,.4)'}}>
+          Nenhum participante ainda esta semana.
+        </div>
+      ) : (
+        <div style={{
+          flex:1, display:'grid', overflow:'hidden',
+          gridTemplateColumns: ranking.length > 5 ? '1fr 1fr' : '1fr',
+          gap:0,
+        }}>
+          {ranking.map((u: any, i: number) => {
+            const pct = Math.max(8, Math.round((u.xp / maxXP) * 100));
+            const isTop3 = i < 3;
+            const rowBg = i === 0
+              ? 'linear-gradient(90deg, rgba(247,198,0,.12) 0%, transparent 100%)'
+              : i === 1
+              ? 'linear-gradient(90deg, rgba(192,192,192,.08) 0%, transparent 100%)'
+              : i === 2
+              ? 'linear-gradient(90deg, rgba(205,127,50,.08) 0%, transparent 100%)'
+              : i % 2 === 0 ? 'rgba(255,255,255,.02)' : 'transparent';
+
+            return (
+              <div key={u.id} style={{
+                display:'flex', alignItems:'center', gap:16,
+                padding:'0 28px',
+                background: rowBg,
+                borderBottom:'1px solid rgba(255,255,255,.04)',
+                minHeight:0,
+              }}>
+                {/* Position */}
+                <div style={{
+                  width:40, textAlign:'center', flexShrink:0,
+                  fontSize: isTop3 ? 26 : 18,
+                  fontWeight:900,
+                  color: isTop3 ? podiumColor[i] : 'rgba(255,255,255,.4)',
+                }}>
+                  {isTop3 ? medals[i] : `${i+1}`}
+                </div>
+
+                {/* Avatar */}
+                <div style={{
+                  width:46, height:46, borderRadius:'50%', overflow:'hidden', flexShrink:0,
+                  border:`2px solid ${isTop3 ? podiumColor[i] : 'rgba(255,255,255,.1)'}`,
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  fontSize:24, background:'rgba(0,0,0,.3)',
+                }}>
+                  {u.avatar?.startsWith('data:')
+                    ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />
+                    : <span>{u.avatar}</span>}
+                </div>
+
+                {/* Name + streak */}
+                <div style={{flex:'0 0 160px', minWidth:0}}>
+                  <div style={{
+                    fontSize:15, fontWeight:800,
+                    color: isTop3 ? '#fff' : 'rgba(255,255,255,.8)',
+                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'
+                  }}>{u.nome}</div>
+                  {u.streak > 0 && (
+                    <div style={{fontSize:11, color:'rgba(255,255,255,.45)', marginTop:1}}>
+                      🔥 {u.streak} dia{u.streak !== 1 ? 's' : ''} seguido{u.streak !== 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+
+                {/* XP bar */}
+                <div style={{flex:1, display:'flex', alignItems:'center', gap:10}}>
+                  <div style={{flex:1, height:8, background:'rgba(255,255,255,.08)', borderRadius:4, overflow:'hidden'}}>
+                    <div style={{
+                      height:'100%', borderRadius:4,
+                      width: pct + '%',
+                      background: isTop3
+                        ? `linear-gradient(90deg, ${podiumColor[i]}, ${podiumColor[i]}cc)`
+                        : 'linear-gradient(90deg, #1E9E86, #4A90D9)',
+                      transition:'width .6s ease'
+                    }}/>
+                  </div>
+                  <div style={{
+                    width:72, textAlign:'right', flexShrink:0,
+                    fontSize:15, fontWeight:900,
+                    color: isTop3 ? podiumColor[i] : 'rgba(255,255,255,.7)'
+                  }}>
+                    {u.xp} <span style={{fontSize:11, fontWeight:600, opacity:.6}}>XP</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div style={{
+        padding:'7px 28px', flexShrink:0,
+        borderTop:'1px solid rgba(247,198,0,.1)',
+        background:'rgba(0,0,0,.2)',
+        display:'flex', justifyContent:'space-between', alignItems:'center'
+      }}>
+        <div style={{fontSize:11, color:'rgba(255,255,255,.3)'}}>
+          {tab === 'week' ? `Semana ${licao.semana}` : `Temporada ${licao.trimestre}`} · {ranking.length} participante{ranking.length !== 1 ? 's' : ''}
+        </div>
+        <div style={{fontSize:11, color:'rgba(255,255,255,.3)'}}>
+          #SabatinaQuest · Escola Sabatina Teen
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ===== CONFIG ===== */
 export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange }: any) => {
   const [nome, setNome] = useState(jogador.nome || '');

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LICOES } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder } from './utils';
 import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride } from './firebase';
-import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config } from './components';
+import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, TVMode } from './components';
 
 const CACHE_VERSION = '3T2026';
 
@@ -39,6 +39,14 @@ export default function App() {
   const [inAppNotif, setInAppNotif] = useState<{title: string, body: string, id: number} | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => (localStorage.getItem('theme') as 'light' | 'dark' | 'auto') || 'auto');
   const [showNotifPrompt, setShowNotifPrompt] = useState(false);
+  const [isLandscape, setIsLandscape] = useState(() => window.innerWidth > window.innerHeight && window.innerWidth >= 640);
+
+  useEffect(() => {
+    const check = () => setIsLandscape(window.innerWidth > window.innerHeight && window.innerWidth >= 640);
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+    return () => { window.removeEventListener('resize', check); window.removeEventListener('orientationchange', check); };
+  }, []);
 
   const shouldAskNotif = () => {
     if (!('Notification' in window)) return false;
@@ -445,6 +453,7 @@ export default function App() {
   if (tela === 'splash') return <Splash />;
   if (tela === 'login') return <Login onLogin={handleLogin} />;
   if (!jogador || !licao) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',color:'#B9ACE6'}}>Carregando...</div>;
+  if (isLandscape) return <TVMode licao={licao} jogador={jogador} />;
 
   return (
     <>
