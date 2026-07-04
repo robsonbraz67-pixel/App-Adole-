@@ -919,6 +919,38 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
     setSLoading(false);
   };
 
+  const playSorteioTick = (fast: boolean) => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'square';
+      osc.frequency.value = fast ? 880 : 550;
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.04);
+    } catch {}
+  };
+
+  const playSorteioWin = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      [523, 659, 784, 1047, 1319].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.11;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.2, t + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+        osc.start(t); osc.stop(t + 0.5);
+      });
+    } catch {}
+  };
+
   const iniciarSorteio = () => {
     if (sUsers.length === 0) return;
     setSGanhador(null); setSAnimando(true);
@@ -928,9 +960,13 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
     const tick = () => {
       cur = (cur + 1) % sUsers.length;
       setSIdx(cur); step++;
-      const delay = step < TOTAL * .5 ? 55 : step < TOTAL * .8 ? 110 : 200;
+      const fast = step < TOTAL * .5;
+      const delay = fast ? 55 : step < TOTAL * .8 ? 110 : 200;
+      playSorteioTick(fast);
       if (step >= TOTAL) {
-        setSIdx(winner); setSGanhador(sUsers[winner]); setSAnimando(false); return;
+        setSIdx(winner); setSGanhador(sUsers[winner]); setSAnimando(false);
+        setTimeout(playSorteioWin, 150);
+        return;
       }
       sTimer.current = setTimeout(tick, delay);
     };
@@ -1275,6 +1311,60 @@ export const TVMode = ({ licao, jogador }: any) => {
     setTvSLoading(false);
   };
 
+  const playTvTick = (fast: boolean) => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const gain = ctx.createGain();
+      const filt = ctx.createBiquadFilter();
+      filt.type = 'bandpass';
+      filt.frequency.value = fast ? 3200 : 1800;
+      filt.Q.value = 2;
+      src.connect(filt);
+      filt.connect(gain);
+      gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(fast ? 0.18 : 0.28, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+      src.start(); src.stop(ctx.currentTime + 0.04);
+    } catch {}
+  };
+
+  const playTvWin = () => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      // Ascending arpeggio (casino jackpot feel)
+      [523, 659, 784, 988, 1319].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = i < 3 ? 'triangle' : 'sine';
+        osc.frequency.value = freq;
+        const t = ctx.currentTime + i * 0.12;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.3, t + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+        osc.start(t); osc.stop(t + 0.6);
+      });
+      // Coin scatter
+      for (let i = 0; i < 10; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'square';
+        osc.frequency.value = 900 + Math.random() * 1100;
+        const t = ctx.currentTime + 0.6 + Math.random() * 1.4;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.07, t + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        osc.start(t); osc.stop(t + 0.12);
+      }
+    } catch {}
+  };
+
   const iniciarTvSorteio = () => {
     if (tvSUsers.length === 0) return;
     setTvSGanhador(null); setTvSConfetti(false); setTvSAnimando(true);
@@ -1284,11 +1374,14 @@ export const TVMode = ({ licao, jogador }: any) => {
     const tick = () => {
       cur = (cur + 1) % tvSUsers.length;
       setTvSIdx(cur); step++;
-      const delay = step < TOTAL * .5 ? 55 : step < TOTAL * .8 ? 110 : 200;
+      const fast = step < TOTAL * .5;
+      const delay = fast ? 55 : step < TOTAL * .8 ? 110 : 200;
+      playTvTick(fast);
       if (step >= TOTAL) {
         setTvSIdx(winner); setTvSGanhador(tvSUsers[winner]); setTvSAnimando(false);
         setTvSConfetti(true);
-        setTimeout(() => setTvSConfetti(false), 4000);
+        setTimeout(playTvWin, 200);
+        setTimeout(() => setTvSConfetti(false), 5000);
         return;
       }
       tvSTimer.current = setTimeout(tick, delay);
@@ -1390,90 +1483,102 @@ export const TVMode = ({ licao, jogador }: any) => {
 
       {/* Body */}
       {tab === 'sorteador' ? (
-        <div style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'24px 40px', gap:20, position:'relative', overflow:'hidden'}}>
+        <div style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden', position:'relative'}}>
           <Confetti show={tvSConfetti} />
 
-          {/* Eligible users list */}
+          {/* Top strip — eligible users (only when loaded) */}
           {tvSUsers.length > 0 && (
-            <div style={{display:'flex', flexWrap:'wrap', gap:12, justifyContent:'center', maxWidth:800}}>
-              {tvSUsers.map((u, i) => (
+            <div style={{
+              flexShrink:0, display:'flex', flexWrap:'wrap', gap:10,
+              justifyContent:'center', padding:'14px 32px 8px',
+              overflowY:'auto', maxHeight:'28%',
+              borderBottom:'1px solid rgba(255,255,255,.06)'
+            }}>
+              {tvSUsers.map(u => (
                 <div key={u.id} style={{
-                  display:'flex', flexDirection:'column', alignItems:'center', gap:4,
-                  background: tvSGanhador?.id === u.id ? 'rgba(247,198,0,.15)' : 'rgba(255,255,255,.06)',
-                  borderRadius:12, padding:'8px 14px',
+                  display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+                  background: tvSGanhador?.id === u.id ? 'rgba(247,198,0,.18)' : 'rgba(255,255,255,.07)',
+                  borderRadius:12, padding:'8px 12px',
                   border: tvSGanhador?.id === u.id ? '2px solid #F7C600' : '2px solid transparent',
-                  transition:'all .3s'
+                  transition:'all .35s', minWidth:64
                 }}>
                   {u.avatar?.startsWith('data:')
                     ? <img src={u.avatar} style={{width:44, height:44, borderRadius:'50%', objectFit:'cover'}} alt="" />
-                    : <div style={{fontSize:34}}>{u.avatar || '👤'}</div>}
-                  <div style={{fontSize:13, fontWeight:800, color:'rgba(255,255,255,.85)'}}>{u.nome.split(' ')[0]}</div>
+                    : <div style={{fontSize:34, lineHeight:1}}>{u.avatar || '👤'}</div>}
+                  <div style={{fontSize:12, fontWeight:800, color:'rgba(255,255,255,.85)', marginTop:2, maxWidth:72, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'center'}}>{u.nome.split(' ')[0]}</div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Slot machine display */}
-          <div style={{
-            minHeight:260, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-            background:'rgba(0,0,0,.35)', borderRadius:24, padding:'32px 48px',
-            border: tvSGanhador && !tvSAnimando ? '3px solid #F7C600' : '3px solid rgba(255,255,255,.08)',
-            transition:'border-color .4s', width:'100%', maxWidth:500
-          }}>
-            {tvSLoading && (
-              <div style={{fontSize:18, color:'rgba(255,255,255,.5)'}}>Carregando participantes...</div>
-            )}
-            {!tvSLoading && tvSUsers.length === 0 && !tvSGanhador && (
-              <div style={{fontSize:16, color:'rgba(255,255,255,.4)', textAlign:'center'}}>
-                Clique em "Carregar" para buscar os participantes que completaram os 7 dias.
+          {/* Center — slot display grows to fill space */}
+          <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px 48px', overflow:'hidden'}}>
+            {tvSLoading ? (
+              <div style={{fontSize:20, color:'rgba(255,255,255,.4)', textAlign:'center'}}>
+                <div style={{width:40,height:40,borderRadius:'50%',border:'3px solid rgba(247,198,0,.3)',borderTopColor:'#F7C600',animation:'spin .8s linear infinite',margin:'0 auto 14px'}}/>
+                Carregando participantes...
               </div>
-            )}
-            {tvSUsers.length > 0 && (tvSAnimando || tvSGanhador) && (
-              <>
-                {tvSAnimando && (
-                  <div style={{textAlign:'center', animation:'pulse .25s infinite'}}>
-                    {tvSUsers[tvSIdx]?.avatar?.startsWith('data:')
-                      ? <img src={tvSUsers[tvSIdx].avatar} style={{width:160, height:160, borderRadius:'50%', objectFit:'cover', border:'4px solid rgba(255,255,255,.3)'}} alt="" />
-                      : <div style={{fontSize:120, lineHeight:1}}>{tvSUsers[tvSIdx]?.avatar || '👤'}</div>}
-                    <div style={{fontSize:40, fontWeight:900, color:'#fff', marginTop:12, letterSpacing:-1}}>{tvSUsers[tvSIdx]?.nome}</div>
-                  </div>
-                )}
-                {tvSGanhador && !tvSAnimando && (
-                  <div style={{textAlign:'center', animation:'popIn .5s ease'}}>
-                    <div style={{fontSize:18, fontWeight:800, color:'#F7C600', letterSpacing:2, textTransform:'uppercase', marginBottom:16}}>🏆 VENCEDOR!</div>
-                    {tvSGanhador.avatar?.startsWith('data:')
-                      ? <img src={tvSGanhador.avatar} style={{width:180, height:180, borderRadius:'50%', objectFit:'cover', border:'5px solid #F7C600', boxShadow:'0 0 40px rgba(247,198,0,.4)'}} alt="" />
-                      : <div style={{fontSize:140, lineHeight:1}}>{tvSGanhador.avatar || '👤'}</div>}
-                    <div style={{fontSize:56, fontWeight:900, color:'#F7C600', marginTop:12, letterSpacing:-2}}>{tvSGanhador.nome}</div>
-                    <div style={{fontSize:20, color:'rgba(255,255,255,.6)', marginTop:6, fontWeight:700}}>{tvSGanhador.xp} XP · {tvSGanhador.dias} dias</div>
-                  </div>
-                )}
-              </>
-            )}
-            {tvSUsers.length > 0 && !tvSAnimando && !tvSGanhador && (
-              <div style={{fontSize:18, color:'rgba(255,255,255,.5)', textAlign:'center'}}>
-                {tvSUsers.length} participante{tvSUsers.length !== 1 ? 's' : ''} elegível{tvSUsers.length !== 1 ? 'is' : ''}.<br/>
-                <span style={{fontSize:14, opacity:.7}}>Pressione "🎰 Sortear!" para iniciar.</span>
+            ) : !tvSAnimando && !tvSGanhador ? (
+              <div style={{textAlign:'center'}}>
+                <div style={{fontSize:80, marginBottom:12, filter:'drop-shadow(0 0 20px rgba(229,0,109,.5))'}}>🎰</div>
+                <div style={{fontSize: tvSUsers.length > 0 ? 22 : 18, fontWeight:800, color:'rgba(255,255,255,.6)', lineHeight:1.4}}>
+                  {tvSUsers.length > 0
+                    ? <>{tvSUsers.length} participante{tvSUsers.length !== 1 ? 's' : ''} elegível{tvSUsers.length !== 1 ? 'is' : ''}<br/><span style={{fontSize:15, opacity:.6, fontWeight:600}}>Pressione Sortear! para iniciar</span></>
+                    : <>Clique em "Carregar" para buscar<br/>quem completou os 7 dias desta semana</>}
+                </div>
+              </div>
+            ) : tvSAnimando ? (
+              <div style={{textAlign:'center', animation:'pulse .2s infinite', willChange:'opacity'}}>
+                <div style={{
+                  width:'min(22vh, 170px)', height:'min(22vh, 170px)', borderRadius:'50%', overflow:'hidden',
+                  margin:'0 auto 16px', border:'4px solid rgba(255,255,255,.25)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  background:'rgba(0,0,0,.4)'
+                }}>
+                  {tvSUsers[tvSIdx]?.avatar?.startsWith('data:')
+                    ? <img src={tvSUsers[tvSIdx].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />
+                    : <span style={{fontSize:'min(13vh, 110px)', lineHeight:1}}>{tvSUsers[tvSIdx]?.avatar || '👤'}</span>}
+                </div>
+                <div style={{fontSize:'min(5vw, 44px)', fontWeight:900, color:'#fff', letterSpacing:-1, maxWidth:'70vw', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{tvSUsers[tvSIdx]?.nome}</div>
+              </div>
+            ) : tvSGanhador && (
+              <div style={{textAlign:'center', animation:'popIn .45s cubic-bezier(.175,.885,.32,1.275)'}}>
+                <div style={{fontSize:16, fontWeight:900, color:'#F7C600', letterSpacing:3, textTransform:'uppercase', marginBottom:14, textShadow:'0 0 20px rgba(247,198,0,.6)'}}>🏆 VENCEDOR! 🏆</div>
+                <div style={{
+                  width:'min(24vh, 190px)', height:'min(24vh, 190px)', borderRadius:'50%', overflow:'hidden',
+                  margin:'0 auto 18px', border:'5px solid #F7C600',
+                  boxShadow:'0 0 50px rgba(247,198,0,.45), 0 0 100px rgba(247,198,0,.2)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  background:'rgba(0,0,0,.4)'
+                }}>
+                  {tvSGanhador.avatar?.startsWith('data:')
+                    ? <img src={tvSGanhador.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />
+                    : <span style={{fontSize:'min(14vh, 120px)', lineHeight:1}}>{tvSGanhador.avatar || '👤'}</span>}
+                </div>
+                <div style={{fontSize:'min(6vw, 56px)', fontWeight:900, color:'#F7C600', letterSpacing:-2, textShadow:'0 2px 30px rgba(247,198,0,.5)', maxWidth:'80vw', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{tvSGanhador.nome}</div>
+                <div style={{fontSize:'min(2.2vw, 20px)', color:'rgba(255,255,255,.55)', marginTop:8, fontWeight:700}}>{tvSGanhador.xp} XP · {tvSGanhador.dias} dias</div>
               </div>
             )}
           </div>
 
-          {/* Buttons */}
-          <div style={{display:'flex', gap:16, flexWrap:'wrap', justifyContent:'center'}}>
+          {/* Bottom — buttons row */}
+          <div style={{flexShrink:0, display:'flex', gap:16, justifyContent:'center', padding:'8px 32px 20px', flexWrap:'wrap'}}>
             <button onClick={carregarTvSorteador} disabled={tvSLoading || tvSAnimando} style={{
-              background:'rgba(255,255,255,.1)', color:'rgba(255,255,255,.8)',
-              border:'1px solid rgba(255,255,255,.2)', borderRadius:12, padding:'12px 24px',
-              fontSize:16, fontWeight:800, cursor:'pointer', opacity: (tvSLoading || tvSAnimando) ? .4 : 1
+              background:'rgba(255,255,255,.08)', color:'rgba(255,255,255,.75)',
+              border:'1px solid rgba(255,255,255,.18)', borderRadius:12, padding:'10px 22px',
+              fontSize:15, fontWeight:800, cursor:'pointer',
+              opacity: (tvSLoading || tvSAnimando) ? .35 : 1,
+              transition:'opacity .2s'
             }}>
               {tvSLoading ? 'Carregando...' : '🔄 Carregar'}
             </button>
             {tvSUsers.length > 0 && (
               <button onClick={iniciarTvSorteio} disabled={tvSAnimando} style={{
-                background: tvSAnimando ? 'rgba(229,0,109,.2)' : 'linear-gradient(135deg, #E5006D, #C50060)',
-                color:'#fff', border:'none', borderRadius:12, padding:'12px 36px',
+                background: tvSAnimando ? 'rgba(229,0,109,.15)' : 'linear-gradient(135deg, #E5006D 0%, #C50060 100%)',
+                color:'#fff', border:'none', borderRadius:12, padding:'12px 40px',
                 fontSize:20, fontWeight:900, cursor: tvSAnimando ? 'not-allowed' : 'pointer',
-                boxShadow: tvSAnimando ? 'none' : '0 4px 24px rgba(229,0,109,.5)',
-                opacity: tvSAnimando ? .6 : 1, letterSpacing:1
+                boxShadow: tvSAnimando ? 'none' : '0 4px 28px rgba(229,0,109,.55)',
+                opacity: tvSAnimando ? .45 : 1, letterSpacing:1, transition:'all .2s'
               }}>
                 {tvSAnimando ? '🎰 Sorteando...' : tvSGanhador ? '🔁 Sortear Novamente' : '🎰 Sortear!'}
               </button>
