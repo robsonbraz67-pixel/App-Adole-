@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { LICOES } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder } from './utils';
 import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride } from './firebase';
+import { registerStreakActivity } from './streak';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, TVMode } from './components';
 
 const CACHE_VERSION = '3T2026';
@@ -289,6 +290,11 @@ export default function App() {
     if (!isRepeat) {
       readingXP = Math.round(100 * (dbLicaoData || diaAtual.data ? getRecencyMult(dbLicaoData || diaAtual.data) : 1.0));
       res.xpTotal += readingXP;
+    }
+
+    if (!isRepeat) {
+      registerStreakActivity(jogador.id);
+      window.dispatchEvent(new Event('streak-updated'));
     }
 
     const novaDone = isRepeat ? prog.done : [...prog.done, diaAtual.id];

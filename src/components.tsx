@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { DEMO, LICOES } from './data';
 import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx } from './utils';
+import { useStreak } from './streak';
 
 /* ===== CONFETTI ===== */
 const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
@@ -155,8 +156,12 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
     .replace(/\s*\([^)]*\)\s*$/, '')
     .trim();
 
+  // Ofensiva da temporada (🔥)
+  const seasonStreak = useStreak(jogador?.id);
+
   // Banner suspenso acompanha a semana visível na rolagem (e a selecionada)
   const [bannerL, setBannerL] = useState<any>(licao);
+  const [showTop, setShowTop] = useState(false);
   useEffect(() => { setBannerL(licao); }, [licao.semana]);
   const secRefs = useRef<Record<string, HTMLElement | null>>({});
   useEffect(() => {
@@ -166,6 +171,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
       ticking = true;
       requestAnimationFrame(() => {
         ticking = false;
+        setShowTop(window.scrollY > 400);
         let cur: any = null;
         for (const l of visiveis) {
           const el = secRefs.current[l.semana];
@@ -179,56 +185,21 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
     return () => window.removeEventListener('scroll', onScroll);
   }, [visiveis]);
 
+  const numSel = visiveis.findIndex((l: any) => l.semana === licao.semana) + 1;
+
   return (
     <div className="scr" style={{paddingBottom:100}}>
-      <div className="hdr">
-        <div>
-          <div className="logo"><span className="s1">Sabatina</span><span className="s2">Quest</span></div>
-          <div className="logo-sub">Escola Sabatina Teen</div>
-        </div>
-        <div style={{display: 'flex', gap: '8px'}}>
-          {jogador.isAdmin && <button className="btn btn-ghost btn-sm" onClick={onAdmin} style={{width:'auto',padding:'8px',fontSize:14}}>🛡️</button>}
-          <button className="btn btn-ghost btn-sm" onClick={shareApp} style={{width:'auto',padding:'8px',fontSize:14}}>🔗</button>
-          <button className="btn btn-ghost btn-sm" onClick={onConfig} style={{width:'auto',padding:'8px',fontSize:14}}>⚙️</button>
-        </div>
+      {/* Header fixo estilo Duolingo: avatar · semana · XP · ofensiva */}
+      <div className="hdr stats-hdr">
+        <button className="stat-avatar" onClick={onConfig} aria-label="Perfil">
+          {jogador.avatar?.length > 10 ? <img src={jogador.avatar} alt="avatar"/> : <span>{jogador.avatar}</span>}
+        </button>
+        <div className="stat-item" aria-label={`Semana ${numSel}`}>📅 <b>Semana {numSel}</b></div>
+        <div className="stat-item gold" aria-label={`${prog.xp} pontos de experiência`}>⭐ <b>{prog.xp} XP</b></div>
+        <div className="stat-item fire" aria-label={`Ofensiva de ${seasonStreak} dias`}>🔥 <b>{seasonStreak}</b></div>
       </div>
 
-      <div className="sec" style={{marginTop:20,position:'relative'}}>
-        <div style={{textAlign:'center',marginBottom:-16,position:'relative',zIndex:1,height:36}}>
-          <span style={{fontSize:34,filter:'drop-shadow(0 4px 10px rgba(245,200,66,.6))',animation:'starFloat 2s ease-in-out infinite',display:'inline-block'}}>⭐</span>
-          <span style={{position:'absolute',top:'50%',transform:'translateY(-50%)',left:'calc(50% - 52px)',fontSize:24,opacity:.6,animation:'starFloat 2.5s ease-in-out infinite .3s',display:'inline-block'}}>🌿</span>
-          <span style={{position:'absolute',top:'50%',transform:'translateY(-50%)',left:'calc(50% + 28px)',fontSize:24,opacity:.6,animation:'starFloat 2.5s ease-in-out infinite .6s',display:'inline-block'}}>🌿</span>
-        </div>
-        {[{t:-18,l:8,s:14,c:'#2ECC71',d:'.2s'},{t:-8,r:12,s:12,c:'#E31C3D',d:'.5s'},{t:10,r:2,s:16,c:'#B9ACE6',d:'.8s'},{t:5,l:18,s:10,c:'#F5C842',d:'.1s'}].map((s: any, i) => (
-          <div key={i} style={{position:'absolute',top:s.t,left:s.l,right:s.r,fontSize:s.s,color:s.c,animation:`starFloat 2.5s ease-in-out infinite ${s.d}`,pointerEvents:'none',zIndex:2}}>✦</div>
-        ))}
-        <div className="profile-card">
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
-              <div style={{width: 60, height: 60, background:'rgba(255,255,255,.1)', borderRadius:14, display:'flex', alignItems:'center', justifyContent:'center', fontSize: 36, overflow:'hidden', border:'2px solid rgba(245,200,66,.3)', flexShrink: 0}}>
-                {jogador.avatar?.length > 10 ? <img src={jogador.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{jogador.avatar}</span>}
-              </div>
-              <div>
-                <div style={{fontWeight:900,fontSize:22,marginBottom:3}}>{jogador.nome}</div>
-                {jogador.turma && <div style={{fontSize:12,color:'var(--mut)',fontWeight:700,marginBottom:5}}>👥 {jogador.turma}</div>}
-                <div className="xp-badge">⭐ {prog.xp} XP esta semana</div>
-              </div>
-            </div>
-            <div style={{textAlign:'center'}}>
-              <div style={{fontSize:30,fontWeight:900,color:'var(--gold)',lineHeight:1}}>#{prog.pos||'?'}</div>
-              <div style={{fontSize:9,color:'var(--mut)',textTransform:'uppercase',letterSpacing:1,marginTop:2}}>ranking</div>
-            </div>
-          </div>
-          <div style={{borderTop:'1px solid rgba(245,200,66,.2)',paddingTop:12,display:'flex',gap:10,flexWrap:'wrap'}}>
-            <div className="streak-badge">🔥 {prog.streak} dia{prog.streak!==1?'s':''} seguido{prog.streak!==1?'s':''}</div>
-            <div style={{display:'inline-flex',alignItems:'center',gap:6,background:'var(--g3)',border:'1.5px solid var(--b3)',borderRadius:30,padding:'5px 12px',fontSize:14,fontWeight:800,color:'var(--txt)'}}>
-              🎗️ {prog.done.length}/{licao.dias.length} concluídos
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="sec">
+      <div className="sec" style={{paddingTop:10}}>
         {(() => {
           const h = new Date();
           const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
@@ -237,23 +208,20 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
           const pathOff = (gi: number) => Math.round(Math.sin((gi * Math.PI) / 3.5) * 70);
           return (
             <>
-              {/* Banner suspenso: fica fixo e acompanha a semana visível/selecionada */}
-              <div className="banner banner-teal trail-sticky">
-                <div style={{display:'flex',alignItems:'center',gap:10}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:10,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
-                      {bannerL?.isAdminOnly ? '🧪 Lição de teste' : `Semana ${numBanner} de ${totalSemanas}`} · Temporada {bannerL?.trimestre}
-                    </div>
-                    <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{tituloCurto(bannerL?.titulo)}</div>
+              {/* Card da unidade (amarelo, estilo Duolingo): fixo e acompanha a semana visível */}
+              <div className="unit-card trail-sticky">
+                <div style={{flex:1,minWidth:0,padding:'14px 16px'}}>
+                  <div className="unit-eyebrow">
+                    {bannerL?.isAdminOnly ? '🧪 Lição de teste' : `Semana ${numBanner} de ${totalSemanas}`}
                   </div>
-                  {!bannerL?.isAdminOnly && (
-                    <button
-                      className="trail-rank-btn"
-                      title="Ranking desta semana"
-                      onClick={() => (onRankingSemana || onRanking)(bannerL)}
-                    >🏆</button>
-                  )}
+                  <div className="unit-title">{tituloCurto(bannerL?.titulo)}</div>
                 </div>
+                <button
+                  className="unit-ic-btn"
+                  title="Ranking desta semana"
+                  aria-label="Ranking desta semana"
+                  onClick={() => (onRankingSemana || onRanking)(bannerL)}
+                >📖</button>
               </div>
               <div className="trail">
               {visiveis.map((l: any, wi: number) => {
@@ -312,30 +280,24 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
         })()}
       </div>
 
-      {diaAtual && (
-        <div className="sec">
-          <div className="gold-card" style={{textAlign:'center'}}>
-            <div style={{position:'relative',marginBottom:10}}>
-              <span style={{fontSize:52,display:'inline-block',animation:'bounce 3s ease-in-out infinite'}}>📖</span>
-              <span style={{position:'absolute',top:'50%',transform:'translateY(-50%)',left:'calc(50% - 48px)',fontSize:20,opacity:.5}}>🌿</span>
-              <span style={{position:'absolute',top:'50%',transform:'translateY(-50%)',left:'calc(50% + 28px)',fontSize:20,opacity:.5}}>🌿</span>
-            </div>
-            <div style={{fontWeight:900,fontSize:20,color:concHoje?'#3E6B3E':'#5A3E16',lineHeight:1.2,marginBottom:6,textTransform:'uppercase'}}>{licao.titulo}</div>
-            <div style={{fontSize:14,color:'rgba(90,62,22,.8)',marginBottom:16,lineHeight:1.5}}>
-              {formatDiaSemana(diaAtual.diaSemana)} — <strong style={{color:'#5A3E16'}}>{diaAtual.titulo}</strong> • Complete a lição para garantir seus XP!
-            </div>
-            {concHoje
-              ? <div className="btn btn-grn" style={{pointerEvents:'none',fontSize:16}}>✅ Concluído hoje! Parabéns!</div>
-              : <button className="btn" onClick={() => onEstudo(diaAtual)} style={{background:'linear-gradient(135deg,#D9A12E,#A87600)',color:'#fff',fontWeight:900,fontSize:19,boxShadow:'0 5px 0 #7A5500,0 8px 20px rgba(217,161,46,.3)'}}>
-                  📖 ESTUDAR AGORA!
-                </button>
-            }
-          </div>
-        </div>
-      )}
+      {/* Botão flutuante: voltar ao topo da trilha */}
+      <button
+        className={`fab-top ${showTop ? 'show' : ''}`}
+        aria-label="Voltar ao topo"
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+      >↑</button>
 
-      <div className="bot-nav">
-        <button className="btn btn-purple" onClick={onRanking} style={{fontSize:16}}>🏆 VER RANKING</button>
+      {/* Navbar fixa */}
+      <div className="bot-nav" style={{padding:'6px 8px 14px'}}>
+        <div className="nav-row">
+          <button className="nav-it active" aria-label="Início"><span className="nav-ic">🏠</span>Início</button>
+          <button className="nav-it" onClick={onRanking} aria-label="Ranking"><span className="nav-ic">🏆</span>Ranking</button>
+          {diaAtual && <button className="nav-it" onClick={() => onEstudo(diaAtual)} aria-label="Praticar"><span className="nav-ic">📖</span>Praticar</button>}
+          <button className="nav-it" onClick={onConfig} aria-label="Perfil"><span className="nav-ic">⚙️</span>Perfil</button>
+          {jogador.isAdmin
+            ? <button className="nav-it" onClick={onAdmin} aria-label="Admin"><span className="nav-ic">🛡️</span>Admin</button>
+            : <button className="nav-it" onClick={shareApp} aria-label="Mais"><span className="nav-ic">🔗</span>Mais</button>}
+        </div>
       </div>
     </div>
   );
