@@ -780,6 +780,8 @@ const gerarImagemRanking = async (opts: {
   cv.width = W; cv.height = H;
   const c = cv.getContext('2d');
   if (!c) return null;
+  c.imageSmoothingEnabled = true;
+  c.imageSmoothingQuality = 'high';
 
   // Fundo com gradiente do app + estrelas
   const bg = c.createLinearGradient(0, 0, W * .4, H);
@@ -2113,7 +2115,7 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
     r.onload = ev => {
       img.onload = () => {
         const cvs = document.createElement('canvas');
-        const MAX = 96;
+        const MAX = 192;
         let w = img.naturalWidth || img.width;
         let h = img.naturalHeight || img.height;
         if (!w || !h) return;
@@ -2122,8 +2124,10 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
         cvs.width = w; cvs.height = h;
         const ctx = cvs.getContext('2d');
         if (!ctx) return;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, w, h);
-        const dataUrl = cvs.toDataURL('image/jpeg', 0.65);
+        const dataUrl = cvs.toDataURL('image/jpeg', 0.82);
         if (dataUrl && dataUrl.length > 100) setAvatar(dataUrl);
       };
       img.onerror = () => alert('Não foi possível ler a imagem. Tente outro arquivo.');
