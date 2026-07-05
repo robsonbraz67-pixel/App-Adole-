@@ -906,12 +906,13 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const [sIdx, setSIdx] = useState(0);
   const [sAnimando, setSAnimando] = useState(false);
   const [sLoading, setSLoading] = useState(false);
+  const [sQueue, setSQueue] = useState<number[]>([]);
   const sTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (sTimer.current) clearTimeout(sTimer.current); }, []);
 
   const carregarSorteador = async () => {
-    setSLoading(true); setSGanhador(null);
+    setSLoading(true); setSGanhador(null); setSQueue([]);
     try {
       const rank = await getWeeklyRanking(licao.semana);
       setSUsers(rank.filter((u: any) => !u.isAdmin && u.dias === 7));
@@ -953,9 +954,13 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
 
   const iniciarSorteio = () => {
     if (sUsers.length === 0) return;
+    // Fila sem repetição: sorteia todos antes de repetir alguém
+    let queue = sQueue.length > 0 ? sQueue : [...Array(sUsers.length).keys()].sort(() => Math.random() - 0.5);
+    const winner = queue[0];
+    setSQueue(queue.slice(1));
     setSGanhador(null); setSAnimando(true);
-    const winner = Math.floor(Math.random() * sUsers.length);
-    let step = 0; let cur = 0;
+    let step = 0;
+    let cur = Math.floor(Math.random() * sUsers.length); // posição inicial aleatória
     const TOTAL = 30;
     const tick = () => {
       cur = (cur + 1) % sUsers.length;
@@ -1310,12 +1315,13 @@ export const TVMode = ({ licao, jogador }: any) => {
   const [tvSAnimando, setTvSAnimando] = useState(false);
   const [tvSLoading, setTvSLoading] = useState(false);
   const [tvSConfetti, setTvSConfetti] = useState(false);
+  const [tvSQueue, setTvSQueue] = useState<number[]>([]);
   const tvSTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (tvSTimer.current) clearTimeout(tvSTimer.current); }, []);
 
   const carregarTvSorteador = async () => {
-    setTvSLoading(true); setTvSGanhador(null); setTvSConfetti(false);
+    setTvSLoading(true); setTvSGanhador(null); setTvSConfetti(false); setTvSQueue([]);
     try {
       const rank = await getWeeklyRanking(licao.semana);
       setTvSUsers(rank.filter((u: any) => !u.isAdmin && u.dias === 7));
@@ -1379,9 +1385,13 @@ export const TVMode = ({ licao, jogador }: any) => {
 
   const iniciarTvSorteio = () => {
     if (tvSUsers.length === 0) return;
+    // Fila sem repetição: sorteia todos antes de repetir alguém
+    let queue = tvSQueue.length > 0 ? tvSQueue : [...Array(tvSUsers.length).keys()].sort(() => Math.random() - 0.5);
+    const winner = queue[0];
+    setTvSQueue(queue.slice(1));
     setTvSGanhador(null); setTvSConfetti(false); setTvSAnimando(true);
-    const winner = Math.floor(Math.random() * tvSUsers.length);
-    let step = 0; let cur = 0;
+    let step = 0;
+    let cur = Math.floor(Math.random() * tvSUsers.length); // posição inicial aleatória
     const TOTAL = 35;
     const tick = () => {
       cur = (cur + 1) % tvSUsers.length;
