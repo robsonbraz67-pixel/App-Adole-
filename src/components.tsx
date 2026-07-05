@@ -142,6 +142,12 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
 
   const visiveis = useMemo(() => LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin), [jogador?.isAdmin]);
 
+  // Remove o prefixo "Lição N -/—" e a data entre parênteses do título bruto
+  const tituloCurto = (titulo: string) => (titulo || '')
+    .replace(/^Lição\s*\d+\s*[-—]\s*/i, '')
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .trim();
+
   // Banner suspenso acompanha a semana visível na rolagem (e a selecionada)
   const [bannerL, setBannerL] = useState<any>(licao);
   useEffect(() => { setBannerL(licao); }, [licao.semana]);
@@ -231,7 +237,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
                     <div style={{fontSize:10,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
                       {bannerL?.isAdminOnly ? '🧪 Lição de teste' : `Semana ${numBanner} de ${totalSemanas}`} · Temporada {bannerL?.trimestre}
                     </div>
-                    <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{bannerL?.titulo}</div>
+                    <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{tituloCurto(bannerL?.titulo)}</div>
                   </div>
                   {!bannerL?.isAdminOnly && (
                     <button
@@ -256,7 +262,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
                     >
                       <div className="wl"/>
                       <span>
-                        {l.isAdminOnly ? '🧪 Teste' : `Semana ${wi + 1}`}{emCurso ? ' ⭐' : ''}{!acessivel ? ' 🔒' : ''} — {l.titulo.replace(/^Lição \d+\s*—\s*/, '')}
+                        {l.isAdminOnly ? '🧪 Teste' : `Semana ${wi + 1}`}{emCurso ? ' ⭐' : ''}{!acessivel ? ' 🔒' : ''} — {tituloCurto(l.titulo)}
                       </span>
                       <div className="wl"/>
                     </div>
