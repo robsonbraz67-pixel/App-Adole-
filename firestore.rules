@@ -38,27 +38,30 @@ service cloud.firestore {
         && data.email is string && data.email.size() > 0 && data.email.size() <= 100
         && (!data.keys().hasAny(['criadoEm']) || data.criadoEm is string)
         && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
+        && (!data.keys().hasAny(['isGuest']) || data.isGuest is bool)
         && (!data.keys().hasAny(['bloqueado']) || data.bloqueado is bool)
+        && (!data.keys().hasAny(['telefone']) || (data.telefone is string && data.telefone.size() <= 20))
+        && (!data.keys().hasAny(['whatsappOptIn']) || data.whatsappOptIn is bool)
         && (!data.keys().hasAny(['manualNotification']) || data.manualNotification is map);
     }
 
     match /users/{userId} {
       allow get, list: if isOwner(userId) || isUserAdmin();
-      
+
       allow create: if isOwner(userId)
         && incoming().id == userId
-        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'bloqueado', 'manualNotification'])
+        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification'])
         && (!incoming().keys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && isValidUser(incoming());
-        
+
       allow update: if (isOwner(userId)
-        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'manualNotification'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'telefone', 'whatsappOptIn', 'manualNotification'])
         && incoming().id == existing().id
         && incoming().email == existing().email
         && (!incoming().diff(existing()).affectedKeys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && isValidUser(incoming())) || (
         isUserAdmin()
-        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'bloqueado', 'manualNotification'])
+        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isGuest', 'bloqueado', 'manualNotification'])
         && isValidUser(incoming()));
 
       allow delete: if isUserAdmin();
@@ -76,7 +79,8 @@ service cloud.firestore {
         && (!data.keys().hasAny(['done']) || data.done is list)
         && (!data.keys().hasAny(['history']) || data.history is map)
         && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
-        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool);
+        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
+        && (!data.keys().hasAny(['isGuest']) || data.isGuest is bool);
     }
 
     match /progress/{progressId} {
@@ -86,15 +90,15 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && progressId == incoming().userId + '_' + incoming().week
         && isOwner(incoming().userId)
-        && incoming().keys().hasOnly(['userId', 'week', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'updatedAt'])
+        && incoming().keys().hasOnly(['userId', 'week', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));
-        
+
       allow update: if isAuthenticated()
         && isOwner(existing().userId)
         && incoming().userId == existing().userId
         && incoming().week == existing().week
-        && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'updatedAt'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'updatedAt'])
         && isValidProgress(incoming());
 
       allow delete: if false;
