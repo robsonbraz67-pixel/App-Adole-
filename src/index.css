@@ -6,8 +6,8 @@
 
 /* ===== TEMA ESCURO (padrão) ===== */
 :root {
-  --bg1: #0D1E35;
-  --bg2: #1B3A63;
+  --bg1: #071D4A;
+  --bg2: #0A2456;
   --card: #1A3358;
   --card2: #1F3E6A;
   --card-dark: #122845;
@@ -27,6 +27,8 @@
   --grn-dk: #167A68;
   --blu: #4A90D9;
   --blu-dk: #2E6DB0;
+  --admin: #9B6DFF;
+  --admin-dk: #7B4FE0;
   --txt: #FFFFFF;
   --txt2: #C8D8F0;
   --mut: #7DA4C8;
@@ -51,7 +53,7 @@
   --scrim2: rgba(0,0,0,.3);
 
   --hdr-bg: rgba(13,30,53,.94);
-  --nav-bg: rgba(13,30,53,.97);
+  --nav-bg: rgba(12,42,99,.97);
   --hdr-border: rgba(247,198,0,.2);
 
   --para-bg: rgba(255,255,255,.04);
@@ -68,8 +70,8 @@
 /* ===== AUTO LIGHT: sistema prefere claro e não há tema forçado ===== */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg1: #EEF4FB;
-    --bg2: #D8E8F7;
+    --bg1: #F3F5F9;
+    --bg2: #E9EDF3;
     --card: #FFFFFF;
     --card2: #F5F8FF;
     --card-dark: #E8F0FA;
@@ -83,6 +85,8 @@
     --txg: #3A2800;
     --magenta: #C50060;
     --magenta-dk: #9A004B;
+    --admin: #7C4FE0;
+    --admin-dk: #5F38B8;
     --teal: #157A68;
     --teal-dk: #0F5A4E;
     --grn: #157A68;
@@ -111,7 +115,7 @@
     --scrim2: rgba(27,58,99,.1);
 
     --hdr-bg: rgba(255,255,255,.96);
-    --nav-bg: rgba(238,244,251,.97);
+    --nav-bg: rgba(255,255,255,.98);
     --hdr-border: rgba(27,58,99,.14);
 
     --para-bg: rgba(27,58,99,.04);
@@ -128,8 +132,8 @@
 
 /* ===== TEMA CLARO (forçado) ===== */
 [data-theme="light"] {
-  --bg1: #EEF4FB;
-  --bg2: #D8E8F7;
+  --bg1: #F3F5F9;
+  --bg2: #E9EDF3;
   --card: #FFFFFF;
   --card2: #F5F8FF;
   --card-dark: #E8F0FA;
@@ -143,6 +147,8 @@
   --txg: #3A2800;
   --magenta: #C50060;
   --magenta-dk: #9A004B;
+  --admin: #7C4FE0;
+  --admin-dk: #5F38B8;
   --teal: #157A68;
   --teal-dk: #0F5A4E;
   --grn: #157A68;
@@ -171,7 +177,7 @@
   --scrim2: rgba(27,58,99,.1);
 
   --hdr-bg: rgba(255,255,255,.96);
-  --nav-bg: rgba(238,244,251,.97);
+  --nav-bg: rgba(255,255,255,.98);
   --hdr-border: rgba(27,58,99,.14);
 
   --para-bg: rgba(27,58,99,.04);
@@ -328,7 +334,7 @@ body{font-family:'Lora','Georgia',serif;background:linear-gradient(160deg,var(--
 .star-dot{position:absolute;border-radius:50%;background:rgba(247,198,0,.6)}
 
 /* ===== BOTTOM NAV ===== */
-.bot-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--nav-bg);backdrop-filter:blur(12px);border-top:1px solid var(--hdr-border);padding:10px 20px 20px;z-index:200;transition:background .3s,border-color .3s}
+.bot-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--nav-bg);backdrop-filter:blur(12px);border-top:1px solid var(--hdr-border);box-shadow:0 -8px 20px rgba(0,0,0,.18);padding:10px 20px 20px;z-index:200;transition:background .3s,border-color .3s}
 
 /* ===== SELECT LIÇÃO ===== */
 .licao-select{width:100%;padding:12px;border-radius:12px;background:var(--g2);color:var(--txt);border:1.5px solid var(--b3);font-size:14px;font-family:'Poppins',sans-serif;font-weight:700;outline:none;cursor:pointer;transition:border-color .2s,background .3s,color .3s}
@@ -345,10 +351,11 @@ body{font-family:'Lora','Georgia',serif;background:linear-gradient(160deg,var(--
 .path-step{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;transition:transform .1s}
 .path-node{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;cursor:pointer;position:relative;transition:transform .1s;border:none}
 .path-node:active{transform:translateY(4px)}
-.path-node.done{background:linear-gradient(180deg,var(--gold-lt),var(--gold));box-shadow:0 7px 0 var(--gold-dk),0 10px 22px rgba(247,198,0,.3);color:#5A3E16}
+.path-node.done{background:linear-gradient(180deg,var(--gold-lt),var(--gold));box-shadow:0 7px 0 var(--gold-dk),0 0 22px rgba(247,198,0,.55),0 10px 26px rgba(247,198,0,.35);color:#5A3E16;animation:doneGlow 2.6s ease-in-out infinite}
 .path-node.today{width:74px;height:74px;font-size:30px;background:linear-gradient(180deg,var(--gold-lt),var(--gold));box-shadow:0 8px 0 var(--gold-dk),0 12px 28px rgba(247,198,0,.45);animation:goldGlow 2s infinite}
 .path-node.missed{background:linear-gradient(180deg,#5FA8E8,var(--blu));box-shadow:0 7px 0 var(--blu-dk),0 10px 20px rgba(74,144,217,.25)}
-.path-node.locked{background:var(--g4);box-shadow:0 6px 0 var(--scrim2);cursor:default;opacity:.65;filter:grayscale(.4)}
+.path-node.locked{background:var(--g1);box-shadow:0 6px 0 var(--scrim2);cursor:default;opacity:.45;filter:grayscale(.6);border:1.5px solid var(--b2)}
+@keyframes doneGlow{0%,100%{box-shadow:0 7px 0 var(--gold-dk),0 0 16px rgba(247,198,0,.4),0 10px 26px rgba(247,198,0,.3)}50%{box-shadow:0 7px 0 var(--gold-dk),0 0 30px rgba(247,198,0,.75),0 10px 26px rgba(247,198,0,.35)}}
 .path-ring{position:absolute;inset:-7px;border-radius:50%;border:4px solid rgba(247,198,0,.35);animation:pulse 2s ease-in-out infinite;pointer-events:none}
 .path-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--mut);font-family:'Poppins',sans-serif}
 .path-label.hoje{color:var(--gold)}
@@ -357,21 +364,24 @@ body{font-family:'Lora','Georgia',serif;background:linear-gradient(160deg,var(--
 .path-mascote{position:absolute;font-size:44px;pointer-events:none;animation:starFloat 2.5s ease-in-out infinite;filter:drop-shadow(0 6px 12px rgba(0,0,0,.3));z-index:4}
 .path-mascote img{width:52px;height:52px;border-radius:50%;object-fit:cover;border:3px solid var(--gold)}
 
-/* ===== HEADER DE STATS (estilo Duolingo) ===== */
-.stats-hdr{gap:6px;padding:10px 14px calc(10px + env(safe-area-inset-top) * 0);padding-top:max(10px,env(safe-area-inset-top))}
-.stat-avatar{width:40px;height:40px;border-radius:50%;background:var(--g4);border:2px solid rgba(247,198,0,.4);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;cursor:pointer;flex-shrink:0;padding:0}
+/* ===== HEADER DE STATS (avatar+nome · XP em destaque · ofensiva) ===== */
+.stats-hdr{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top))}
+.stat-user{display:flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;padding:2px;min-width:0;justify-self:start}
+.stat-avatar{width:38px;height:38px;border-radius:50%;background:var(--g4);border:2px solid rgba(247,198,0,.4);display:flex;align-items:center;justify-content:center;font-size:20px;overflow:hidden;flex-shrink:0}
 .stat-avatar img{width:100%;height:100%;object-fit:cover}
-.stat-item{display:inline-flex;align-items:center;gap:5px;font-family:'Poppins',sans-serif;font-size:13px;font-weight:700;color:var(--txt2);white-space:nowrap}
-.stat-item b{font-weight:900}
-.stat-item.gold b{color:var(--gold)}
-.stat-item.fire b{color:#FF9600}
+.stat-name{font-family:'Poppins',sans-serif;font-size:13px;font-weight:800;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:84px}
+.stat-xp{justify-self:center;display:inline-flex;align-items:baseline;gap:6px;font-family:'Poppins',sans-serif;font-size:26px;font-weight:900;color:var(--gold);white-space:nowrap;line-height:1}
+.stat-xp-lbl{font-size:12px;font-weight:800;letter-spacing:1px;color:var(--gold);opacity:.8;align-self:center}
+.stat-fire{justify-self:end;display:inline-flex;align-items:center;gap:5px;font-size:26px;line-height:1;font-weight:900;color:#FF9600;white-space:nowrap}
+.stat-fire b{font-family:'Poppins',sans-serif;font-size:19px;font-weight:900;color:#FF9600}
 
 /* ===== CARD DA UNIDADE (amarelo, estilo Duolingo) ===== */
-.unit-card{display:flex;align-items:stretch;background:linear-gradient(135deg,var(--gcrd1),var(--gcrd2));border-radius:16px;color:var(--txg);font-family:'Poppins',sans-serif;overflow:hidden}
-.unit-eyebrow{font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:rgba(58,40,0,.75)}
-.unit-title{font-size:16px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;margin-top:3px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.unit-ic-btn{flex-shrink:0;width:58px;border:none;border-left:1.5px solid rgba(58,40,0,.25);background:transparent;font-size:24px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
-.unit-ic-btn:active{background:rgba(58,40,0,.12)}
+.unit-card{display:flex;align-items:stretch;background:linear-gradient(135deg,var(--gcrd1),var(--gcrd2));border-radius:16px;color:var(--txg);font-family:'Poppins',sans-serif;overflow:hidden;box-shadow:0 8px 20px rgba(0,0,0,.22),0 2px 6px rgba(0,0,0,.12)}
+.unit-eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:rgba(58,40,0,.7)}
+.unit-campanha{color:rgba(58,40,0,.55);font-weight:700}
+.unit-title{font-size:18px;font-weight:900;text-transform:uppercase;letter-spacing:.3px;margin-top:3px;line-height:1.22;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 0 rgba(255,255,255,.25)}
+.unit-ic-btn{flex-shrink:0;width:50px;border:none;border-left:1.5px solid rgba(58,40,0,.18);background:transparent;font-size:18px;opacity:.55;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,opacity .15s}
+.unit-ic-btn:active{background:rgba(58,40,0,.1);opacity:.85}
 
 /* ===== TRILHA CONTÍNUA DA TEMPORADA (13 lições) ===== */
 .trail{display:flex;flex-direction:column;gap:0}
@@ -383,9 +393,10 @@ body{font-family:'Lora','Georgia',serif;background:linear-gradient(160deg,var(--
 
 /* ===== NAVBAR DE ÍCONES ===== */
 .nav-row{display:flex;justify-content:space-around;align-items:center}
-.nav-it{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:6px 10px;border-radius:12px;font-family:'Poppins',sans-serif;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);transition:color .15s}
+.nav-it{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:6px 12px;border-radius:12px;font-family:'Poppins',sans-serif;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);transition:color .15s,background .15s,transform .1s}
 .nav-it .nav-ic{font-size:22px;line-height:1}
-.nav-it.active{color:var(--gold);background:rgba(247,198,0,.1)}
+.nav-it.active{color:var(--gold);background:rgba(247,198,0,.14);box-shadow:inset 0 0 0 1.5px rgba(247,198,0,.35)}
+.nav-it:active{transform:scale(.92)}
 .nav-it:active{transform:scale(.92)}
 
 /* Divisória discreta entre semanas */

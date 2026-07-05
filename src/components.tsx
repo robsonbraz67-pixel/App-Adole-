@@ -185,18 +185,18 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
     return () => window.removeEventListener('scroll', onScroll);
   }, [visiveis]);
 
-  const numSel = visiveis.findIndex((l: any) => l.semana === licao.semana) + 1;
-
   return (
     <div className="scr" style={{paddingBottom:100}}>
-      {/* Header fixo estilo Duolingo: avatar · semana · XP · ofensiva */}
+      {/* Header fixo: avatar+nome · XP (destaque central) · ofensiva */}
       <div className="hdr stats-hdr">
-        <button className="stat-avatar" onClick={onConfig} aria-label="Perfil">
-          {jogador.avatar?.length > 10 ? <img src={jogador.avatar} alt="avatar"/> : <span>{jogador.avatar}</span>}
+        <button className="stat-user" onClick={onConfig} aria-label="Perfil">
+          <span className="stat-avatar">
+            {jogador.avatar?.length > 10 ? <img src={jogador.avatar} alt="avatar"/> : <span>{jogador.avatar}</span>}
+          </span>
+          <span className="stat-name">{jogador.nome?.split(' ')[0]}</span>
         </button>
-        <div className="stat-item" aria-label={`Semana ${numSel}`}>📅 <b>Semana {numSel}</b></div>
-        <div className="stat-item gold" aria-label={`${prog.xp} pontos de experiência`}>⭐ <b>{prog.xp} XP</b></div>
-        <div className="stat-item fire" aria-label={`Ofensiva de ${seasonStreak} dias`}>🔥 <b>{seasonStreak}</b></div>
+        <div className="stat-xp" aria-label={`${prog.xp} pontos de experiência`}>⭐ <b>{prog.xp}</b><span className="stat-xp-lbl">XP</span></div>
+        <div className="stat-fire" aria-label={`Ofensiva de ${seasonStreak} dias`}>🔥<b>{seasonStreak}</b></div>
       </div>
 
       <div className="sec" style={{paddingTop:10}}>
@@ -210,9 +210,10 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
             <>
               {/* Card da unidade (amarelo, estilo Duolingo): fixo e acompanha a semana visível */}
               <div className="unit-card trail-sticky">
-                <div style={{flex:1,minWidth:0,padding:'14px 16px'}}>
+                <div style={{flex:1,minWidth:0,padding:'11px 16px'}}>
                   <div className="unit-eyebrow">
                     {bannerL?.isAdminOnly ? '🧪 Lição de teste' : `Semana ${numBanner} de ${totalSemanas}`}
+                    {!bannerL?.isAdminOnly && bannerL?.trimestre && <span className="unit-campanha"> · {bannerL.trimestre}</span>}
                   </div>
                   <div className="unit-title">{tituloCurto(bannerL?.titulo)}</div>
                 </div>
@@ -1154,23 +1155,23 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           {admins.length > 0 && (
             <>
               <div style={{display:'flex',alignItems:'center',gap:8,margin:'4px 0'}}>
-                <div style={{flex:1,height:1,background:'rgba(229,0,109,.25)'}}/>
-                <div style={{fontSize:11,color:'var(--magenta)',fontWeight:800,letterSpacing:1,fontFamily:'Poppins,sans-serif'}}>🛡️ ADMINISTRADORES</div>
-                <div style={{flex:1,height:1,background:'rgba(229,0,109,.25)'}}/>
+                <div style={{flex:1,height:1,background:'rgba(155,109,255,.3)'}}/>
+                <div style={{fontSize:11,color:'var(--admin)',fontWeight:800,letterSpacing:1,fontFamily:'Poppins,sans-serif'}}>🛡️ ADMINISTRADORES</div>
+                <div style={{flex:1,height:1,background:'rgba(155,109,255,.3)'}}/>
               </div>
               {admins.map((r: any, i: number) => {
                 const eu = r.id === jogador.id;
                 return (
-                  <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(229,0,109,.12),rgba(229,0,109,.05))':'rgba(229,0,109,.06)',border:`2px solid ${eu?'rgba(229,0,109,.5)':'rgba(229,0,109,.2)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
-                    <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:'var(--magenta)'}}>🛡️</div>
-                    <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(229,0,109,.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:'1.5px solid rgba(229,0,109,.3)'}}>
+                  <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(155,109,255,.16),rgba(155,109,255,.06))':'rgba(155,109,255,.08)',border:`2px solid ${eu?'rgba(155,109,255,.55)':'rgba(155,109,255,.25)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+                    <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:'var(--admin)'}}>🛡️</div>
+                    <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(155,109,255,.18)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:'1.5px solid rgba(155,109,255,.35)'}}>
                       {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
                     </div>
                     <div style={{flex:1, minWidth:0}}>
-                      <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--magenta)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
+                      <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--admin)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
                       <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
                     </div>
-                    <div style={{fontWeight:900,color:'var(--magenta)',fontSize:15,flexShrink:0,opacity:.75}}>{r.xp || 0} XP</div>
+                    <div style={{fontWeight:900,color:'var(--admin)',fontSize:15,flexShrink:0,opacity:.85}}>{r.xp || 0} XP</div>
                   </div>
                 );
               })}
@@ -1182,7 +1183,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         <div className="purple-card" style={{textAlign:'center'}}>
           <div style={{fontSize:13,color:'var(--mut)',marginBottom:4}}>Sua posição</div>
           {myIsAdmin
-            ? <div style={{fontWeight:900,fontSize:22,color:'var(--magenta)'}}>🛡️ Admin</div>
+            ? <div style={{fontWeight:900,fontSize:22,color:'var(--admin)'}}>🛡️ Admin</div>
             : <div style={{fontWeight:900,fontSize:32,color:'var(--gold)'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
           }
           {myIdx !== -1 && (
