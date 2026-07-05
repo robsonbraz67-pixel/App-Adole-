@@ -122,9 +122,19 @@ export const shareApp = async () => {
   }
 };
 
+// AudioContext único e reutilizado — iOS limita a ~4 contextos simultâneos;
+// criar um por som causa vazamento, travamentos e áudio mudo
+let _actx: AudioContext | null = null;
+export const getAudioCtx = (): AudioContext => {
+  const AC = window.AudioContext || (window as any).webkitAudioContext;
+  if (!_actx || _actx.state === 'closed') _actx = new AC();
+  if (_actx.state === 'suspended') _actx.resume().catch(() => {});
+  return _actx;
+};
+
 export const playSound = (type: 'correct' | 'wrong' | 'ranking') => {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = getAudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);

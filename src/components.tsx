@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { DEMO, LICOES } from './data';
-import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana } from './utils';
+import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx } from './utils';
 
 /* ===== CONFETTI ===== */
 const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
@@ -1021,7 +1021,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
 
   const playSorteioTick = (fast: boolean) => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = getAudioCtx();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);
@@ -1035,7 +1035,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
 
   const playSorteioWin = () => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = getAudioCtx();
       [523, 659, 784, 1047, 1319].forEach((freq, i) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -1430,7 +1430,7 @@ export const TVMode = ({ licao, jogador }: any) => {
 
   const playTvTick = (fast: boolean) => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = getAudioCtx();
       const buf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
       const data = buf.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
@@ -1452,7 +1452,7 @@ export const TVMode = ({ licao, jogador }: any) => {
 
   const playTvWin = () => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = getAudioCtx();
       // Ascending arpeggio (casino jackpot feel)
       [523, 659, 784, 988, 1319].forEach((freq, i) => {
         const osc = ctx.createOscillator();
