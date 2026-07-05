@@ -54,7 +54,13 @@ export const saveUser = async (userProfile: any) => {
   if (!snap.exists() && cleanProfile.email && cleanProfile.email.toLowerCase() === 'robsonbraz67@gmail.com') {
      cleanProfile.isAdmin = true;
   }
-  
+
+  // Campos novos só entram quando têm valor: as regras publicadas antes
+  // deles rejeitam documentos com chaves desconhecidas (save falhava p/ todos)
+  if (!cleanProfile.telefone) delete cleanProfile.telefone;
+  if (!cleanProfile.whatsappOptIn) delete cleanProfile.whatsappOptIn;
+  if (!cleanProfile.isGuest) delete cleanProfile.isGuest;
+
   await setDoc(userRef, {
     ...cleanProfile,
     criadoEm: cleanProfile.criadoEm || new Date().toISOString()
@@ -150,7 +156,9 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     nome,
     avatar,
     isAdmin: !!isAdmin,
-    isGuest: !!isGuest,
+    // Só envia isGuest quando true: as regras publicadas antes desse campo
+    // rejeitam documentos com chaves desconhecidas, o que quebrava o save de todos
+    ...(isGuest ? { isGuest: true } : {}),
     updatedAt: serverTimestamp()
   }, { merge: true });
 };
