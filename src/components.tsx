@@ -484,15 +484,15 @@ export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, 
           />
         </div>
 
-        {prog.done.includes(dia.id) && !jogador?.isAdmin ? (
+        {prog.done.includes(dia.id) && !jogador?.isAdmin && !jogador?.isProfessor ? (
           <button className="btn btn-gold" style={{fontSize:19, background:'#2ECC71', filter:'brightness(0.8)', cursor:'not-allowed'}} onClick={(e) => e.preventDefault()}>✅ QUIZ CONCLUÍDO</button>
         ) : (
           <button className="btn btn-gold" onClick={() => {
-            if (jogador?.isAdmin || window.confirm("Atenção! O quiz só pode ser feito UMA VEZ para somar pontos no ranking.\n\nVocê já revisou todo o estudo e está pronto para começar?")) {
+            if (jogador?.isAdmin || jogador?.isProfessor || window.confirm("Atenção! O quiz só pode ser feito UMA VEZ para somar pontos no ranking.\n\nVocê já revisou todo o estudo e está pronto para começar?")) {
               wrapLeave(onQuiz);
             }
           }} style={{fontSize:19}}>
-             {prog.done.includes(dia.id) && jogador?.isAdmin ? '🎯 REFAZER QUIZ (ADM)' : '🎯 FAZER O QUIZ'}
+             {prog.done.includes(dia.id) && (jogador?.isAdmin || jogador?.isProfessor) ? '🎯 REFAZER QUIZ (ADM)' : '🎯 FAZER O QUIZ'}
           </button>
         )}
         <p style={{textAlign:'center',color:'rgba(185,172,230,.5)',fontSize:13,marginTop:12}}>Leitura: {pct}% completa</p>
