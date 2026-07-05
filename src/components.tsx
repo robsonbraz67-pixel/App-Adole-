@@ -130,7 +130,7 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSemana, onConfig, onAdmin, onChangeLicao }: any) => {
   const diaId = getDiaId(licao.dias);
   const diaAtual = licao.dias.find((d: any) => d.id === diaId);
-  
+
   const getSt = (dia: any) => {
     if (prog.done.includes(dia.id)) return 'done';
     if (dia.id === diaId) return 'today';
@@ -139,6 +139,32 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
     return 'locked';
   };
   const concHoje = prog.done.includes(diaId);
+
+  const visiveis = useMemo(() => LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin), [jogador?.isAdmin]);
+
+  // Banner suspenso acompanha a semana visível na rolagem (e a selecionada)
+  const [bannerL, setBannerL] = useState<any>(licao);
+  useEffect(() => { setBannerL(licao); }, [licao.semana]);
+  const secRefs = useRef<Record<string, HTMLElement | null>>({});
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        let cur: any = null;
+        for (const l of visiveis) {
+          const el = secRefs.current[l.semana];
+          if (el && el.getBoundingClientRect().top <= 175) cur = l;
+        }
+        if (cur) setBannerL((prev: any) => (prev?.semana === cur.semana ? prev : cur));
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [visiveis]);
 
   return (
     <div className="scr" style={{paddingBottom:100}}>
@@ -191,28 +217,27 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
 
       <div className="sec">
         {(() => {
-          const visiveis = LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin);
           const h = new Date();
           const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
           const totalSemanas = visiveis.filter((l: any) => !l.isAdminOnly).length;
-          const numSel = visiveis.findIndex((l: any) => l.semana === licao.semana) + 1;
+          const numBanner = visiveis.findIndex((l: any) => l.semana === bannerL?.semana) + 1;
           const pathOff = (gi: number) => Math.round(Math.sin((gi * Math.PI) / 3.5) * 70);
           return (
             <>
-              {/* Banner suspenso: fica fixo enquanto a trilha rola */}
+              {/* Banner suspenso: fica fixo e acompanha a semana visível/selecionada */}
               <div className="banner banner-teal trail-sticky">
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:10,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
-                      {licao.isAdminOnly ? '🧪 Lição de teste' : `Semana ${numSel} de ${totalSemanas}`} · Temporada {licao.trimestre}
+                      {bannerL?.isAdminOnly ? '🧪 Lição de teste' : `Semana ${numBanner} de ${totalSemanas}`} · Temporada {bannerL?.trimestre}
                     </div>
-                    <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{licao.titulo}</div>
+                    <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{bannerL?.titulo}</div>
                   </div>
-                  {!licao.isAdminOnly && (
+                  {!bannerL?.isAdminOnly && (
                     <button
                       className="trail-rank-btn"
                       title="Ranking desta semana"
-                      onClick={() => (onRankingSemana || onRanking)(licao)}
+                      onClick={() => (onRankingSemana || onRanking)(bannerL)}
                     >🏆</button>
                   )}
                 </div>
@@ -224,7 +249,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
                 const acessivel = liberada || !!jogador?.isAdmin;
                 const emCurso = liberada && !!l.dias[l.dias.length - 1]?.data && hojeISO <= l.dias[l.dias.length - 1].data;
                 return (
-                  <div key={l.semana} ref={sel ? (el: any) => { if (el && !el.dataset.scrolled) { el.dataset.scrolled = '1'; setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150); } } : undefined} style={{scrollMarginTop:160}}>
+                  <div key={l.semana} ref={(el: any) => { secRefs.current[l.semana] = el; if (sel && el && !el.dataset.scrolled) { el.dataset.scrolled = '1'; setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150); } }} style={{scrollMarginTop:160}}>
                     <div
                       className={`week-divider ${sel ? 'sel' : ''} ${!acessivel ? 'locked' : ''}`}
                       onClick={() => acessivel && !sel && onChangeLicao && onChangeLicao(l)}
