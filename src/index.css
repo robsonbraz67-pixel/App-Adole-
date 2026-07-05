@@ -187,8 +187,8 @@
 
 /* ===== RESET & BASE ===== */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{font-family:'Lora','Georgia',serif;background:linear-gradient(160deg,var(--bg1) 0%,var(--bg2) 100%);background-attachment:fixed;color:var(--txt);min-height:100dvh;overflow-x:hidden;transition:background .3s,color .3s}
-#root{max-width:480px;margin:0 auto;min-height:100dvh;position:relative;overflow-x:hidden}
+body{font-family:'Lora','Georgia',serif;background:linear-gradient(160deg,var(--bg1) 0%,var(--bg2) 100%);background-attachment:fixed;color:var(--txt);min-height:100dvh;overflow-x:clip;transition:background .3s,color .3s}
+#root{max-width:480px;margin:0 auto;min-height:100dvh;position:relative;overflow-x:clip}
 ::-webkit-scrollbar{width:0}
 
 /* ===== ANIMAÇÕES ===== */
