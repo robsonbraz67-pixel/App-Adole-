@@ -195,37 +195,45 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
           const h = new Date();
           const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
           const totalSemanas = visiveis.filter((l: any) => !l.isAdminOnly).length;
+          const numSel = visiveis.findIndex((l: any) => l.semana === licao.semana) + 1;
           const pathOff = (gi: number) => Math.round(Math.sin((gi * Math.PI) / 3.5) * 70);
           return (
-            <div className="trail">
+            <>
+              {/* Banner suspenso: fica fixo enquanto a trilha rola */}
+              <div className="banner banner-teal trail-sticky">
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:10,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
+                      {licao.isAdminOnly ? '🧪 Lição de teste' : `Semana ${numSel} de ${totalSemanas}`} · Temporada {licao.trimestre}
+                    </div>
+                    <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{licao.titulo}</div>
+                  </div>
+                  {!licao.isAdminOnly && (
+                    <button
+                      className="trail-rank-btn"
+                      title="Ranking desta semana"
+                      onClick={() => (onRankingSemana || onRanking)(licao)}
+                    >🏆</button>
+                  )}
+                </div>
+              </div>
+              <div className="trail">
               {visiveis.map((l: any, wi: number) => {
                 const sel = l.semana === licao.semana;
                 const liberada = !!l.dias[0]?.data && l.dias[0].data <= hojeISO;
                 const acessivel = liberada || !!jogador?.isAdmin;
                 const emCurso = liberada && !!l.dias[l.dias.length - 1]?.data && hojeISO <= l.dias[l.dias.length - 1].data;
                 return (
-                  <div key={l.semana} ref={sel ? (el: any) => { if (el && !el.dataset.scrolled) { el.dataset.scrolled = '1'; setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150); } } : undefined} style={{scrollMarginTop:80}}>
+                  <div key={l.semana} ref={sel ? (el: any) => { if (el && !el.dataset.scrolled) { el.dataset.scrolled = '1'; setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150); } } : undefined} style={{scrollMarginTop:160}}>
                     <div
-                      className={`banner ${acessivel ? 'banner-teal' : ''} trail-banner ${sel ? 'sel' : ''}`}
-                      style={acessivel ? undefined : {background:'var(--g3)', color:'var(--mut)'}}
+                      className={`week-divider ${sel ? 'sel' : ''} ${!acessivel ? 'locked' : ''}`}
                       onClick={() => acessivel && !sel && onChangeLicao && onChangeLicao(l)}
                     >
-                      <div style={{display:'flex',alignItems:'center',gap:10}}>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{fontSize:10,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
-                            {l.isAdminOnly ? '🧪 Lição de teste' : `Semana ${wi + 1} de ${totalSemanas}`} · {l.trimestre}
-                            {emCurso ? ' · ⭐ SEMANA ATUAL' : ''}{!acessivel ? ' · 🔒' : ''}
-                          </div>
-                          <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25}}>{l.titulo}</div>
-                        </div>
-                        {acessivel && !l.isAdminOnly && (
-                          <button
-                            className="trail-rank-btn"
-                            title="Ranking desta semana"
-                            onClick={(e) => { e.stopPropagation(); (onRankingSemana || onRanking)(l); }}
-                          >🏆</button>
-                        )}
-                      </div>
+                      <div className="wl"/>
+                      <span>
+                        {l.isAdminOnly ? '🧪 Teste' : `Semana ${wi + 1}`}{emCurso ? ' ⭐' : ''}{!acessivel ? ' 🔒' : ''} — {l.titulo.replace(/^Lição \d+\s*—\s*/, '')}
+                      </span>
+                      <div className="wl"/>
                     </div>
                     <div className="path-wrap">
                       {l.dias.map((dia: any, i: number) => {
@@ -259,7 +267,8 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
                   </div>
                 );
               })}
-            </div>
+              </div>
+            </>
           );
         })()}
       </div>
