@@ -170,6 +170,18 @@ export const getProgress = async (userId: string, week: string) => {
   return snap.exists() ? snap.data() : null;
 };
 
+// Mapa { semana: [diaIds concluídos] } de todas as semanas do usuário —
+// usado para marcar dias já feitos em semanas anteriores na trilha
+export const getUserAllDone = async (userId: string): Promise<Record<string, number[]>> => {
+  const snap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId)));
+  const map: Record<string, number[]> = {};
+  snap.forEach(doc => {
+    const data = doc.data();
+    map[data.week] = data.done || [];
+  });
+  return map;
+};
+
 export const getDayOverride = async (semana: string, diaId: number) => {
   const ref = doc(db, 'conteudoOverrides', `${semana}_${diaId}`);
   const snap = await getDoc(ref);

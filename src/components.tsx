@@ -67,7 +67,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -141,6 +141,13 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
   const concHoje = prog.done.includes(diaId);
 
   const visiveis = useMemo(() => LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin), [jogador?.isAdmin]);
+
+  // Dias concluídos de todas as semanas (para marcar semanas anteriores na trilha)
+  const [allDone, setAllDone] = useState<Record<string, number[]>>({});
+  useEffect(() => {
+    if (!jogador?.id) return;
+    getUserAllDone(jogador.id).then(setAllDone).catch(() => {});
+  }, [jogador?.id]);
 
   // Remove o prefixo "Lição N -/—" e a data entre parênteses do título bruto
   const tituloCurto = (titulo: string) => (titulo || '')
@@ -269,7 +276,8 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
                     <div className="path-wrap">
                       {l.dias.map((dia: any, i: number) => {
                         const off = pathOff(wi * 7 + i);
-                        const st = sel ? getSt(dia) : acessivel ? 'missed' : 'locked';
+                        const feitoOutraSemana = !sel && (allDone[l.semana] || []).includes(dia.id);
+                        const st = sel ? getSt(dia) : feitoOutraSemana ? 'done' : acessivel ? 'missed' : 'locked';
                         const isToday = sel && st === 'today';
                         return (
                           <div key={dia.id} className="path-step" style={{transform:`translateX(${off}px)`}}>
