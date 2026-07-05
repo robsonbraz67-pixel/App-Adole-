@@ -127,7 +127,7 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 };
 
 /* ===== HOME ===== */
-export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAdmin, onChangeLicao }: any) => {
+export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSemana, onConfig, onAdmin, onChangeLicao }: any) => {
   const diaId = getDiaId(licao.dias);
   const diaAtual = licao.dias.find((d: any) => d.id === diaId);
   
@@ -210,11 +210,22 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAd
                       style={acessivel ? undefined : {background:'var(--g3)', color:'var(--mut)'}}
                       onClick={() => acessivel && !sel && onChangeLicao && onChangeLicao(l)}
                     >
-                      <div style={{fontSize:10,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
-                        {l.isAdminOnly ? '🧪 Lição de teste' : `Semana ${wi + 1} de ${totalSemanas}`} · {l.trimestre}
-                        {emCurso ? ' · ⭐ SEMANA ATUAL' : ''}{!acessivel ? ' · 🔒' : ''}
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:10,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
+                            {l.isAdminOnly ? '🧪 Lição de teste' : `Semana ${wi + 1} de ${totalSemanas}`} · {l.trimestre}
+                            {emCurso ? ' · ⭐ SEMANA ATUAL' : ''}{!acessivel ? ' · 🔒' : ''}
+                          </div>
+                          <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25}}>{l.titulo}</div>
+                        </div>
+                        {acessivel && !l.isAdminOnly && (
+                          <button
+                            className="trail-rank-btn"
+                            title="Ranking desta semana"
+                            onClick={(e) => { e.stopPropagation(); (onRankingSemana || onRanking)(l); }}
+                          >🏆</button>
+                        )}
                       </div>
-                      <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25}}>{l.titulo}</div>
                     </div>
                     <div className="path-wrap">
                       {l.dias.map((dia: any, i: number) => {
@@ -817,11 +828,11 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
               <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {regular[1].dias || 0} d</div>
             </div>
             <div className="pod-col">
-              <div style={{fontSize:18,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
-              <div style={{width: 56, height: 56, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 32, overflow:'hidden', margin:'0 auto 4px', flexShrink:0, border:'2px solid #F5C842'}}>
+              <div style={{fontSize:20,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
+              <div style={{width: 62, height: 62, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 34, overflow:'hidden', margin:'0 auto 4px', flexShrink:0, border:'2.5px solid #F5C842', animation:'goldGlow 2.2s infinite'}}>
                 {regular[0].avatar?.length > 10 ? <img src={regular[0].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[0].avatar}</span>}
               </div>
-              <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[0].nome}</div>
+              <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--gold)'}}>{regular[0].nome}</div>
               <div className="pod-base p1">🥇</div>
               <div style={{fontWeight:900,color:'var(--gold)',fontSize:14,lineHeight:1.1}}>{regular[0].xp} XP</div>
               <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {regular[0].dias || 0} d</div>

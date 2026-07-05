@@ -334,9 +334,9 @@ export default function App() {
 
   const [rankingType, setRankingType] = useState('week');
 
-  const loadLatestRanking = async (type: string = 'week') => {
+  const loadLatestRanking = async (type: string = 'week', licaoArg?: any) => {
     setRankingType(type);
-    const l = licao || LICOES[0];
+    const l = licaoArg || licao || LICOES[0];
     try {
       const user = await waitForAuthInit();
       if (user) {
@@ -457,7 +457,7 @@ export default function App() {
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={async (d: any) => { const override = await getDayOverride(licao.semana, d.id).catch(() => null); setDiaAtual(override ? { ...d, ...override } : d); setTela('estudo'); }} onRanking={() => loadLatestRanking('week')} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={async (d: any) => { const override = await getDayOverride(licao.semana, d.id).catch(() => null); setDiaAtual(override ? { ...d, ...override } : d); setTela('estudo'); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
