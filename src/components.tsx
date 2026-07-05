@@ -192,63 +192,65 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAd
       <div className="sec">
         {(() => {
           const visiveis = LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin);
-          const numSemana = visiveis.findIndex((l: any) => l.semana === licao.semana) + 1;
           const h = new Date();
           const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-          const stSemana = (l: any) => {
-            const ini = l.dias[0]?.data, fim = l.dias[l.dias.length - 1]?.data;
-            if (!ini || !fim) return '';
-            if (hojeISO >= ini && hojeISO <= fim) return 'current';
-            if (fim < hojeISO) return 'past';
-            return '';
-          };
+          const totalSemanas = visiveis.filter((l: any) => !l.isAdminOnly).length;
+          const pathOff = (gi: number) => Math.round(Math.sin((gi * Math.PI) / 3.5) * 70);
           return (
-            <>
-              <div className="banner banner-teal" style={{marginBottom:4,padding:'16px 20px'}}>
-                <div style={{fontSize:11,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
-                  {licao.isAdminOnly ? 'Lição de teste' : `Semana ${numSemana} de 13`} · Temporada {licao.trimestre}
-                </div>
-                <div className="banner-title" style={{fontSize:17,marginTop:4,lineHeight:1.25}}>{licao.titulo}</div>
-              </div>
-              <div className="season-strip">
-                {visiveis.map((l: any, i: number) => {
-                  const st = stSemana(l);
-                  const sel = l.semana === licao.semana;
-                  return (
-                    <div key={l.semana} className="season-node" onClick={() => onChangeLicao && onChangeLicao(l)}>
-                      <div className={`season-circ ${st} ${sel ? 'sel' : ''}`}>{l.isAdminOnly ? '🧪' : st === 'past' ? '🏆' : i + 1}</div>
-                      <div className="season-lbl" style={sel ? {color:'var(--gold)'} : undefined}>{l.isAdminOnly ? 'Teste' : `Sem ${i + 1}`}</div>
+            <div className="trail">
+              {visiveis.map((l: any, wi: number) => {
+                const sel = l.semana === licao.semana;
+                const liberada = !!l.dias[0]?.data && l.dias[0].data <= hojeISO;
+                const acessivel = liberada || !!jogador?.isAdmin;
+                const emCurso = liberada && !!l.dias[l.dias.length - 1]?.data && hojeISO <= l.dias[l.dias.length - 1].data;
+                return (
+                  <div key={l.semana} ref={sel ? (el: any) => { if (el && !el.dataset.scrolled) { el.dataset.scrolled = '1'; setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150); } } : undefined} style={{scrollMarginTop:80}}>
+                    <div
+                      className={`banner ${acessivel ? 'banner-teal' : ''} trail-banner ${sel ? 'sel' : ''}`}
+                      style={acessivel ? undefined : {background:'var(--g3)', color:'var(--mut)'}}
+                      onClick={() => acessivel && !sel && onChangeLicao && onChangeLicao(l)}
+                    >
+                      <div style={{fontSize:10,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
+                        {l.isAdminOnly ? '🧪 Lição de teste' : `Semana ${wi + 1} de ${totalSemanas}`} · {l.trimestre}
+                        {emCurso ? ' · ⭐ SEMANA ATUAL' : ''}{!acessivel ? ' · 🔒' : ''}
+                      </div>
+                      <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25}}>{l.titulo}</div>
                     </div>
-                  );
-                })}
-              </div>
-            </>
+                    <div className="path-wrap">
+                      {l.dias.map((dia: any, i: number) => {
+                        const off = pathOff(wi * 7 + i);
+                        const st = sel ? getSt(dia) : acessivel ? 'missed' : 'locked';
+                        const isToday = sel && st === 'today';
+                        return (
+                          <div key={dia.id} className="path-step" style={{transform:`translateX(${off}px)`}}>
+                            {isToday && !concHoje && <div className="path-tip">COMEÇAR</div>}
+                            {isToday && (
+                              <div className="path-mascote" style={off >= 0 ? {left:-84,top:4} : {right:-84,top:4}}>
+                                {jogador.avatar?.length > 10 ? <img src={jogador.avatar} alt="avatar"/> : <span>{jogador.avatar}</span>}
+                              </div>
+                            )}
+                            <button
+                              className={`path-node ${st}`}
+                              onClick={() => {
+                                if (st === 'locked') return;
+                                if (sel) onEstudo(dia);
+                                else if (onChangeLicao) onChangeLicao(l);
+                              }}
+                            >
+                              {isToday && <div className="path-ring"/>}
+                              {st === 'done' ? '⭐' : st === 'locked' ? '🔒' : '📖'}
+                            </button>
+                            <div className={`path-label ${isToday ? 'hoje' : ''}`}>{formatDiaSemana(dia.diaSemana)}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           );
         })()}
-
-        <div className="path-wrap">
-          {licao.dias.map((dia: any, i: number) => {
-            const st = getSt(dia);
-            const offsets = [0, 46, 72, 46, 0, -46, -72];
-            const off = offsets[i % offsets.length];
-            const isToday = st === 'today';
-            return (
-              <div key={dia.id} className="path-step" style={{transform:`translateX(${off}px)`}}>
-                {isToday && !concHoje && <div className="path-tip">COMEÇAR</div>}
-                {isToday && (
-                  <div className="path-mascote" style={off >= 0 ? {left:-84,top:4} : {right:-84,top:4}}>
-                    {jogador.avatar?.length > 10 ? <img src={jogador.avatar} alt="avatar"/> : <span>{jogador.avatar}</span>}
-                  </div>
-                )}
-                <button className={`path-node ${st}`} onClick={() => st !== 'locked' && onEstudo(dia)}>
-                  {isToday && <div className="path-ring"/>}
-                  {st === 'done' ? '⭐' : st === 'locked' ? '🔒' : '📖'}
-                </button>
-                <div className={`path-label ${isToday ? 'hoje' : ''}`}>{formatDiaSemana(dia.diaSemana)}</div>
-              </div>
-            );
-          })}
-        </div>
       </div>
 
       {diaAtual && (
@@ -735,43 +737,51 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     : regular.findIndex((r: any) => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
 
-  // Zona de promoção: semana → sorteio (semana inteira liberada + 7/7 dias);
-  // temporada → quem estudou todos os dias já disponíveis
-  const { zoneOn, metaDias, elegiveis, resto } = useMemo(() => {
+  // Zonas estilo divisão: em dia com os dias liberados → zona do sorteio;
+  // 1+ dia liberado sem fazer → zona de rebaixamento
+  const { zoneOn, metaDias, emDia, atrasados } = useMemo(() => {
     const h = new Date();
     const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-    let on = false, meta = 0;
+    let meta = 0;
     if (type === 'week') {
-      const ultimo = licao?.dias?.[licao.dias.length - 1];
-      on = !!ultimo?.data && hojeISO >= ultimo.data;
-      meta = licao?.dias?.length || 7;
+      meta = (licao?.dias || []).filter((d: any) => d.data && d.data <= hojeISO).length;
     } else {
       meta = LICOES
         .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre)
         .reduce((acc: number, l: any) => acc + l.dias.filter((d: any) => d.data && d.data <= hojeISO).length, 0);
-      on = meta > 0;
     }
+    const on = meta > 0;
     return {
       zoneOn: on,
       metaDias: meta,
-      elegiveis: on ? regular.filter((r: any) => (r.dias || 0) >= meta) : [],
-      resto: on ? regular.filter((r: any) => (r.dias || 0) < meta) : regular,
+      emDia: on ? regular.filter((r: any) => (r.dias || 0) >= meta) : regular,
+      atrasados: on ? regular.filter((r: any) => (r.dias || 0) < meta) : [],
     };
   }, [regular, type, licao]);
 
-  const renderRow = (r: any, promo: boolean) => {
+  const renderRow = (r: any, zone: 'promo' | 'down' | '') => {
     const eu = r.id === jogador.id;
     const i = regular.indexOf(r);
+    const atraso = metaDias - (r.dias || 0);
+    const bg = eu ? 'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))'
+      : zone === 'promo' ? 'linear-gradient(135deg,rgba(30,158,134,.1),rgba(30,158,134,.03))'
+      : zone === 'down' ? 'linear-gradient(135deg,rgba(229,0,109,.08),rgba(229,0,109,.02))'
+      : 'var(--g2)';
+    const bd = eu ? 'rgba(247,198,0,.4)' : zone === 'promo' ? 'rgba(30,158,134,.4)' : zone === 'down' ? 'rgba(229,0,109,.3)' : 'var(--b2)';
     return (
-      <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))':promo?'linear-gradient(135deg,rgba(30,158,134,.1),rgba(30,158,134,.03))':'var(--g2)',border:`2px solid ${eu?'rgba(247,198,0,.4)':promo?'rgba(30,158,134,.4)':'var(--b2)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
-        <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
+      <div key={r.id} style={{background:bg,border:`2px solid ${bd}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+        <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
         <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
           {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
         </div>
         <div style={{flex:1, minWidth:0}}>
           <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--txt)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
-          <div style={{fontSize:12,color:promo?'var(--teal)':'var(--mut)',marginTop:2,fontWeight:promo?700:400}}>
-            📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}{promo ? (type === 'week' ? ' · 🎰 no sorteio' : ' · ✅ em dia') : ''}
+          <div style={{fontSize:12,color:zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)',marginTop:2,fontWeight:zone?700:400}}>
+            {zone === 'promo'
+              ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · {type === 'week' ? '🎰 no sorteio' : '✅ em dia'}</>
+              : zone === 'down'
+                ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · ⚠️ {atraso} dia{atraso!==1?'s':''} atrasado{atraso!==1?'s':''}</>
+                : <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</>}
           </div>
         </div>
         <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
@@ -834,26 +844,28 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
             ? `📖 Lição: ${licao?.titulo || 'Carregando...'}`
             : `🏆 Geral: ${licao?.trimestre || 'Carregando...'}`}
         </div>
-        {type === 'week' && !zoneOn && (
-          <div className="zone-hint">🎰 A zona do sorteio abre quando todos os dias da semana estiverem liberados</div>
-        )}
-        {zoneOn && elegiveis.length === 0 && regular.length > 0 && (
+        {zoneOn && (
           <div className="zone-hint">
-            {type === 'week'
-              ? `🎰 Ninguém garantiu vaga no sorteio ainda — complete os ${metaDias} dias!`
-              : `📖 Ninguém está 100% em dia com a temporada (${metaDias} dias disponíveis)`}
+            🎰 Fique em dia com os {metaDias} dia{metaDias!==1?'s':''} já liberado{metaDias!==1?'s':''} para participar do sorteio
           </div>
         )}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {elegiveis.map((r: any) => renderRow(r, true))}
-          {zoneOn && elegiveis.length > 0 && (
+          {emDia.map((r: any) => renderRow(r, zoneOn ? 'promo' : ''))}
+          {zoneOn && emDia.length > 0 && (
             <div className="zone-divider promo">
               <div className="zl"/>
-              <div className="zt">⬆ ZONA DE PROMOÇÃO — {type === 'week' ? 'SORTEIO 🎰' : `EM DIA (${metaDias} DIAS) 📖`} ⬆</div>
+              <div className="zt">⬆ ZONA DE PROMOÇÃO — {type === 'week' ? 'SORTEIO 🎰' : 'EM DIA 📖'} ⬆</div>
               <div className="zl"/>
             </div>
           )}
-          {resto.map((r: any) => renderRow(r, false))}
+          {zoneOn && atrasados.length > 0 && (
+            <div className="zone-divider down">
+              <div className="zl"/>
+              <div className="zt">⬇ ZONA DE REBAIXAMENTO ⬇</div>
+              <div className="zl"/>
+            </div>
+          )}
+          {atrasados.map((r: any) => renderRow(r, 'down'))}
           {regular.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
 
           {admins.length > 0 && (
