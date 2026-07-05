@@ -190,32 +190,61 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAd
       </div>
 
       <div className="sec">
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-          <div className="sec-title" style={{marginBottom:0}}>Cronograma de Estudos da Semana</div>
-        </div>
-        
-        <div style={{marginBottom:16}}>
-          <select 
-            value={licao.semana}
-            onChange={e => {
-              const selected = LICOES.find((l: any) => l.semana === e.target.value);
-              if (selected && onChangeLicao) onChangeLicao(selected);
-            }}
-            className="licao-select"
-          >
-            {LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin).map((l: any, i: number) => (
-              <option key={l.semana} value={l.semana} style={{background:'#1E1248'}}>{l.titulo}</option>
-            ))}
-          </select>
-        </div>
+        {(() => {
+          const visiveis = LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin);
+          const numSemana = visiveis.findIndex((l: any) => l.semana === licao.semana) + 1;
+          const h = new Date();
+          const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+          const stSemana = (l: any) => {
+            const ini = l.dias[0]?.data, fim = l.dias[l.dias.length - 1]?.data;
+            if (!ini || !fim) return '';
+            if (hojeISO >= ini && hojeISO <= fim) return 'current';
+            if (fim < hojeISO) return 'past';
+            return '';
+          };
+          return (
+            <>
+              <div className="banner banner-teal" style={{marginBottom:4,padding:'16px 20px'}}>
+                <div style={{fontSize:11,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
+                  {licao.isAdminOnly ? 'Lição de teste' : `Semana ${numSemana} de 13`} · Temporada {licao.trimestre}
+                </div>
+                <div className="banner-title" style={{fontSize:17,marginTop:4,lineHeight:1.25}}>{licao.titulo}</div>
+              </div>
+              <div className="season-strip">
+                {visiveis.map((l: any, i: number) => {
+                  const st = stSemana(l);
+                  const sel = l.semana === licao.semana;
+                  return (
+                    <div key={l.semana} className="season-node" onClick={() => onChangeLicao && onChangeLicao(l)}>
+                      <div className={`season-circ ${st} ${sel ? 'sel' : ''}`}>{l.isAdminOnly ? '🧪' : st === 'past' ? '🏆' : i + 1}</div>
+                      <div className="season-lbl" style={sel ? {color:'var(--gold)'} : undefined}>{l.isAdminOnly ? 'Teste' : `Sem ${i + 1}`}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
 
-        <div className="days-grid">
-          {licao.dias.map((dia: any) => {
+        <div className="path-wrap">
+          {licao.dias.map((dia: any, i: number) => {
             const st = getSt(dia);
+            const offsets = [0, 46, 72, 46, 0, -46, -72];
+            const off = offsets[i % offsets.length];
+            const isToday = st === 'today';
             return (
-              <div key={dia.id} className={`day-btn ${st}`} onClick={() => st !== 'locked' && onEstudo(dia)}>
-                <span>{formatDiaSemana(dia.diaSemana)}</span>
-                <span className="di">{st === 'done' ? '✅' : st === 'today' ? '📖' : st === 'missed' ? '📖' : '🔒'}</span>
+              <div key={dia.id} className="path-step" style={{transform:`translateX(${off}px)`}}>
+                {isToday && !concHoje && <div className="path-tip">COMEÇAR</div>}
+                {isToday && (
+                  <div className="path-mascote" style={off >= 0 ? {left:-84,top:4} : {right:-84,top:4}}>
+                    {jogador.avatar?.length > 10 ? <img src={jogador.avatar} alt="avatar"/> : <span>{jogador.avatar}</span>}
+                  </div>
+                )}
+                <button className={`path-node ${st}`} onClick={() => st !== 'locked' && onEstudo(dia)}>
+                  {isToday && <div className="path-ring"/>}
+                  {st === 'done' ? '⭐' : st === 'locked' ? '🔒' : '📖'}
+                </button>
+                <div className={`path-label ${isToday ? 'hoje' : ''}`}>{formatDiaSemana(dia.diaSemana)}</div>
               </div>
             );
           })}
@@ -706,6 +735,50 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     : regular.findIndex((r: any) => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
 
+  // Zona de promoção: semana → sorteio (semana inteira liberada + 7/7 dias);
+  // temporada → quem estudou todos os dias já disponíveis
+  const { zoneOn, metaDias, elegiveis, resto } = useMemo(() => {
+    const h = new Date();
+    const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    let on = false, meta = 0;
+    if (type === 'week') {
+      const ultimo = licao?.dias?.[licao.dias.length - 1];
+      on = !!ultimo?.data && hojeISO >= ultimo.data;
+      meta = licao?.dias?.length || 7;
+    } else {
+      meta = LICOES
+        .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre)
+        .reduce((acc: number, l: any) => acc + l.dias.filter((d: any) => d.data && d.data <= hojeISO).length, 0);
+      on = meta > 0;
+    }
+    return {
+      zoneOn: on,
+      metaDias: meta,
+      elegiveis: on ? regular.filter((r: any) => (r.dias || 0) >= meta) : [],
+      resto: on ? regular.filter((r: any) => (r.dias || 0) < meta) : regular,
+    };
+  }, [regular, type, licao]);
+
+  const renderRow = (r: any, promo: boolean) => {
+    const eu = r.id === jogador.id;
+    const i = regular.indexOf(r);
+    return (
+      <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))':promo?'linear-gradient(135deg,rgba(30,158,134,.1),rgba(30,158,134,.03))':'var(--g2)',border:`2px solid ${eu?'rgba(247,198,0,.4)':promo?'rgba(30,158,134,.4)':'var(--b2)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+        <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
+        <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
+          {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
+        </div>
+        <div style={{flex:1, minWidth:0}}>
+          <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--txt)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
+          <div style={{fontSize:12,color:promo?'var(--teal)':'var(--mut)',marginTop:2,fontWeight:promo?700:400}}>
+            📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}{promo ? (type === 'week' ? ' · 🎰 no sorteio' : ' · ✅ em dia') : ''}
+          </div>
+        </div>
+        <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
+      </div>
+    );
+  };
+
   return (
     <div className="scr">
       <div className="hdr">
@@ -761,23 +834,26 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
             ? `📖 Lição: ${licao?.titulo || 'Carregando...'}`
             : `🏆 Geral: ${licao?.trimestre || 'Carregando...'}`}
         </div>
+        {type === 'week' && !zoneOn && (
+          <div className="zone-hint">🎰 A zona do sorteio abre quando todos os dias da semana estiverem liberados</div>
+        )}
+        {zoneOn && elegiveis.length === 0 && regular.length > 0 && (
+          <div className="zone-hint">
+            {type === 'week'
+              ? `🎰 Ninguém garantiu vaga no sorteio ainda — complete os ${metaDias} dias!`
+              : `📖 Ninguém está 100% em dia com a temporada (${metaDias} dias disponíveis)`}
+          </div>
+        )}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {regular.map((r: any, i: number) => {
-            const eu = r.id === jogador.id;
-            return (
-              <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))':'var(--g2)',border:`2px solid ${eu?'rgba(247,198,0,.4)':'var(--b2)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
-                <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
-                <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
-                  {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
-                </div>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--txt)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
-                  <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
-                </div>
-                <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
-              </div>
-            );
-          })}
+          {elegiveis.map((r: any) => renderRow(r, true))}
+          {zoneOn && elegiveis.length > 0 && (
+            <div className="zone-divider promo">
+              <div className="zl"/>
+              <div className="zt">⬆ ZONA DE PROMOÇÃO — {type === 'week' ? 'SORTEIO 🎰' : `EM DIA (${metaDias} DIAS) 📖`} ⬆</div>
+              <div className="zl"/>
+            </div>
+          )}
+          {resto.map((r: any) => renderRow(r, false))}
           {regular.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
 
           {admins.length > 0 && (
