@@ -417,3 +417,29 @@ body{font-family:'Lora','Georgia',serif;background:linear-gradient(160deg,var(--
 .zone-divider.down .zl{background:rgba(229,0,109,.4)}
 .zone-divider.down .zt{color:var(--magenta)}
 .zone-hint{background:linear-gradient(135deg,rgba(30,158,134,.12),rgba(30,158,134,.04));border:1.5px solid rgba(30,158,134,.3);border-radius:12px;padding:10px 14px;font-size:12px;color:var(--txt2);font-family:'Poppins',sans-serif;font-weight:600;text-align:center;margin-bottom:10px}
+
+/* ===== SORTEADOR (tela própria) ===== */
+.sorteador-wrap{padding:20px 16px;max-width:520px;margin:0 auto}
+.sorteador-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:20px}
+.sorteador-slot{margin-bottom:20px;min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.sorteador-avatar{width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid var(--gold)}
+.sorteador-emoji{font-size:68px;text-align:center}
+.sorteador-nome{font-size:17px;font-weight:800;color:var(--txt2);margin-top:8px;text-align:center}
+.sorteador-vencedor{padding:20px;background:rgba(247,198,0,.12);border-radius:16px;border:2px solid var(--gold);animation:popIn .4s ease;width:100%;text-align:center}
+.sorteador-avatar-win{width:100px;height:100px;border-radius:50%;object-fit:cover;border:3px solid var(--gold)}
+.sorteador-emoji-win{font-size:76px}
+.sorteador-nome-win{font-weight:900;font-size:26px;color:var(--txt2);margin-top:8px}
+
+/* ===== RESPONSIVO PARA TELAS MAIORES (tablet/notebook/TV com browser) ===== */
+@media (min-width: 700px) {
+  #root { max-width: 720px; }
+  .path-node { width: 76px; height: 76px; font-size: 30px; }
+  .path-node.today { width: 86px; height: 86px; font-size: 34px; }
+  .unit-title { font-size: 22px; }
+  .stat-xp { font-size: 32px; }
+  .stat-fire { font-size: 30px; }
+  .sorteador-wrap { max-width: 640px; }
+  .sorteador-avatar-win { width: 140px; height: 140px; }
+  .sorteador-emoji-win { font-size: 108px; }
+  .sorteador-nome-win { font-size: 34px; }
+}

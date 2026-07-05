@@ -23,10 +23,24 @@ service cloud.firestore {
     }
 
     function isUserAdmin() {
-      return isAuthenticated() 
+      return isAuthenticated()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(['isAdmin'])
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // Professor: gerência (ver usuários, editar conteúdo) sem ser admin do sistema.
+    // Substitui o antigo "admin comum" — só o super admin (email fixo) concede/remove
+    // isAdmin/isProfessor/bloqueado (ver regra de update abaixo).
+    function isProfessor() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(['isProfessor'])
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isProfessor == true;
+    }
+
+    function canManage() {
+      return isUserAdmin() || isProfessor();
     }
 
     function isValidUser(data) {
@@ -38,6 +52,7 @@ service cloud.firestore {
         && data.email is string && data.email.size() > 0 && data.email.size() <= 100
         && (!data.keys().hasAny(['criadoEm']) || data.criadoEm is string)
         && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
+        && (!data.keys().hasAny(['isProfessor']) || data.isProfessor is bool)
         && (!data.keys().hasAny(['isGuest']) || data.isGuest is bool)
         && (!data.keys().hasAny(['bloqueado']) || data.bloqueado is bool)
         && (!data.keys().hasAny(['telefone']) || (data.telefone is string && data.telefone.size() <= 20))
@@ -46,11 +61,11 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get, list: if isOwner(userId) || isUserAdmin();
+      allow get, list: if isOwner(userId) || canManage();
 
       allow create: if isOwner(userId)
         && incoming().id == userId
-        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification'])
+        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification'])
         && (!incoming().keys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && isValidUser(incoming());
 
@@ -61,7 +76,7 @@ service cloud.firestore {
         && (!incoming().diff(existing()).affectedKeys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && isValidUser(incoming())) || (
         isUserAdmin()
-        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isGuest', 'bloqueado', 'manualNotification'])
+        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'manualNotification'])
         && isValidUser(incoming()));
 
       allow delete: if isUserAdmin();
@@ -80,7 +95,8 @@ service cloud.firestore {
         && (!data.keys().hasAny(['history']) || data.history is map)
         && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
         && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
-        && (!data.keys().hasAny(['isGuest']) || data.isGuest is bool);
+        && (!data.keys().hasAny(['isGuest']) || data.isGuest is bool)
+        && (!data.keys().hasAny(['isProfessor']) || data.isProfessor is bool);
     }
 
     match /progress/{progressId} {
@@ -90,7 +106,7 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && progressId == incoming().userId + '_' + incoming().week
         && isOwner(incoming().userId)
-        && incoming().keys().hasOnly(['userId', 'week', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'updatedAt'])
+        && incoming().keys().hasOnly(['userId', 'week', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));
 
@@ -98,7 +114,7 @@ service cloud.firestore {
         && isOwner(existing().userId)
         && incoming().userId == existing().userId
         && incoming().week == existing().week
-        && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'updatedAt'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
         && isValidProgress(incoming());
 
       allow delete: if false;
@@ -114,7 +130,7 @@ service cloud.firestore {
 
     match /conteudoOverrides/{docId} {
       allow get, list: if isAuthenticated();
-      allow create, update: if isUserAdmin() && isValidOverride(incoming());
+      allow create, update: if canManage() && isValidOverride(incoming());
       allow delete: if isUserAdmin();
     }
   }

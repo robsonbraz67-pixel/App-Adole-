@@ -76,6 +76,39 @@ export const getDiaId = (dias: any[]) => {
   return d ? d.id : dias[dias.length - 1].id;
 };
 
+export const hojeLocalISO = (): string => {
+  const h = new Date();
+  return new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+};
+
+const diaAnteriorISO = (iso: string): string => {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
+};
+
+// Ofensiva real: conta dias de calendário consecutivos estudados, derivado do
+// Firestore (allDone: { semana: diaIds[] } de getUserAllDone) + LICOES (mapeia
+// diaId -> data real). Independente de localStorage — funciona em qualquer aparelho.
+export const computeRealStreak = (allDone: Record<string, number[]>, licoes: any[], hojeISO: string = hojeLocalISO()): number => {
+  const datas = new Set<string>();
+  for (const semana of Object.keys(allDone)) {
+    const l = licoes.find((x: any) => x.semana === semana);
+    if (!l) continue;
+    for (const diaId of allDone[semana]) {
+      const dia = l.dias.find((d: any) => d.id === diaId);
+      if (dia?.data) datas.add(dia.data);
+    }
+  }
+  let cursor = datas.has(hojeISO) ? hojeISO : diaAnteriorISO(hojeISO);
+  let streak = 0;
+  while (datas.has(cursor)) {
+    streak++;
+    cursor = diaAnteriorISO(cursor);
+  }
+  return streak;
+};
+
 export const getMsgRes = (a: number, t: number) => {
   const r = a / t;
   if (r === 1) return { ic: '🏆', mg: 'PERFEITO! Você é imbatível!' };

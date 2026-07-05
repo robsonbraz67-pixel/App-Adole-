@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { DEMO, LICOES } from './data';
-import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx } from './utils';
-import { useStreak } from './streak';
+import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak } from './utils';
 
 /* ===== CONFETTI ===== */
 const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
@@ -68,7 +67,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -128,20 +127,20 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 };
 
 /* ===== HOME ===== */
-export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSemana, onConfig, onAdmin, onChangeLicao }: any) => {
+export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSemana, onConfig, onChangeLicao }: any) => {
   const diaId = getDiaId(licao.dias);
   const diaAtual = licao.dias.find((d: any) => d.id === diaId);
 
   const getSt = (dia: any) => {
     if (prog.done.includes(dia.id)) return 'done';
     if (dia.id === diaId) return 'today';
-    if (jogador.isAdmin) return 'missed'; // Admins can access all days as if they missed them, so it's not locked.
+    if (jogador.isAdmin || jogador.isProfessor) return 'missed'; // Admin/Professor podem acessar todos os dias como se tivessem perdido, então não fica bloqueado.
     if (dia.id < diaId) return 'missed';
     return 'locked';
   };
   const concHoje = prog.done.includes(diaId);
 
-  const visiveis = useMemo(() => LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin), [jogador?.isAdmin]);
+  const visiveis = useMemo(() => LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin || jogador?.isProfessor), [jogador?.isAdmin, jogador?.isProfessor]);
 
   // Dias concluídos de todas as semanas (para marcar semanas anteriores na trilha)
   const [allDone, setAllDone] = useState<Record<string, number[]>>({});
@@ -156,8 +155,9 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
     .replace(/\s*\([^)]*\)\s*$/, '')
     .trim();
 
-  // Ofensiva da temporada (🔥)
-  const seasonStreak = useStreak(jogador?.id);
+  // Ofensiva real da temporada (🔥) — derivada do Firestore (allDone + LICOES),
+  // não do localStorage do aparelho (troca de celular não zera mais)
+  const seasonStreak = useMemo(() => computeRealStreak(allDone, LICOES), [allDone]);
 
   // Banner suspenso acompanha a semana visível na rolagem (e a selecionada)
   const [bannerL, setBannerL] = useState<any>(licao);
@@ -228,7 +228,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
               {visiveis.map((l: any, wi: number) => {
                 const sel = l.semana === licao.semana;
                 const liberada = !!l.dias[0]?.data && l.dias[0].data <= hojeISO;
-                const acessivel = liberada || !!jogador?.isAdmin;
+                const acessivel = liberada || !!jogador?.isAdmin || !!jogador?.isProfessor;
                 const emCurso = liberada && !!l.dias[l.dias.length - 1]?.data && hojeISO <= l.dias[l.dias.length - 1].data;
                 return (
                   <div key={l.semana} ref={(el: any) => { secRefs.current[l.semana] = el; if (sel && el && !el.dataset.scrolled) { el.dataset.scrolled = '1'; setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150); } }} style={{scrollMarginTop:160}}>
@@ -287,18 +287,24 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
         aria-label="Voltar ao topo"
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
       >↑</button>
+    </div>
+  );
+};
 
-      {/* Navbar fixa */}
-      <div className="bot-nav" style={{padding:'6px 8px 14px'}}>
-        <div className="nav-row">
-          <button className="nav-it active" aria-label="Início"><span className="nav-ic">🏠</span>Início</button>
-          <button className="nav-it" onClick={onRanking} aria-label="Ranking"><span className="nav-ic">🏆</span>Ranking</button>
-          {diaAtual && <button className="nav-it" onClick={() => onEstudo(diaAtual)} aria-label="Praticar"><span className="nav-ic">📖</span>Praticar</button>}
-          <button className="nav-it" onClick={onConfig} aria-label="Perfil"><span className="nav-ic">⚙️</span>Perfil</button>
-          {jogador.isAdmin
-            ? <button className="nav-it" onClick={onAdmin} aria-label="Admin"><span className="nav-ic">🛡️</span>Admin</button>
-            : <button className="nav-it" onClick={shareApp} aria-label="Mais"><span className="nav-ic">🔗</span>Mais</button>}
-        </div>
+/* ===== NAVBAR FIXA (global, renderizada pelo App em todas as telas exceto Quiz) ===== */
+export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstudo, onConfig, onAdmin, onSorteador, onMais }: any) => {
+  const canManage = !!jogador?.isAdmin || !!jogador?.isProfessor;
+  return (
+    <div className="bot-nav" style={{padding:'6px 8px 14px'}}>
+      <div className="nav-row">
+        <button className={`nav-it ${active === 'home' ? 'active' : ''}`} onClick={onHome} aria-label="Início"><span className="nav-ic">🏠</span>Início</button>
+        <button className={`nav-it ${active === 'ranking' ? 'active' : ''}`} onClick={onRanking} aria-label="Ranking"><span className="nav-ic">🏆</span>Ranking</button>
+        {diaAtual && <button className={`nav-it ${active === 'estudo' ? 'active' : ''}`} onClick={() => onEstudo(diaAtual)} aria-label="Praticar"><span className="nav-ic">📖</span>Praticar</button>}
+        {canManage && <button className={`nav-it ${active === 'sorteador' ? 'active' : ''}`} onClick={onSorteador} aria-label="Sorteio"><span className="nav-ic">🎰</span>Sorteio</button>}
+        <button className={`nav-it ${active === 'config' ? 'active' : ''}`} onClick={onConfig} aria-label="Perfil"><span className="nav-ic">⚙️</span>Perfil</button>
+        {canManage
+          ? <button className={`nav-it ${active === 'admin' ? 'active' : ''}`} onClick={onAdmin} aria-label="Admin"><span className="nav-ic">🛡️</span>Admin</button>
+          : <button className="nav-it" onClick={onMais} aria-label="Mais"><span className="nav-ic">🔗</span>Mais</button>}
       </div>
     </div>
   );
@@ -438,7 +444,7 @@ export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, 
         <button className="btn btn-ghost btn-sm" onClick={() => wrapLeave(onBack)} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:800,fontSize:14}}>Dia {dia.id} — {formatDiaSemana(dia.diaSemana)}</div>
         <div style={{display:'flex', alignItems:'center', gap:8}}>
-          {jogador?.isAdmin && (
+          {(jogador?.isAdmin || jogador?.isProfessor) && (
             <button className="btn btn-ghost btn-sm" onClick={() => setEditOpen(true)} style={{width:'auto', padding:'4px 8px', margin:0, minHeight:0}} title="Editar conteúdo">✏️</button>
           )}
           <div className="xp-badge" style={{fontSize:12}}>~3 min</div>
@@ -961,7 +967,7 @@ const gerarImagemRanking = async (opts: {
 
 /* ===== RANKING ===== */
 export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao }: any) => {
-  const { regular, admins } = useMemo(() => {
+  const { regular, admins, professores } = useMemo(() => {
     const all = [...ranking].map((r: any) => {
       const isMe = r.id === jogador.id;
       const nome = isMe ? jogador.nome : r.nome;
@@ -969,18 +975,23 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       const dias = isMe && type === 'week' ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
       const xp = isMe && type === 'week' ? (prog.xp || 0) : (r.xp || 0);
       const isAdmin = r.isAdmin || (isMe && !!jogador.isAdmin);
-      return { ...r, nome, avatar, dias, xp, isAdmin };
+      const isProfessor = !isAdmin && (r.isProfessor || (isMe && !!jogador.isProfessor));
+      return { ...r, nome, avatar, dias, xp, isAdmin, isProfessor };
     });
     const byXp = (a: any, b: any) => b.xp - a.xp;
     return {
-      regular: all.filter((r: any) => !r.isAdmin).sort(byXp).slice(0, 10),
+      regular: all.filter((r: any) => !r.isAdmin && !r.isProfessor).sort(byXp).slice(0, 10),
       admins: all.filter((r: any) => r.isAdmin).sort(byXp),
+      professores: all.filter((r: any) => r.isProfessor).sort(byXp),
     };
   }, [ranking, jogador, type, prog]);
 
   const myIsAdmin = !!jogador.isAdmin;
+  const myIsProfessor = !myIsAdmin && !!jogador.isProfessor;
   const myIdx = myIsAdmin
     ? admins.findIndex((r: any) => r.id === jogador.id)
+    : myIsProfessor
+    ? professores.findIndex((r: any) => r.id === jogador.id)
     : regular.findIndex((r: any) => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
 
@@ -1066,7 +1077,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   };
 
   return (
-    <div className="scr">
+    <div className="scr" style={{paddingBottom:100}}>
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>🏆 Ranking</div>
@@ -1177,6 +1188,32 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
               })}
             </>
           )}
+
+          {professores.length > 0 && (
+            <>
+              <div style={{display:'flex',alignItems:'center',gap:8,margin:'4px 0'}}>
+                <div style={{flex:1,height:1,background:'rgba(74,144,217,.3)'}}/>
+                <div style={{fontSize:11,color:'var(--blu)',fontWeight:800,letterSpacing:1,fontFamily:'Poppins,sans-serif'}}>🎓 PROFESSORES</div>
+                <div style={{flex:1,height:1,background:'rgba(74,144,217,.3)'}}/>
+              </div>
+              {professores.map((r: any, i: number) => {
+                const eu = r.id === jogador.id;
+                return (
+                  <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(74,144,217,.16),rgba(74,144,217,.06))':'rgba(74,144,217,.08)',border:`2px solid ${eu?'rgba(74,144,217,.55)':'rgba(74,144,217,.25)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+                    <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:'var(--blu)'}}>🎓</div>
+                    <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(74,144,217,.18)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:'1.5px solid rgba(74,144,217,.35)'}}>
+                      {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
+                    </div>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--blu)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
+                      <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
+                    </div>
+                    <div style={{fontWeight:900,color:'var(--blu)',fontSize:15,flexShrink:0,opacity:.85}}>{r.xp || 0} XP</div>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       </div>
       <div className="sec">
@@ -1184,11 +1221,13 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           <div style={{fontSize:13,color:'var(--mut)',marginBottom:4}}>Sua posição</div>
           {myIsAdmin
             ? <div style={{fontWeight:900,fontSize:22,color:'var(--admin)'}}>🛡️ Admin</div>
+            : myIsProfessor
+            ? <div style={{fontWeight:900,fontSize:22,color:'var(--blu)'}}>🎓 Professor</div>
             : <div style={{fontWeight:900,fontSize:32,color:'var(--gold)'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
           }
           {myIdx !== -1 && (
             <div style={{fontSize:13,color:'var(--mut)'}}>
-              📅 {(myIsAdmin ? admins : regular)[myIdx]?.dias} dia{(myIsAdmin ? admins : regular)[myIdx]?.dias!==1?'s':''} • ⭐ {(myIsAdmin ? admins : regular)[myIdx]?.xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}
+              📅 {(myIsAdmin ? admins : myIsProfessor ? professores : regular)[myIdx]?.dias} dia{(myIsAdmin ? admins : myIsProfessor ? professores : regular)[myIdx]?.dias!==1?'s':''} • ⭐ {(myIsAdmin ? admins : myIsProfessor ? professores : regular)[myIdx]?.xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}
             </div>
           )}
         </div>
@@ -1203,7 +1242,7 @@ const SUPER_ADMIN_EMAIL = 'robsonbraz67@gmail.com';
 const avt = (avatar: string) => avatar?.startsWith('data:') ? '📸' : (avatar || '👤');
 
 const gerarNarrativa = (ranking: any[], semana: string): string => {
-  const r = ranking.filter(u => !u.isAdmin);
+  const r = ranking.filter(u => !u.isAdmin && !u.isProfessor);
   if (r.length === 0) return 'Nenhum participante registrado nesta semana ainda.';
   const top = r.slice(0, Math.min(5, r.length));
   const lider = top[0];
@@ -1234,7 +1273,7 @@ const gerarNarrativa = (ranking: any[], semana: string): string => {
 };
 
 const gerarPromptVideo = (ranking: any[], semana: string): string => {
-  const r = ranking.filter(u => !u.isAdmin).slice(0, 5);
+  const r = ranking.filter(u => !u.isAdmin && !u.isProfessor).slice(0, 5);
   if (r.length === 0) return 'Nenhum participante para gerar o prompt.';
   const temFotos = r.some(u => u.avatar?.startsWith('data:'));
   let p = `Crie um vídeo curto de 30 segundos estilo premiação esportiva para uma turma de jovens cristãos.\n\n`;
@@ -1257,42 +1296,30 @@ const gerarPromptVideo = (ranking: any[], semana: string): string => {
   return p;
 };
 
-export const Admin = ({ licao, jogador, onBack }: any) => {
-  const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+// Hook compartilhado do Sorteador — usado pela tela Sorteador (menu) e, antes,
+// duplicado dentro do Admin/TVMode. Fila sem repetição: sorteia todos os
+// elegíveis antes de repetir alguém.
+const useSorteador = (licao: any) => {
   const [users, setUsers] = useState<any[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(true);
-  
-  // Notification States
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  const [notifTitle, setNotifTitle] = useState('Você tem uma nova mensagem! 📬');
-  const [notifBody, setNotifBody] = useState('Continue seu estudo diário e ganhe mais XP!');
-  const [sendingNotif, setSendingNotif] = useState(false);
+  const [ganhador, setGanhador] = useState<any | null>(null);
+  const [idx, setIdx] = useState(0);
+  const [animando, setAnimando] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [queue, setQueue] = useState<number[]>([]);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Relatório da semana
-  const [relatorio, setRelatorio] = useState<{ narrativa: string; promptVideo: string; ranking: any[] } | null>(null);
-  const [loadingRelatorio, setLoadingRelatorio] = useState(false);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
-  // Sorteador
-  const [sUsers, setSUsers] = useState<any[]>([]);
-  const [sGanhador, setSGanhador] = useState<any | null>(null);
-  const [sIdx, setSIdx] = useState(0);
-  const [sAnimando, setSAnimando] = useState(false);
-  const [sLoading, setSLoading] = useState(false);
-  const [sQueue, setSQueue] = useState<number[]>([]);
-  const sTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => { if (sTimer.current) clearTimeout(sTimer.current); }, []);
-
-  const carregarSorteador = async () => {
-    setSLoading(true); setSGanhador(null); setSQueue([]);
+  const carregar = async () => {
+    setLoading(true); setGanhador(null); setQueue([]);
     try {
       const rank = await getWeeklyRanking(licao.semana);
-      setSUsers(rank.filter((u: any) => !u.isAdmin && u.dias === 7));
+      setUsers(rank.filter((u: any) => !u.isAdmin && !u.isProfessor && u.dias === 7));
     } catch { /* silent */ }
-    setSLoading(false);
+    setLoading(false);
   };
 
-  const playSorteioTick = (fast: boolean) => {
+  const playTick = (fast: boolean) => {
     try {
       const ctx = getAudioCtx();
       const osc = ctx.createOscillator();
@@ -1306,7 +1333,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
     } catch {}
   };
 
-  const playSorteioWin = () => {
+  const playWin = () => {
     try {
       const ctx = getAudioCtx();
       [523, 659, 784, 1047, 1319].forEach((freq, i) => {
@@ -1324,31 +1351,123 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
     } catch {}
   };
 
-  const iniciarSorteio = () => {
-    if (sUsers.length === 0) return;
-    // Fila sem repetição: sorteia todos antes de repetir alguém
-    let queue = sQueue.length > 0 ? sQueue : [...Array(sUsers.length).keys()].sort(() => Math.random() - 0.5);
-    const winner = queue[0];
-    setSQueue(queue.slice(1));
-    setSGanhador(null); setSAnimando(true);
+  const iniciar = () => {
+    if (users.length === 0) return;
+    let fila = queue.length > 0 ? queue : [...Array(users.length).keys()].sort(() => Math.random() - 0.5);
+    const winner = fila[0];
+    setQueue(fila.slice(1));
+    setGanhador(null); setAnimando(true);
     let step = 0;
-    let cur = Math.floor(Math.random() * sUsers.length); // posição inicial aleatória
+    let cur = Math.floor(Math.random() * users.length); // posição inicial aleatória
     const TOTAL = 30;
     const tick = () => {
-      cur = (cur + 1) % sUsers.length;
-      setSIdx(cur); step++;
+      cur = (cur + 1) % users.length;
+      setIdx(cur); step++;
       const fast = step < TOTAL * .5;
       const delay = fast ? 55 : step < TOTAL * .8 ? 110 : 200;
-      playSorteioTick(fast);
+      playTick(fast);
       if (step >= TOTAL) {
-        setSIdx(winner); setSGanhador(sUsers[winner]); setSAnimando(false);
-        setTimeout(playSorteioWin, 150);
+        setIdx(winner); setGanhador(users[winner]); setAnimando(false);
+        setTimeout(playWin, 150);
         return;
       }
-      sTimer.current = setTimeout(tick, delay);
+      timer.current = setTimeout(tick, delay);
     };
-    sTimer.current = setTimeout(tick, 55);
+    timer.current = setTimeout(tick, 55);
   };
+
+  return { users, ganhador, idx, animando, loading, carregar, iniciar };
+};
+
+/* ===== SORTEADOR (tela própria, acessível pelo menu) ===== */
+export const Sorteador = ({ licao, jogador, onBack }: any) => {
+  const { users, ganhador, idx, animando, loading, carregar, iniciar } = useSorteador(licao);
+  return (
+    <div className="scr" style={{paddingBottom:100}}>
+      <div className="hdr">
+        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
+        <div style={{fontWeight:900,fontSize:17}}>🎰 Sorteador</div>
+        <div/>
+      </div>
+      <div className="sorteador-wrap">
+        <div style={{fontSize:13, color:'var(--mut)', marginBottom:12, textAlign:'center'}}>
+          Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{licao.semana}</strong>.
+        </div>
+        <div style={{textAlign:'center'}}>
+          <button onClick={carregar} disabled={loading} className={`btn btn-ghost ${loading ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px 16px', marginBottom:16, width:'auto', display:'inline-flex'}}>
+            {loading ? 'Carregando...' : '🔄 Carregar Participantes'}
+          </button>
+        </div>
+
+        {users.length === 0 && !loading && (
+          <div style={{fontSize:13, color:'var(--mut)', textAlign:'center'}}>Clique acima para ver os participantes elegíveis.</div>
+        )}
+
+        {users.length > 0 && (
+          <>
+            <div style={{fontSize:13, color:'var(--mut)', marginBottom:10, textAlign:'center'}}>
+              {users.length} participante{users.length !== 1 ? 's' : ''} elegível{users.length !== 1 ? 'is' : ''}:
+            </div>
+            <div className="sorteador-chips">
+              {users.map(u => (
+                <div key={u.id} style={{display:'flex', alignItems:'center', gap:5, background:'rgba(255,255,255,.06)', borderRadius:8, padding:'5px 10px'}}>
+                  {u.avatar?.startsWith('data:')
+                    ? <img src={u.avatar} style={{width:22, height:22, borderRadius:'50%', objectFit:'cover'}} alt="" />
+                    : <span style={{fontSize:18}}>{u.avatar || '👤'}</span>}
+                  <span style={{fontSize:13, color:'var(--txt2)', fontWeight:700}}>{u.nome.split(' ')[0]}</span>
+                </div>
+              ))}
+            </div>
+
+            {(animando || ganhador) && (
+              <div className="sorteador-slot">
+                {animando && (
+                  <div style={{animation:'pulse .3s infinite'}}>
+                    {users[idx]?.avatar?.startsWith('data:')
+                      ? <img src={users[idx].avatar} className="sorteador-avatar" alt="" />
+                      : <div className="sorteador-emoji">{users[idx]?.avatar || '👤'}</div>}
+                    <div className="sorteador-nome">{users[idx]?.nome}</div>
+                  </div>
+                )}
+                {ganhador && !animando && (
+                  <div className="sorteador-vencedor">
+                    <div style={{fontSize:13, fontWeight:800, color:'var(--gold)', letterSpacing:1, textTransform:'uppercase', marginBottom:10}}>🏆 Vencedor!</div>
+                    {ganhador.avatar?.startsWith('data:')
+                      ? <img src={ganhador.avatar} className="sorteador-avatar-win" alt="" />
+                      : <div className="sorteador-emoji-win">{ganhador.avatar || '👤'}</div>}
+                    <div className="sorteador-nome-win">{ganhador.nome}</div>
+                    <div style={{fontSize:15, color:'var(--gold)', fontWeight:700}}>{ganhador.xp} XP · {ganhador.dias} dias</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{textAlign:'center'}}>
+              <button onClick={iniciar} disabled={animando} className={`btn btn-gold ${animando ? 'btn-dis' : ''}`} style={{fontSize:16, padding:'12px 28px', width:'auto', display:'inline-flex'}}>
+                {animando ? '🎰 Sorteando...' : ganhador ? '🔁 Sortear Novamente' : '🎰 Sortear!'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export const Admin = ({ licao, jogador, onBack }: any) => {
+  const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+  const [users, setUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+
+  // Notification States
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [notifTitle, setNotifTitle] = useState('Você tem uma nova mensagem! 📬');
+  const [notifBody, setNotifBody] = useState('Continue seu estudo diário e ganhe mais XP!');
+  const [sendingNotif, setSendingNotif] = useState(false);
+
+  // Relatório da semana
+  const [relatorio, setRelatorio] = useState<{ narrativa: string; promptVideo: string; ranking: any[] } | null>(null);
+  const [loadingRelatorio, setLoadingRelatorio] = useState(false);
 
   useEffect(() => {
     let unmounted = false;
@@ -1375,6 +1494,22 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
         alert('Erro ao atualizar usuário');
      }
   };
+
+  const handleToggleProfessor = async (userId: string, currentStatus: boolean) => {
+     try {
+        await toggleProfessor(userId, !currentStatus);
+        setUsers(users.map(u => u.id === userId ? { ...u, isProfessor: !currentStatus } : u));
+     } catch(e) {
+        alert('Erro ao atualizar usuário');
+     }
+  };
+
+  // Ofensiva real de todos (Firestore, independente de aparelho)
+  const [streaks, setStreaks] = useState<Record<string, { streak: number }>>({});
+  useEffect(() => {
+    if (!licao?.trimestre) return;
+    getAllUsersStreaks(licao.trimestre).then(setStreaks).catch(() => {});
+  }, [licao?.trimestre]);
 
   const handleToggleGuest = async (userId: string, currentStatus: boolean) => {
      try {
@@ -1411,7 +1546,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
       setRelatorio({
         narrativa: gerarNarrativa(rank, licao.semana),
         promptVideo: gerarPromptVideo(rank, licao.semana),
-        ranking: rank.filter((u: any) => !u.isAdmin).slice(0, 5),
+        ranking: rank.filter((u: any) => !u.isAdmin && !u.isProfessor).slice(0, 5),
       });
     } catch(e) {
       alert('Erro ao carregar ranking para o relatório.');
@@ -1446,7 +1581,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   };
   
   return (
-    <div className="scr">
+    <div className="scr" style={{paddingBottom:100}}>
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>⚙️ Painel Admin</div>
@@ -1464,15 +1599,24 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                            {u.avatar?.length > 10 ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{u.avatar}</span>}
                         </div>
                         <div>
-                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>} {u.isGuest && <span style={{color:'#888', fontSize:12}}>👁️ Convidado</span>}</div>
+                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>
+                             {u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>} {u.isProfessor && <span style={{color:'var(--admin)', fontSize:12}}>🎓 Professor</span>} {u.isGuest && <span style={{color:'#888', fontSize:12}}>👁️ Convidado</span>}
+                             {streaks[u.id]?.streak > 0 && <span style={{color:'#FF9600', fontSize:12, marginLeft:4}}>🔥 {streaks[u.id].streak}</span>}
+                           </div>
                            <div style={{fontSize:11, color:'var(--mut)'}}>{u.email}</div>
                         </div>
                      </div>
                      {isSuperAdmin && u.email?.toLowerCase() !== SUPER_ADMIN_EMAIL && (
                        <div style={{display:'flex', flexWrap:'wrap', gap: 6, justifyContent:'flex-end'}}>
-                         <button onClick={() => handleToggleAdmin(u.id, !!u.isAdmin)} style={{background: u.isAdmin ? 'rgba(227,28,61,.2)' : 'rgba(79,184,92,.2)', color: u.isAdmin ? '#FF6B6B' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
-                            {u.isAdmin ? 'Remover Adm' : 'Tornar Adm'}
-                         </button>
+                         {u.isAdmin ? (
+                           <button onClick={() => handleToggleAdmin(u.id, true)} style={{background:'rgba(227,28,61,.2)', color:'#FF6B6B', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                              Remover Adm
+                           </button>
+                         ) : (
+                           <button onClick={() => handleToggleProfessor(u.id, !!u.isProfessor)} style={{background: u.isProfessor ? 'rgba(227,28,61,.2)' : 'rgba(124,79,224,.2)', color: u.isProfessor ? '#FF6B6B' : 'var(--admin)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                              {u.isProfessor ? 'Remover Professor' : '🎓 Tornar Professor'}
+                           </button>
+                         )}
                          <button onClick={() => handleToggleGuest(u.id, !!u.isGuest)} style={{background: u.isGuest ? 'rgba(79,184,92,.2)' : 'rgba(136,136,136,.2)', color: u.isGuest ? '#4FB85C' : '#888', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                             {u.isGuest ? '✅ Remover Convidado' : '👁️ Convidado'}
                          </button>
@@ -1601,491 +1745,10 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
           )}
         </div>
 
-        <div className="sec-title" style={{marginBottom:8}}>Sorteador 🎰</div>
-        <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:24, textAlign:'center'}}>
-          <div style={{fontSize:13, color:'var(--mut)', marginBottom:12}}>
-            Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{licao.semana}</strong>.
-          </div>
-          <button onClick={carregarSorteador} disabled={sLoading} className={`btn btn-ghost ${sLoading ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px 16px', marginBottom:12}}>
-            {sLoading ? 'Carregando...' : '🔄 Carregar Participantes'}
-          </button>
-
-          {sUsers.length === 0 && !sLoading && (
-            <div style={{fontSize:12, color:'var(--mut)'}}>Clique acima para ver os participantes elegíveis.</div>
-          )}
-
-          {sUsers.length > 0 && (
-            <>
-              <div style={{fontSize:12, color:'var(--mut)', marginBottom:8}}>
-                {sUsers.length} participante{sUsers.length !== 1 ? 's' : ''} elegível{sUsers.length !== 1 ? 'is' : ''}:
-              </div>
-              <div style={{display:'flex', flexWrap:'wrap', gap:6, justifyContent:'center', marginBottom:16}}>
-                {sUsers.map(u => (
-                  <div key={u.id} style={{display:'flex', alignItems:'center', gap:4, background:'rgba(255,255,255,.06)', borderRadius:8, padding:'4px 8px'}}>
-                    {u.avatar?.startsWith('data:')
-                      ? <img src={u.avatar} style={{width:20, height:20, borderRadius:'50%', objectFit:'cover'}} alt="" />
-                      : <span style={{fontSize:16}}>{u.avatar || '👤'}</span>}
-                    <span style={{fontSize:12, color:'var(--txt2)', fontWeight:700}}>{u.nome.split(' ')[0]}</span>
-                  </div>
-                ))}
-              </div>
-
-              {(sAnimando || sGanhador) && (
-                <div style={{marginBottom:14, minHeight:120, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center'}}>
-                  {sAnimando && (
-                    <div style={{animation:'pulse .3s infinite'}}>
-                      {sUsers[sIdx]?.avatar?.startsWith('data:')
-                        ? <img src={sUsers[sIdx].avatar} style={{width:72, height:72, borderRadius:'50%', objectFit:'cover', border:'3px solid var(--gold)'}} alt="" />
-                        : <div style={{fontSize:56}}>{sUsers[sIdx]?.avatar || '👤'}</div>}
-                      <div style={{fontSize:16, fontWeight:800, color:'var(--txt2)', marginTop:6}}>{sUsers[sIdx]?.nome}</div>
-                    </div>
-                  )}
-                  {sGanhador && !sAnimando && (
-                    <div style={{padding:16, background:'rgba(247,198,0,.12)', borderRadius:12, border:'2px solid var(--gold)', animation:'popIn .4s ease', width:'100%'}}>
-                      <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', letterSpacing:1, textTransform:'uppercase', marginBottom:8}}>🏆 Vencedor!</div>
-                      {sGanhador.avatar?.startsWith('data:')
-                        ? <img src={sGanhador.avatar} style={{width:80, height:80, borderRadius:'50%', objectFit:'cover', border:'3px solid var(--gold)'}} alt="" />
-                        : <div style={{fontSize:64}}>{sGanhador.avatar || '👤'}</div>}
-                      <div style={{fontWeight:900, fontSize:22, color:'var(--txt2)', marginTop:6}}>{sGanhador.nome}</div>
-                      <div style={{fontSize:13, color:'var(--gold)', fontWeight:700}}>{sGanhador.xp} XP · {sGanhador.dias} dias</div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <button onClick={iniciarSorteio} disabled={sAnimando} className={`btn btn-gold ${sAnimando ? 'btn-dis' : ''}`} style={{fontSize:15, padding:'10px 24px'}}>
-                {sAnimando ? '🎰 Sorteando...' : sGanhador ? '🔁 Sortear Novamente' : '🎰 Sortear!'}
-              </button>
-            </>
-          )}
-        </div>
-
         <div style={{marginTop:8,padding:16,background:'rgba(255,255,255,.03)',borderRadius:12}}>
           <div style={{fontWeight:800,color:'var(--mut)',fontSize:11,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Lição Atual</div>
           <div style={{fontSize:14,color:'var(--txt2)'}}>📖 {licao.titulo}</div>
           <div style={{fontSize:13,color:'var(--mut)'}}>📅 {licao.dias.length} dias | {licao.trimestre}</div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ===== TV MODE ===== */
-import { getSeasonRanking } from './firebase';
-
-export const TVMode = ({ licao, jogador }: any) => {
-  const [tab, setTab] = useState<'week' | 'season' | 'sorteador'>('week');
-  const [ranking, setRanking] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [countdown, setCountdown] = useState(30);
-  const REFRESH = 30;
-
-  // Sorteador TV states
-  const [tvSUsers, setTvSUsers] = useState<any[]>([]);
-  const [tvSGanhador, setTvSGanhador] = useState<any | null>(null);
-  const [tvSIdx, setTvSIdx] = useState(0);
-  const [tvSAnimando, setTvSAnimando] = useState(false);
-  const [tvSLoading, setTvSLoading] = useState(false);
-  const [tvSConfetti, setTvSConfetti] = useState(false);
-  const [tvSQueue, setTvSQueue] = useState<number[]>([]);
-  const tvSTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => { if (tvSTimer.current) clearTimeout(tvSTimer.current); }, []);
-
-  const carregarTvSorteador = async () => {
-    setTvSLoading(true); setTvSGanhador(null); setTvSConfetti(false); setTvSQueue([]);
-    try {
-      const rank = await getWeeklyRanking(licao.semana);
-      setTvSUsers(rank.filter((u: any) => !u.isAdmin && u.dias === 7));
-    } catch { /* silent */ }
-    setTvSLoading(false);
-  };
-
-  const playTvTick = (fast: boolean) => {
-    try {
-      const ctx = getAudioCtx();
-      const buf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      const gain = ctx.createGain();
-      const filt = ctx.createBiquadFilter();
-      filt.type = 'bandpass';
-      filt.frequency.value = fast ? 3200 : 1800;
-      filt.Q.value = 2;
-      src.connect(filt);
-      filt.connect(gain);
-      gain.connect(ctx.destination);
-      gain.gain.setValueAtTime(fast ? 0.18 : 0.28, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
-      src.start(); src.stop(ctx.currentTime + 0.04);
-    } catch {}
-  };
-
-  const playTvWin = () => {
-    try {
-      const ctx = getAudioCtx();
-      // Ascending arpeggio (casino jackpot feel)
-      [523, 659, 784, 988, 1319].forEach((freq, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.type = i < 3 ? 'triangle' : 'sine';
-        osc.frequency.value = freq;
-        const t = ctx.currentTime + i * 0.12;
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.3, t + 0.04);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
-        osc.start(t); osc.stop(t + 0.6);
-      });
-      // Coin scatter
-      for (let i = 0; i < 10; i++) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.type = 'square';
-        osc.frequency.value = 900 + Math.random() * 1100;
-        const t = ctx.currentTime + 0.6 + Math.random() * 1.4;
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.07, t + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-        osc.start(t); osc.stop(t + 0.12);
-      }
-    } catch {}
-  };
-
-  const iniciarTvSorteio = () => {
-    if (tvSUsers.length === 0) return;
-    // Fila sem repetição: sorteia todos antes de repetir alguém
-    let queue = tvSQueue.length > 0 ? tvSQueue : [...Array(tvSUsers.length).keys()].sort(() => Math.random() - 0.5);
-    const winner = queue[0];
-    setTvSQueue(queue.slice(1));
-    setTvSGanhador(null); setTvSConfetti(false); setTvSAnimando(true);
-    let step = 0;
-    let cur = Math.floor(Math.random() * tvSUsers.length); // posição inicial aleatória
-    const TOTAL = 35;
-    const tick = () => {
-      cur = (cur + 1) % tvSUsers.length;
-      setTvSIdx(cur); step++;
-      const fast = step < TOTAL * .5;
-      const delay = fast ? 55 : step < TOTAL * .8 ? 110 : 200;
-      playTvTick(fast);
-      if (step >= TOTAL) {
-        setTvSIdx(winner); setTvSGanhador(tvSUsers[winner]); setTvSAnimando(false);
-        setTvSConfetti(true);
-        setTimeout(playTvWin, 200);
-        setTimeout(() => setTvSConfetti(false), 5000);
-        return;
-      }
-      tvSTimer.current = setTimeout(tick, delay);
-    };
-    tvSTimer.current = setTimeout(tick, 55);
-  };
-
-  const load = useCallback(async () => {
-    if (tab === 'sorteador') return; // don't reload ranking when in sorteador
-    try {
-      const r = tab === 'week'
-        ? await getWeeklyRanking(licao.semana)
-        : await getSeasonRanking(licao.trimestre);
-      setRanking(r.filter((u: any) => !u.isAdmin));
-    } catch(e) { console.error(e); }
-    setLoading(false);
-    setCountdown(REFRESH);
-  }, [licao.semana, licao.trimestre, tab]);
-
-  useEffect(() => { if (tab !== 'sorteador') { setLoading(true); load(); } }, [load, tab]);
-
-  useEffect(() => {
-    const iv = setInterval(load, REFRESH * 1000);
-    return () => clearInterval(iv);
-  }, [load]);
-
-  useEffect(() => {
-    const iv = setInterval(() => { if (tab !== 'sorteador') setCountdown(c => (c <= 1 ? REFRESH : c - 1)); }, 1000);
-    return () => clearInterval(iv);
-  }, [tab]);
-
-  const maxXP = ranking[0]?.xp || 1;
-  const medals = ['🥇', '🥈', '🥉'];
-  const podiumColor = ['#F7C600', '#C0C0C0', '#CD7F32'];
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: 'linear-gradient(160deg, #0a1628 0%, #0f2347 55%, #0d1e3a 100%)',
-      display: 'flex', flexDirection: 'column',
-      fontFamily: 'Poppins, sans-serif', overflow: 'hidden',
-      color: '#fff'
-    }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 28px', flexShrink: 0,
-        borderBottom: '1px solid rgba(247,198,0,.15)',
-        background: 'rgba(0,0,0,.25)'
-      }}>
-        <div style={{display:'flex', alignItems:'center', gap:10}}>
-          <span style={{fontSize:26}}>📖</span>
-          <div>
-            <span style={{color:'#F7C600', fontWeight:900, fontSize:18}}>Sabatina</span>
-            <span style={{color:'#1E9E86', fontWeight:900, fontSize:18}}>Quest</span>
-          </div>
-          <div style={{marginLeft:16, fontSize:13, color:'rgba(255,255,255,.5)', borderLeft:'1px solid rgba(255,255,255,.1)', paddingLeft:16}}>
-            {licao.titulo}
-          </div>
-        </div>
-
-        <div style={{display:'flex', alignItems:'center', gap:12}}>
-          {/* Tab toggle */}
-          <div style={{display:'flex', background:'rgba(255,255,255,.07)', borderRadius:8, padding:3, gap:3}}>
-            {(['week','season'] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)} style={{
-                background: tab === t ? 'rgba(247,198,0,.2)' : 'transparent',
-                color: tab === t ? '#F7C600' : 'rgba(255,255,255,.5)',
-                border: 'none', borderRadius:6, padding:'4px 12px',
-                fontSize:12, fontWeight:800, cursor:'pointer'
-              }}>
-                {t === 'week' ? 'Semana' : 'Temporada'}
-              </button>
-            ))}
-            {jogador?.isAdmin && (
-              <button onClick={() => setTab('sorteador')} style={{
-                background: tab === 'sorteador' ? 'rgba(229,0,109,.25)' : 'transparent',
-                color: tab === 'sorteador' ? '#E5006D' : 'rgba(255,255,255,.5)',
-                border: 'none', borderRadius:6, padding:'4px 12px',
-                fontSize:14, fontWeight:800, cursor:'pointer'
-              }}>
-                🎰
-              </button>
-            )}
-          </div>
-          {/* Refresh countdown */}
-          <div style={{fontSize:12, color:'rgba(255,255,255,.4)', display:'flex', alignItems:'center', gap:5}}>
-            <div style={{
-              width:28, height:28, borderRadius:'50%',
-              border:'2px solid rgba(247,198,0,.3)',
-              borderTopColor:'#F7C600',
-              animation:'spin .8s linear infinite',
-              flexShrink:0
-            }}/>
-            {countdown}s
-          </div>
-        </div>
-      </div>
-
-      {/* Body */}
-      {tab === 'sorteador' ? (
-        <div style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden', position:'relative'}}>
-          <Confetti show={tvSConfetti} />
-
-          {/* Top strip — eligible users (only when loaded) */}
-          {tvSUsers.length > 0 && (
-            <div style={{
-              flexShrink:0, display:'flex', flexWrap:'wrap', gap:10,
-              justifyContent:'center', padding:'14px 32px 8px',
-              overflowY:'auto', maxHeight:'28%',
-              borderBottom:'1px solid rgba(255,255,255,.06)'
-            }}>
-              {tvSUsers.map(u => (
-                <div key={u.id} style={{
-                  display:'flex', flexDirection:'column', alignItems:'center', gap:3,
-                  background: tvSGanhador?.id === u.id ? 'rgba(247,198,0,.18)' : 'rgba(255,255,255,.07)',
-                  borderRadius:12, padding:'8px 12px',
-                  border: tvSGanhador?.id === u.id ? '2px solid #F7C600' : '2px solid transparent',
-                  transition:'all .35s', minWidth:64
-                }}>
-                  {u.avatar?.startsWith('data:')
-                    ? <img src={u.avatar} style={{width:44, height:44, borderRadius:'50%', objectFit:'cover'}} alt="" />
-                    : <div style={{fontSize:34, lineHeight:1}}>{u.avatar || '👤'}</div>}
-                  <div style={{fontSize:12, fontWeight:800, color:'rgba(255,255,255,.85)', marginTop:2, maxWidth:72, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textAlign:'center'}}>{u.nome.split(' ')[0]}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Center — slot display grows to fill space */}
-          <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px 48px', overflow:'hidden'}}>
-            {tvSLoading ? (
-              <div style={{fontSize:20, color:'rgba(255,255,255,.4)', textAlign:'center'}}>
-                <div style={{width:40,height:40,borderRadius:'50%',border:'3px solid rgba(247,198,0,.3)',borderTopColor:'#F7C600',animation:'spin .8s linear infinite',margin:'0 auto 14px'}}/>
-                Carregando participantes...
-              </div>
-            ) : !tvSAnimando && !tvSGanhador ? (
-              <div style={{textAlign:'center'}}>
-                <div style={{fontSize:80, marginBottom:12, filter:'drop-shadow(0 0 20px rgba(229,0,109,.5))'}}>🎰</div>
-                <div style={{fontSize: tvSUsers.length > 0 ? 22 : 18, fontWeight:800, color:'rgba(255,255,255,.6)', lineHeight:1.4}}>
-                  {tvSUsers.length > 0
-                    ? <>{tvSUsers.length} participante{tvSUsers.length !== 1 ? 's' : ''} elegível{tvSUsers.length !== 1 ? 'is' : ''}<br/><span style={{fontSize:15, opacity:.6, fontWeight:600}}>Pressione Sortear! para iniciar</span></>
-                    : <>Clique em "Carregar" para buscar<br/>quem completou os 7 dias desta semana</>}
-                </div>
-              </div>
-            ) : tvSAnimando ? (
-              <div style={{textAlign:'center', animation:'pulse .2s infinite', willChange:'opacity'}}>
-                <div style={{
-                  width:'min(22vh, 170px)', height:'min(22vh, 170px)', borderRadius:'50%', overflow:'hidden',
-                  margin:'0 auto 16px', border:'4px solid rgba(255,255,255,.25)',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  background:'rgba(0,0,0,.4)'
-                }}>
-                  {tvSUsers[tvSIdx]?.avatar?.startsWith('data:')
-                    ? <img src={tvSUsers[tvSIdx].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />
-                    : <span style={{fontSize:'min(13vh, 110px)', lineHeight:1}}>{tvSUsers[tvSIdx]?.avatar || '👤'}</span>}
-                </div>
-                <div style={{fontSize:'min(5vw, 44px)', fontWeight:900, color:'#fff', letterSpacing:-1, maxWidth:'70vw', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{tvSUsers[tvSIdx]?.nome}</div>
-              </div>
-            ) : tvSGanhador && (
-              <div style={{textAlign:'center', animation:'popIn .45s cubic-bezier(.175,.885,.32,1.275)'}}>
-                <div style={{fontSize:16, fontWeight:900, color:'#F7C600', letterSpacing:3, textTransform:'uppercase', marginBottom:14, textShadow:'0 0 20px rgba(247,198,0,.6)'}}>🏆 VENCEDOR! 🏆</div>
-                <div style={{
-                  width:'min(24vh, 190px)', height:'min(24vh, 190px)', borderRadius:'50%', overflow:'hidden',
-                  margin:'0 auto 18px', border:'5px solid #F7C600',
-                  boxShadow:'0 0 50px rgba(247,198,0,.45), 0 0 100px rgba(247,198,0,.2)',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  background:'rgba(0,0,0,.4)'
-                }}>
-                  {tvSGanhador.avatar?.startsWith('data:')
-                    ? <img src={tvSGanhador.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />
-                    : <span style={{fontSize:'min(14vh, 120px)', lineHeight:1}}>{tvSGanhador.avatar || '👤'}</span>}
-                </div>
-                <div style={{fontSize:'min(6vw, 56px)', fontWeight:900, color:'#F7C600', letterSpacing:-2, textShadow:'0 2px 30px rgba(247,198,0,.5)', maxWidth:'80vw', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{tvSGanhador.nome}</div>
-                <div style={{fontSize:'min(2.2vw, 20px)', color:'rgba(255,255,255,.55)', marginTop:8, fontWeight:700}}>{tvSGanhador.xp} XP · {tvSGanhador.dias} dias</div>
-              </div>
-            )}
-          </div>
-
-          {/* Bottom — buttons row */}
-          <div style={{flexShrink:0, display:'flex', gap:16, justifyContent:'center', padding:'8px 32px 20px', flexWrap:'wrap'}}>
-            <button onClick={carregarTvSorteador} disabled={tvSLoading || tvSAnimando} style={{
-              background:'rgba(255,255,255,.08)', color:'rgba(255,255,255,.75)',
-              border:'1px solid rgba(255,255,255,.18)', borderRadius:12, padding:'10px 22px',
-              fontSize:15, fontWeight:800, cursor:'pointer',
-              opacity: (tvSLoading || tvSAnimando) ? .35 : 1,
-              transition:'opacity .2s'
-            }}>
-              {tvSLoading ? 'Carregando...' : '🔄 Carregar'}
-            </button>
-            {tvSUsers.length > 0 && (
-              <button onClick={iniciarTvSorteio} disabled={tvSAnimando} style={{
-                background: tvSAnimando ? 'rgba(229,0,109,.15)' : 'linear-gradient(135deg, #E5006D 0%, #C50060 100%)',
-                color:'#fff', border:'none', borderRadius:12, padding:'12px 40px',
-                fontSize:20, fontWeight:900, cursor: tvSAnimando ? 'not-allowed' : 'pointer',
-                boxShadow: tvSAnimando ? 'none' : '0 4px 28px rgba(229,0,109,.55)',
-                opacity: tvSAnimando ? .45 : 1, letterSpacing:1, transition:'all .2s'
-              }}>
-                {tvSAnimando ? '🎰 Sorteando...' : tvSGanhador ? '🔁 Sortear Novamente' : '🎰 Sortear!'}
-              </button>
-            )}
-          </div>
-        </div>
-      ) : loading ? (
-        <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'rgba(255,255,255,.4)'}}>
-          Carregando ranking...
-        </div>
-      ) : ranking.length === 0 ? (
-        <div style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, color:'rgba(255,255,255,.4)'}}>
-          Nenhum participante ainda esta semana.
-        </div>
-      ) : (
-        <div style={{
-          flex:1, display:'grid', overflow:'hidden',
-          gridTemplateColumns: ranking.length > 5 ? '1fr 1fr' : '1fr',
-          gap:0,
-        }}>
-          {ranking.map((u: any, i: number) => {
-            const pct = Math.max(8, Math.round((u.xp / maxXP) * 100));
-            const isTop3 = i < 3;
-            const rowBg = i === 0
-              ? 'linear-gradient(90deg, rgba(247,198,0,.12) 0%, transparent 100%)'
-              : i === 1
-              ? 'linear-gradient(90deg, rgba(192,192,192,.08) 0%, transparent 100%)'
-              : i === 2
-              ? 'linear-gradient(90deg, rgba(205,127,50,.08) 0%, transparent 100%)'
-              : i % 2 === 0 ? 'rgba(255,255,255,.02)' : 'transparent';
-
-            return (
-              <div key={u.id} style={{
-                display:'flex', alignItems:'center', gap:16,
-                padding:'0 28px',
-                background: rowBg,
-                borderBottom:'1px solid rgba(255,255,255,.04)',
-                minHeight:0,
-              }}>
-                {/* Position */}
-                <div style={{
-                  width:40, textAlign:'center', flexShrink:0,
-                  fontSize: isTop3 ? 26 : 18,
-                  fontWeight:900,
-                  color: isTop3 ? podiumColor[i] : 'rgba(255,255,255,.4)',
-                }}>
-                  {isTop3 ? medals[i] : `${i+1}`}
-                </div>
-
-                {/* Avatar */}
-                <div style={{
-                  width:46, height:46, borderRadius:'50%', overflow:'hidden', flexShrink:0,
-                  border:`2px solid ${isTop3 ? podiumColor[i] : 'rgba(255,255,255,.1)'}`,
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:24, background:'rgba(0,0,0,.3)',
-                }}>
-                  {u.avatar?.startsWith('data:')
-                    ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="" />
-                    : <span>{u.avatar}</span>}
-                </div>
-
-                {/* Name + streak */}
-                <div style={{flex:'0 0 160px', minWidth:0}}>
-                  <div style={{
-                    fontSize:15, fontWeight:800,
-                    color: isTop3 ? '#fff' : 'rgba(255,255,255,.8)',
-                    whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis'
-                  }}>{u.nome}</div>
-                  {u.streak > 0 && (
-                    <div style={{fontSize:11, color:'rgba(255,255,255,.45)', marginTop:1}}>
-                      🔥 {u.streak} dia{u.streak !== 1 ? 's' : ''} seguido{u.streak !== 1 ? 's' : ''}
-                    </div>
-                  )}
-                </div>
-
-                {/* XP bar */}
-                <div style={{flex:1, display:'flex', alignItems:'center', gap:10}}>
-                  <div style={{flex:1, height:8, background:'rgba(255,255,255,.08)', borderRadius:4, overflow:'hidden'}}>
-                    <div style={{
-                      height:'100%', borderRadius:4,
-                      width: pct + '%',
-                      background: isTop3
-                        ? `linear-gradient(90deg, ${podiumColor[i]}, ${podiumColor[i]}cc)`
-                        : 'linear-gradient(90deg, #1E9E86, #4A90D9)',
-                      transition:'width .6s ease'
-                    }}/>
-                  </div>
-                  <div style={{
-                    width:72, textAlign:'right', flexShrink:0,
-                    fontSize:15, fontWeight:900,
-                    color: isTop3 ? podiumColor[i] : 'rgba(255,255,255,.7)'
-                  }}>
-                    {u.xp} <span style={{fontSize:11, fontWeight:600, opacity:.6}}>XP</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Footer */}
-      <div style={{
-        padding:'7px 28px', flexShrink:0,
-        borderTop:'1px solid rgba(247,198,0,.1)',
-        background:'rgba(0,0,0,.2)',
-        display:'flex', justifyContent:'space-between', alignItems:'center'
-      }}>
-        <div style={{fontSize:11, color:'rgba(255,255,255,.3)'}}>
-          {tab === 'week' ? `Semana ${licao.semana}` : `Temporada ${licao.trimestre}`} · {ranking.length} participante{ranking.length !== 1 ? 's' : ''}
-        </div>
-        <div style={{fontSize:11, color:'rgba(255,255,255,.3)'}}>
-          #SabatinaQuest · Escola Sabatina Teen
         </div>
       </div>
     </div>
@@ -2149,7 +1812,7 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
   };
 
   return (
-    <div className="scr">
+    <div className="scr" style={{paddingBottom:100}}>
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>⚙️ Configurações</div>

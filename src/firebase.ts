@@ -1,7 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import { isRankingHidden } from './utils';
+import { isRankingHidden, computeRealStreak } from './utils';
+import { LICOES } from './data';
 const firebaseConfig = {
   projectId:         import.meta.env.VITE_FB_PROJECT_ID,
   appId:             import.meta.env.VITE_FB_APP_ID,
@@ -101,6 +102,11 @@ export const toggleGuest = async (userId: string, targetValue: boolean) => {
   await setDoc(userRef, { isGuest: targetValue }, { merge: true });
 };
 
+export const toggleProfessor = async (userId: string, targetValue: boolean) => {
+  const userRef = doc(db, 'users', userId);
+  await setDoc(userRef, { isProfessor: targetValue }, { merge: true });
+};
+
 export const blockUser = async (userId: string, blocked: boolean) => {
   const userRef = doc(db, 'users', userId);
   await setDoc(userRef, { bloqueado: blocked }, { merge: true });
@@ -142,7 +148,7 @@ export const listenToUserNotifications = (userId: string, callback: (notificatio
   });
 };
 
-export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, isAdmin?: boolean, isGuest?: boolean) => {
+export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean) => {
   const progId = `${userId}_${week}`;
   const progRef = doc(db, 'progress', progId);
   await setDoc(progRef, {
@@ -156,9 +162,10 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     nome,
     avatar,
     isAdmin: !!isAdmin,
-    // Só envia isGuest quando true: as regras publicadas antes desse campo
-    // rejeitam documentos com chaves desconhecidas, o que quebrava o save de todos
+    // Só envia isGuest/isProfessor quando true: as regras publicadas antes desses
+    // campos rejeitam documentos com chaves desconhecidas, o que quebrava o save de todos
     ...(isGuest ? { isGuest: true } : {}),
+    ...(isProfessor ? { isProfessor: true } : {}),
     updatedAt: serverTimestamp()
   }, { merge: true });
 };
@@ -203,7 +210,7 @@ export const getWeeklyRanking = async (week: string) => {
     const data = doc.data();
     if (isRankingHidden(data.nome)) return;
     if (data.isGuest) return;
-    results.push({ id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId) });
+    results.push({ id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId), isProfessor: !!data.isProfessor });
   });
   return results.sort((a, b) => b.xp - a.xp);
 };
@@ -220,10 +227,27 @@ export const getSeasonRanking = async (trimestre: string) => {
     if (isRankingHidden(data.nome)) return;
     if (data.isGuest) return;
     if (!userTotals[uid]) {
-      userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: data.isAdmin || adminIds.has(uid) };
+      userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: data.isAdmin || adminIds.has(uid), isProfessor: !!data.isProfessor };
     }
     userTotals[uid].xp += (data.xp || 0);
     userTotals[uid].dias += (data.done?.length || 0);
   });
   return Object.values(userTotals).sort((a, b) => b.xp - a.xp);
+};
+
+// Ofensiva real de todos os usuários da temporada (para o painel Admin/Professor)
+export const getAllUsersStreaks = async (trimestre: string): Promise<Record<string, { nome: string; avatar: string; streak: number; isAdmin: boolean; isProfessor: boolean }>> => {
+  const snap = await getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre)));
+  const porUsuario: Record<string, { nome: string; avatar: string; done: Record<string, number[]>; isAdmin?: boolean; isProfessor?: boolean }> = {};
+  snap.forEach(doc => {
+    const d = doc.data();
+    if (!porUsuario[d.userId]) porUsuario[d.userId] = { nome: d.nome, avatar: d.avatar, done: {}, isAdmin: d.isAdmin, isProfessor: d.isProfessor };
+    porUsuario[d.userId].done[d.week] = d.done || [];
+  });
+  const resultado: Record<string, any> = {};
+  for (const uid of Object.keys(porUsuario)) {
+    const u = porUsuario[uid];
+    resultado[uid] = { nome: u.nome, avatar: u.avatar, isAdmin: !!u.isAdmin, isProfessor: !!u.isProfessor, streak: computeRealStreak(u.done, LICOES) };
+  }
+  return resultado;
 };

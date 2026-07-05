@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LICOES } from './data';
-import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder } from './utils';
+import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp } from './utils';
 import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride } from './firebase';
-import { registerStreakActivity } from './streak';
-import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, TVMode } from './components';
+import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador } from './components';
 
 const CACHE_VERSION = '3T2026';
 
@@ -40,14 +39,6 @@ export default function App() {
   const [inAppNotif, setInAppNotif] = useState<{title: string, body: string, id: number} | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => (localStorage.getItem('theme') as 'light' | 'dark' | 'auto') || 'auto');
   const [showNotifPrompt, setShowNotifPrompt] = useState(false);
-  const [isLandscape, setIsLandscape] = useState(() => window.innerWidth > window.innerHeight && window.innerWidth >= 640);
-
-  useEffect(() => {
-    const check = () => setIsLandscape(window.innerWidth > window.innerHeight && window.innerWidth >= 640);
-    window.addEventListener('resize', check);
-    window.addEventListener('orientationchange', check);
-    return () => { window.removeEventListener('resize', check); window.removeEventListener('orientationchange', check); };
-  }, []);
 
   // PWA fica dias em memória sem recarregar: quando uma nova semana começa,
   // avança a lição automaticamente para não salvar progresso na semana errada
@@ -190,7 +181,7 @@ export default function App() {
               p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
               ss(semKey(l), p);
             } else if ((p.xp > 0 || (p.done?.length ?? 0) > 0) && dbUser) {
-              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, !!dbUser.isAdmin, !!dbUser.isGuest).catch(console.error);
+              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor).catch(console.error);
             }
 
             // Also sync previous lesson's local progress if it never reached Firestore
@@ -202,7 +193,7 @@ export default function App() {
                 const prevLocal = gs(`prog_${prevL.semana}`, null);
                 if (prevLocal && (prevLocal.xp > 0 || (prevLocal.done?.length ?? 0) > 0)) {
                   getProgress(j.id, prevL.semana).then(prevDb => {
-                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, !!dbUser.isAdmin, !!dbUser.isGuest).catch(console.error);
+                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor).catch(console.error);
                   }).catch(console.error);
                 }
               }
@@ -292,11 +283,6 @@ export default function App() {
       res.xpTotal += readingXP;
     }
 
-    if (!isRepeat) {
-      registerStreakActivity(jogador.id);
-      window.dispatchEvent(new Event('streak-updated'));
-    }
-
     const novaDone = isRepeat ? prog.done : [...prog.done, diaAtual.id];
     const novoXP = isRepeat ? prog.xp : prog.xp + res.xpTotal;
     const novoStreak = isRepeat ? prog.streak : prog.streak + 1;
@@ -335,7 +321,7 @@ export default function App() {
       try {
          const user = await waitForAuthInit();
          if (user) {
-            await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest);
+            await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor);
          }
       } catch(e) {
          console.error("Error updating online progress:", e);
@@ -440,7 +426,7 @@ export default function App() {
     try {
       const user = await waitForAuthInit();
       if (user) {
-        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest);
+        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor);
       }
     } catch(e) {
       console.error(e);
@@ -465,7 +451,7 @@ export default function App() {
       const user = await waitForAuthInit();
       if (user) {
         const l = licao || LICOES[0];
-        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, !!novoJ.isAdmin, !!novoJ.isGuest);
+        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, !!novoJ.isAdmin, !!novoJ.isGuest, !!novoJ.isProfessor);
       }
     } catch(e) { console.error(e); }
 
@@ -483,18 +469,33 @@ export default function App() {
   if (tela === 'splash') return <Splash />;
   if (tela === 'login') return <Login onLogin={handleLogin} />;
   if (!jogador || !licao) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',color:'#B9ACE6'}}>Carregando...</div>;
-  if (isLandscape) return <TVMode licao={licao} jogador={jogador} />;
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} />}
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
+      {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
+
+      {!['splash', 'login', 'quiz'].includes(tela) && (
+        <BottomNav
+          active={tela}
+          jogador={jogador}
+          diaAtual={diaAtual}
+          onHome={() => setTela('home')}
+          onRanking={() => loadLatestRanking('week')}
+          onEstudo={() => setTela('estudo')}
+          onConfig={() => setTela('config')}
+          onAdmin={() => setTela('admin')}
+          onSorteador={() => setTela('sorteador')}
+          onMais={shareApp}
+        />
+      )}
 
       {showNotifPrompt && (
         <div style={{
