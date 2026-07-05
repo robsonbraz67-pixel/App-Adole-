@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LICOES } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder } from './utils';
 import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride } from './firebase';
@@ -47,6 +47,23 @@ export default function App() {
     window.addEventListener('orientationchange', check);
     return () => { window.removeEventListener('resize', check); window.removeEventListener('orientationchange', check); };
   }, []);
+
+  // PWA fica dias em memória sem recarregar: quando uma nova semana começa,
+  // avança a lição automaticamente para não salvar progresso na semana errada
+  const activeSemanaRef = useRef<string>(getActiveLicao().semana);
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === 'hidden') return;
+      const active = getActiveLicao();
+      if (active.semana === activeSemanaRef.current) return; // semana não virou
+      activeSemanaRef.current = active.semana;
+      if (jogador && licao && licao.semana < active.semana) handleChangeLicao(active);
+    };
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+    const iv = setInterval(check, 60 * 60 * 1000);
+    return () => { document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check); clearInterval(iv); };
+  }, [licao, jogador]);
 
   const shouldAskNotif = () => {
     if (!('Notification' in window)) return false;
@@ -213,7 +230,10 @@ export default function App() {
   }, []);
 
   const handleLogin = async (j: any) => {
-    const l = gs('licao_atual', LICOES[0]);
+    const activeLicao = getActiveLicao();
+    const savedLicao = gs('licao_atual', null);
+    const l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
+    ss('licao_atual', l);
     setLicao(l);
 
     let p = gs(semKey(l), PROG0);
@@ -302,23 +322,25 @@ export default function App() {
     setRanking(r);
     setProg({ ...np, pos: calcPos(r, jogador.id, novoXP) });
 
-    try {
-       const user = await waitForAuthInit();
-       if (user) {
-          await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest);
-       }
-    } catch(e) {
-       console.error("Error updating online progress:", e);
-       setInAppNotif({ title: '⚠️ Progresso não sincronizado', body: 'Seu progresso foi salvo localmente, mas não chegou à nuvem. Verifique sua conexão.', id: Date.now() });
-    }
-
-    try {
-      await scheduleStudyReminder(jogador.nome, l.titulo || 'Estudo Diário');
-    } catch(e) {
-      console.error(e);
-    }
-
+    // Mostra o resultado imediatamente; sync com a nuvem roda em segundo plano
     setTela('resultado');
+
+    (async () => {
+      try {
+         const user = await waitForAuthInit();
+         if (user) {
+            await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest);
+         }
+      } catch(e) {
+         console.error("Error updating online progress:", e);
+         setInAppNotif({ title: '⚠️ Progresso não sincronizado', body: 'Seu progresso foi salvo localmente, mas não chegou à nuvem. Verifique sua conexão.', id: Date.now() });
+      }
+      try {
+        await scheduleStudyReminder(jogador.nome, l.titulo || 'Estudo Diário');
+      } catch(e) {
+        console.error(e);
+      }
+    })();
   };
 
   const handleLogout = async () => {
@@ -334,9 +356,13 @@ export default function App() {
 
   const [rankingType, setRankingType] = useState('week');
 
-  const loadLatestRanking = async (type: string = 'week') => {
+  const loadLatestRanking = async (type: string = 'week', licaoArg?: any) => {
     setRankingType(type);
-    const l = licao || LICOES[0];
+    const l = licaoArg || licao || LICOES[0];
+    // Abre a tela imediatamente com o cache local; atualiza quando o Firestore responder
+    if (type === 'week') setRanking(gs('ranking_' + l.semana, []));
+    playSound('ranking');
+    setTela('ranking');
     try {
       const user = await waitForAuthInit();
       if (user) {
@@ -355,8 +381,6 @@ export default function App() {
     } catch(e) {
       console.error(e);
     }
-    playSound('ranking');
-    setTela('ranking');
   };
 
   const handleChangeLicao = async (newLicao: any) => {
@@ -410,7 +434,7 @@ export default function App() {
     try {
       const user = await waitForAuthInit();
       if (user) {
-        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin);
+        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest);
       }
     } catch(e) {
       console.error(e);
@@ -457,7 +481,7 @@ export default function App() {
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={async (d: any) => { const override = await getDayOverride(licao.semana, d.id).catch(() => null); setDiaAtual(override ? { ...d, ...override } : d); setTela('estudo'); }} onRanking={() => loadLatestRanking('week')} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}

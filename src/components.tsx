@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { DEMO, LICOES } from './data';
-import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana } from './utils';
+import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx } from './utils';
 
 /* ===== CONFETTI ===== */
 const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
@@ -127,10 +127,10 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 };
 
 /* ===== HOME ===== */
-export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAdmin, onChangeLicao }: any) => {
+export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSemana, onConfig, onAdmin, onChangeLicao }: any) => {
   const diaId = getDiaId(licao.dias);
   const diaAtual = licao.dias.find((d: any) => d.id === diaId);
-  
+
   const getSt = (dia: any) => {
     if (prog.done.includes(dia.id)) return 'done';
     if (dia.id === diaId) return 'today';
@@ -139,6 +139,38 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAd
     return 'locked';
   };
   const concHoje = prog.done.includes(diaId);
+
+  const visiveis = useMemo(() => LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin), [jogador?.isAdmin]);
+
+  // Remove o prefixo "Lição N -/—" e a data entre parênteses do título bruto
+  const tituloCurto = (titulo: string) => (titulo || '')
+    .replace(/^Lição\s*\d+\s*[-—]\s*/i, '')
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .trim();
+
+  // Banner suspenso acompanha a semana visível na rolagem (e a selecionada)
+  const [bannerL, setBannerL] = useState<any>(licao);
+  useEffect(() => { setBannerL(licao); }, [licao.semana]);
+  const secRefs = useRef<Record<string, HTMLElement | null>>({});
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        let cur: any = null;
+        for (const l of visiveis) {
+          const el = secRefs.current[l.semana];
+          if (el && el.getBoundingClientRect().top <= 175) cur = l;
+        }
+        if (cur) setBannerL((prev: any) => (prev?.semana === cur.semana ? prev : cur));
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [visiveis]);
 
   return (
     <div className="scr" style={{paddingBottom:100}}>
@@ -190,36 +222,86 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onConfig, onAd
       </div>
 
       <div className="sec">
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-          <div className="sec-title" style={{marginBottom:0}}>Cronograma de Estudos da Semana</div>
-        </div>
-        
-        <div style={{marginBottom:16}}>
-          <select 
-            value={licao.semana}
-            onChange={e => {
-              const selected = LICOES.find((l: any) => l.semana === e.target.value);
-              if (selected && onChangeLicao) onChangeLicao(selected);
-            }}
-            className="licao-select"
-          >
-            {LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin).map((l: any, i: number) => (
-              <option key={l.semana} value={l.semana} style={{background:'#1E1248'}}>{l.titulo}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="days-grid">
-          {licao.dias.map((dia: any) => {
-            const st = getSt(dia);
-            return (
-              <div key={dia.id} className={`day-btn ${st}`} onClick={() => st !== 'locked' && onEstudo(dia)}>
-                <span>{formatDiaSemana(dia.diaSemana)}</span>
-                <span className="di">{st === 'done' ? '✅' : st === 'today' ? '📖' : st === 'missed' ? '📖' : '🔒'}</span>
+        {(() => {
+          const h = new Date();
+          const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+          const totalSemanas = visiveis.filter((l: any) => !l.isAdminOnly).length;
+          const numBanner = visiveis.findIndex((l: any) => l.semana === bannerL?.semana) + 1;
+          const pathOff = (gi: number) => Math.round(Math.sin((gi * Math.PI) / 3.5) * 70);
+          return (
+            <>
+              {/* Banner suspenso: fica fixo e acompanha a semana visível/selecionada */}
+              <div className="banner banner-teal trail-sticky">
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:10,fontWeight:800,letterSpacing:1.5,textTransform:'uppercase',opacity:.85}}>
+                      {bannerL?.isAdminOnly ? '🧪 Lição de teste' : `Semana ${numBanner} de ${totalSemanas}`} · Temporada {bannerL?.trimestre}
+                    </div>
+                    <div className="banner-title" style={{fontSize:15,marginTop:3,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{tituloCurto(bannerL?.titulo)}</div>
+                  </div>
+                  {!bannerL?.isAdminOnly && (
+                    <button
+                      className="trail-rank-btn"
+                      title="Ranking desta semana"
+                      onClick={() => (onRankingSemana || onRanking)(bannerL)}
+                    >🏆</button>
+                  )}
+                </div>
               </div>
-            );
-          })}
-        </div>
+              <div className="trail">
+              {visiveis.map((l: any, wi: number) => {
+                const sel = l.semana === licao.semana;
+                const liberada = !!l.dias[0]?.data && l.dias[0].data <= hojeISO;
+                const acessivel = liberada || !!jogador?.isAdmin;
+                const emCurso = liberada && !!l.dias[l.dias.length - 1]?.data && hojeISO <= l.dias[l.dias.length - 1].data;
+                return (
+                  <div key={l.semana} ref={(el: any) => { secRefs.current[l.semana] = el; if (sel && el && !el.dataset.scrolled) { el.dataset.scrolled = '1'; setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 150); } }} style={{scrollMarginTop:160}}>
+                    <div
+                      className={`week-divider ${sel ? 'sel' : ''} ${!acessivel ? 'locked' : ''}`}
+                      onClick={() => acessivel && !sel && onChangeLicao && onChangeLicao(l)}
+                    >
+                      <div className="wl"/>
+                      <span>
+                        {l.isAdminOnly ? '🧪 Teste' : `Semana ${wi + 1}`}{emCurso ? ' ⭐' : ''}{!acessivel ? ' 🔒' : ''} — {tituloCurto(l.titulo)}
+                      </span>
+                      <div className="wl"/>
+                    </div>
+                    <div className="path-wrap">
+                      {l.dias.map((dia: any, i: number) => {
+                        const off = pathOff(wi * 7 + i);
+                        const st = sel ? getSt(dia) : acessivel ? 'missed' : 'locked';
+                        const isToday = sel && st === 'today';
+                        return (
+                          <div key={dia.id} className="path-step" style={{transform:`translateX(${off}px)`}}>
+                            {isToday && !concHoje && <div className="path-tip">COMEÇAR</div>}
+                            {isToday && (
+                              <div className="path-mascote" style={off >= 0 ? {left:-84,top:4} : {right:-84,top:4}}>
+                                {jogador.avatar?.length > 10 ? <img src={jogador.avatar} alt="avatar"/> : <span>{jogador.avatar}</span>}
+                              </div>
+                            )}
+                            <button
+                              className={`path-node ${st}`}
+                              onClick={() => {
+                                if (st === 'locked') return;
+                                if (sel) onEstudo(dia);
+                                else if (onChangeLicao) onChangeLicao(l);
+                              }}
+                            >
+                              {isToday && <div className="path-ring"/>}
+                              {st === 'done' ? '⭐' : st === 'locked' ? '🔒' : '📖'}
+                            </button>
+                            <div className={`path-label ${isToday ? 'hoje' : ''}`}>{formatDiaSemana(dia.diaSemana)}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {diaAtual && (
@@ -681,6 +763,231 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
   );
 };
 
+/* ===== EXPORTAR RANKING (imagem para WhatsApp) ===== */
+const loadAvatarImg = (src: string): Promise<HTMLImageElement | null> => new Promise(res => {
+  const img = new Image();
+  img.onload = () => res(img);
+  img.onerror = () => res(null);
+  img.src = src;
+});
+
+const rrect = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+};
+
+const truncName = (n: string, max: number) => (n || '').length > max ? (n || '').slice(0, max - 1) + '…' : (n || '');
+
+const drawAvatar = async (c: CanvasRenderingContext2D, avatar: string, cx: number, cy: number, r: number) => {
+  c.save();
+  c.beginPath();
+  c.arc(cx, cy, r, 0, Math.PI * 2);
+  c.fillStyle = 'rgba(255,255,255,.12)';
+  c.fill();
+  c.clip();
+  if (avatar?.startsWith('data:')) {
+    const img = await loadAvatarImg(avatar);
+    if (img) {
+      const s = Math.max((r * 2) / img.width, (r * 2) / img.height);
+      c.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
+    }
+  } else {
+    c.font = `${Math.round(r * 1.15)}px sans-serif`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(avatar || '⭐', cx, cy + r * 0.06);
+  }
+  c.restore();
+};
+
+const gerarImagemRanking = async (opts: {
+  emDia: any[]; atrasados: any[]; regular: any[];
+  type: string; licao: any; metaDias: number; zoneOn: boolean;
+}): Promise<Blob | null> => {
+  const { emDia, atrasados, regular, type, licao, metaDias, zoneOn } = opts;
+  const W = 1080;
+  const podio = regular.slice(0, 3);
+  const listaRows = [...emDia, ...atrasados].slice(0, 12);
+  const nDividers = zoneOn && emDia.length > 0 && atrasados.length > 0 ? 1 : 0;
+  const H = 330 + (podio.length >= 3 ? 470 : 120) + listaRows.length * 96 + nDividers * 70 + 300 + 190;
+
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  if (!c) return null;
+  c.imageSmoothingEnabled = true;
+  c.imageSmoothingQuality = 'high';
+
+  // Fundo com gradiente do app + estrelas
+  const bg = c.createLinearGradient(0, 0, W * .4, H);
+  bg.addColorStop(0, '#0D1E35');
+  bg.addColorStop(1, '#1B3A63');
+  c.fillStyle = bg;
+  c.fillRect(0, 0, W, H);
+  for (let i = 0; i < 70; i++) {
+    c.fillStyle = `rgba(247,198,0,${.08 + Math.random() * .25})`;
+    c.beginPath();
+    c.arc(Math.random() * W, Math.random() * H, 1 + Math.random() * 2.5, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  // Cabeçalho
+  c.textAlign = 'center';
+  c.textBaseline = 'alphabetic';
+  c.font = '900 74px sans-serif';
+  c.fillStyle = '#F7C600';
+  const wSab = c.measureText('SABATINA').width;
+  c.font = '900 74px sans-serif';
+  const wQst = c.measureText('QUEST').width;
+  const x0 = W / 2 - (wSab + wQst) / 2;
+  c.textAlign = 'left';
+  c.fillText('SABATINA', x0, 108);
+  c.fillStyle = '#1E9E86';
+  c.fillText('QUEST', x0 + wSab, 108);
+  c.textAlign = 'center';
+  c.font = '700 24px sans-serif';
+  c.fillStyle = '#7DA4C8';
+  c.fillText('E S C O L A   S A B A T I N A   T E E N', W / 2, 150);
+
+  c.font = '900 52px sans-serif';
+  c.fillStyle = '#FFFFFF';
+  c.fillText(type === 'week' ? '🏆 RANKING DA SEMANA' : '🏆 RANKING DA TEMPORADA', W / 2, 235);
+  c.font = '700 32px sans-serif';
+  c.fillStyle = '#C8D8F0';
+  c.fillText(type === 'week' ? truncName(licao?.titulo || '', 42) : `Temporada ${licao?.trimestre || ''} · 13 semanas`, W / 2, 285);
+
+  let y = 330;
+
+  // Pódio
+  if (podio.length >= 3) {
+    const podX = [W / 2, W / 2 - 330, W / 2 + 330];
+    const podR = [105, 78, 78];
+    const podY = [y + 165, y + 205, y + 205];
+    const medY = [y + 330, y + 330, y + 330];
+    const medalha = ['🥇', '🥈', '🥉'];
+    for (const [ord, pi] of [[1, 1], [2, 2], [0, 0]] as any) {
+      const u = podio[pi];
+      const cx = podX[pi], r = podR[pi], cy = podY[pi];
+      if (pi === 0) {
+        c.font = '64px sans-serif';
+        c.fillText('👑', cx, cy - r - 24);
+        c.strokeStyle = '#F7C600';
+        c.lineWidth = 8;
+        c.beginPath();
+        c.arc(cx, cy, r + 8, 0, Math.PI * 2);
+        c.stroke();
+        c.shadowColor = 'rgba(247,198,0,.8)';
+        c.shadowBlur = 40;
+        c.beginPath();
+        c.arc(cx, cy, r + 8, 0, Math.PI * 2);
+        c.stroke();
+        c.shadowBlur = 0;
+      }
+      await drawAvatar(c, u.avatar, cx, cy, r);
+      c.font = `900 ${pi === 0 ? 40 : 30}px sans-serif`;
+      c.fillStyle = pi === 0 ? '#F7C600' : '#FFFFFF';
+      c.textAlign = 'center';
+      c.fillText(truncName(u.nome, 14), cx, medY[pi]);
+      c.font = '52px sans-serif';
+      c.fillText(medalha[pi], cx, medY[pi] + 62);
+      c.font = '900 32px sans-serif';
+      c.fillStyle = '#F7C600';
+      c.fillText(`${u.xp || 0} XP`, cx, medY[pi] + 112);
+    }
+    y += 470;
+  } else {
+    y += 40;
+  }
+
+  // Lista com zonas
+  const mx = 60, rw = W - mx * 2;
+  const drawDivider = (label: string, cor: string) => {
+    c.strokeStyle = cor;
+    c.lineWidth = 3;
+    c.beginPath(); c.moveTo(mx, y + 32); c.lineTo(W / 2 - 290, y + 32); c.stroke();
+    c.beginPath(); c.moveTo(W / 2 + 290, y + 32); c.lineTo(W - mx, y + 32); c.stroke();
+    c.font = '900 26px sans-serif';
+    c.fillStyle = cor;
+    c.textAlign = 'center';
+    c.fillText(label, W / 2, y + 42);
+    y += 70;
+  };
+
+  for (let gi = 0; gi < listaRows.length; gi++) {
+    const u = listaRows[gi];
+    const promo = zoneOn && gi < emDia.length;
+    if (nDividers && gi === emDia.length) {
+      drawDivider('⬆ ZONA DE PROMOÇÃO — SORTEIO 🎰 ⬆', '#1E9E86');
+    }
+    const pos = regular.indexOf(u);
+    rrect(c, mx, y, rw, 82, 20);
+    c.fillStyle = promo ? 'rgba(30,158,134,.14)' : 'rgba(229,0,109,.09)';
+    if (!zoneOn) c.fillStyle = 'rgba(255,255,255,.06)';
+    c.fill();
+    c.strokeStyle = promo ? 'rgba(30,158,134,.55)' : 'rgba(229,0,109,.4)';
+    if (!zoneOn) c.strokeStyle = 'rgba(255,255,255,.12)';
+    c.lineWidth = 3;
+    c.stroke();
+    c.textAlign = 'left';
+    c.font = '900 34px sans-serif';
+    c.fillStyle = pos < 3 ? '#F5C842' : promo ? '#1E9E86' : '#E5006D';
+    c.fillText(pos < 3 ? ['🥇', '🥈', '🥉'][pos] : `${pos + 1}º`, mx + 26, y + 54);
+    await drawAvatar(c, u.avatar, mx + 150, y + 41, 30);
+    c.font = '800 32px sans-serif';
+    c.fillStyle = '#FFFFFF';
+    c.fillText(truncName(u.nome, 20), mx + 200, y + 43);
+    c.font = '700 22px sans-serif';
+    c.fillStyle = promo ? '#2BBBA0' : '#7DA4C8';
+    c.fillText(promo ? `📅 ${u.dias || 0} dias · em dia 🎰` : `📅 ${u.dias || 0} dia${u.dias !== 1 ? 's' : ''}`, mx + 200, y + 71);
+    c.textAlign = 'right';
+    c.font = '900 34px sans-serif';
+    c.fillStyle = '#F7C600';
+    c.fillText(`${u.xp || 0} XP`, mx + rw - 26, y + 54);
+    y += 96;
+  }
+
+  // Cartão CTA
+  y += 24;
+  const ctaH = 200;
+  rrect(c, mx, y, rw, ctaH, 26);
+  const gld = c.createLinearGradient(mx, y, mx + rw, y + ctaH);
+  gld.addColorStop(0, '#F7C600');
+  gld.addColorStop(1, '#C99F00');
+  c.fillStyle = gld;
+  c.fill();
+  c.textAlign = 'center';
+  c.fillStyle = '#3A2800';
+  if (type === 'week') {
+    c.font = '900 36px sans-serif';
+    c.fillText('🎰 SORTEIO DA SEMANA!', W / 2, y + 70);
+    c.font = '700 28px sans-serif';
+    c.fillText('Estude todos os dias, fique na zona de', W / 2, y + 120);
+    c.fillText('promoção e concorra ao sorteio!', W / 2, y + 158);
+  } else {
+    c.font = '900 36px sans-serif';
+    c.fillText('👑 GRANDE SORTEIO DA TEMPORADA!', W / 2, y + 66);
+    c.font = '700 27px sans-serif';
+    c.fillText('Revise as lições e fique em dia para participar.', W / 2, y + 114);
+    c.fillText('Quem sabe você é o campeão da temporada?', W / 2, y + 154);
+  }
+  y += ctaH + 46;
+
+  // Rodapé com o link do app
+  c.font = '700 26px sans-serif';
+  c.fillStyle = '#C8D8F0';
+  c.fillText('📲 Venha estudar com a gente:', W / 2, y + 16);
+  c.font = '900 34px sans-serif';
+  c.fillStyle = '#F7C600';
+  c.fillText(window.location.origin.replace(/^https?:\/\//, ''), W / 2, y + 64);
+
+  return new Promise(res => cv.toBlob(b => res(b), 'image/png'));
+};
+
 /* ===== RANKING ===== */
 export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao }: any) => {
   const { regular, admins } = useMemo(() => {
@@ -706,6 +1013,87 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     : regular.findIndex((r: any) => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
 
+  // Zonas estilo divisão: em dia com os dias liberados → zona do sorteio;
+  // 1+ dia liberado sem fazer → zona de rebaixamento
+  const { zoneOn, metaDias, emDia, atrasados } = useMemo(() => {
+    const h = new Date();
+    const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    let meta = 0;
+    if (type === 'week') {
+      meta = (licao?.dias || []).filter((d: any) => d.data && d.data <= hojeISO).length;
+    } else {
+      meta = LICOES
+        .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre)
+        .reduce((acc: number, l: any) => acc + l.dias.filter((d: any) => d.data && d.data <= hojeISO).length, 0);
+    }
+    const on = meta > 0;
+    return {
+      zoneOn: on,
+      metaDias: meta,
+      emDia: on ? regular.filter((r: any) => (r.dias || 0) >= meta) : regular,
+      atrasados: on ? regular.filter((r: any) => (r.dias || 0) < meta) : [],
+    };
+  }, [regular, type, licao]);
+
+  const [sharing, setSharing] = useState(false);
+  const handleExport = async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const blob = await gerarImagemRanking({ emDia, atrasados, regular, type, licao, metaDias, zoneOn });
+      if (!blob) throw new Error('Falha ao gerar imagem');
+      const url = window.location.origin;
+      const texto = type === 'week'
+        ? `🏆 Ranking da semana — ${licao?.titulo || ''}\n🎰 Estude todos os dias e concorra ao sorteio!\n📲 Venha estudar com a gente: ${url}`
+        : `🏆 Ranking da temporada ${licao?.trimestre || ''}\n👑 Revise as lições, fique em dia e participe do GRANDE SORTEIO da temporada! Quem sabe você é o campeão!\n📲 Venha estudar com a gente: ${url}`;
+      const file = new File([blob], 'ranking-sabatinaquest.png', { type: 'image/png' });
+      if ((navigator as any).canShare?.({ files: [file] })) {
+        await (navigator as any).share({ files: [file], text: texto });
+      } else {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'ranking-sabatinaquest.png';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        try { await navigator.clipboard.writeText(texto); } catch {}
+        alert('Imagem baixada! O texto com o link foi copiado — cole no WhatsApp junto com a imagem. 📲');
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') console.error('Erro ao exportar ranking:', e);
+    }
+    setSharing(false);
+  };
+
+  const renderRow = (r: any, zone: 'promo' | 'down' | '') => {
+    const eu = r.id === jogador.id;
+    const i = regular.indexOf(r);
+    const atraso = metaDias - (r.dias || 0);
+    const bg = eu ? 'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))'
+      : zone === 'promo' ? 'linear-gradient(135deg,rgba(30,158,134,.1),rgba(30,158,134,.03))'
+      : zone === 'down' ? 'linear-gradient(135deg,rgba(229,0,109,.08),rgba(229,0,109,.02))'
+      : 'var(--g2)';
+    const bd = eu ? 'rgba(247,198,0,.4)' : zone === 'promo' ? 'rgba(30,158,134,.4)' : zone === 'down' ? 'rgba(229,0,109,.3)' : 'var(--b2)';
+    return (
+      <div key={r.id} style={{background:bg,border:`2px solid ${bd}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+        <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
+        <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
+          {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
+        </div>
+        <div style={{flex:1, minWidth:0}}>
+          <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--txt)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
+          <div style={{fontSize:12,color:zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)',marginTop:2,fontWeight:zone?700:400}}>
+            {zone === 'promo'
+              ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · {type === 'week' ? '🎰 no sorteio' : '✅ em dia'}</>
+              : zone === 'down'
+                ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · ⚠️ {atraso} dia{atraso!==1?'s':''} atrasado{atraso!==1?'s':''}</>
+                : <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</>}
+          </div>
+        </div>
+        <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
+      </div>
+    );
+  };
+
   return (
     <div className="scr">
       <div className="hdr">
@@ -720,6 +1108,14 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           <div onClick={() => onChangeType('season')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='season'?'rgba(247,198,0,.15)':'transparent',color:type==='season'?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>Da Temporada</div>
         </div>
       </div>
+
+      {regular.length > 0 && (
+        <div style={{padding:'0 16px 4px'}}>
+          <button className="btn btn-gold" onClick={handleExport} disabled={sharing} style={{fontSize:14,padding:'12px 20px',opacity:sharing?.7:1}}>
+            {sharing ? '⏳ GERANDO IMAGEM...' : '📤 COMPARTILHAR NO WHATSAPP'}
+          </button>
+        </div>
+      )}
       
       {regular.length >= 3 && (
         <div style={{padding:'8px 16px 0'}}>
@@ -734,11 +1130,11 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
               <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {regular[1].dias || 0} d</div>
             </div>
             <div className="pod-col">
-              <div style={{fontSize:18,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
-              <div style={{width: 56, height: 56, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 32, overflow:'hidden', margin:'0 auto 4px', flexShrink:0, border:'2px solid #F5C842'}}>
+              <div style={{fontSize:20,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
+              <div style={{width: 62, height: 62, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 34, overflow:'hidden', margin:'0 auto 4px', flexShrink:0, border:'2.5px solid #F5C842', animation:'goldGlow 2.2s infinite'}}>
                 {regular[0].avatar?.length > 10 ? <img src={regular[0].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[0].avatar}</span>}
               </div>
-              <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[0].nome}</div>
+              <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--gold)'}}>{regular[0].nome}</div>
               <div className="pod-base p1">🥇</div>
               <div style={{fontWeight:900,color:'var(--gold)',fontSize:14,lineHeight:1.1}}>{regular[0].xp} XP</div>
               <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {regular[0].dias || 0} d</div>
@@ -761,23 +1157,28 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
             ? `📖 Lição: ${licao?.titulo || 'Carregando...'}`
             : `🏆 Geral: ${licao?.trimestre || 'Carregando...'}`}
         </div>
+        {zoneOn && (
+          <div className="zone-hint">
+            🎰 Fique em dia com os {metaDias} dia{metaDias!==1?'s':''} já liberado{metaDias!==1?'s':''} para participar do sorteio
+          </div>
+        )}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {regular.map((r: any, i: number) => {
-            const eu = r.id === jogador.id;
-            return (
-              <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))':'var(--g2)',border:`2px solid ${eu?'rgba(247,198,0,.4)':'var(--b2)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
-                <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
-                <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
-                  {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
-                </div>
-                <div style={{flex:1, minWidth:0}}>
-                  <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--txt)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
-                  <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
-                </div>
-                <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
-              </div>
-            );
-          })}
+          {emDia.map((r: any) => renderRow(r, zoneOn ? 'promo' : ''))}
+          {zoneOn && emDia.length > 0 && (
+            <div className="zone-divider promo">
+              <div className="zl"/>
+              <div className="zt">⬆ ZONA DE PROMOÇÃO — {type === 'week' ? 'SORTEIO 🎰' : 'EM DIA 📖'} ⬆</div>
+              <div className="zl"/>
+            </div>
+          )}
+          {zoneOn && atrasados.length > 0 && (
+            <div className="zone-divider down">
+              <div className="zl"/>
+              <div className="zt">⬇ ZONA DE REBAIXAMENTO ⬇</div>
+              <div className="zl"/>
+            </div>
+          )}
+          {atrasados.map((r: any) => renderRow(r, 'down'))}
           {regular.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
 
           {admins.length > 0 && (
@@ -922,7 +1323,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
 
   const playSorteioTick = (fast: boolean) => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = getAudioCtx();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);
@@ -936,7 +1337,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
 
   const playSorteioWin = () => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = getAudioCtx();
       [523, 659, 784, 1047, 1319].forEach((freq, i) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -1331,7 +1732,7 @@ export const TVMode = ({ licao, jogador }: any) => {
 
   const playTvTick = (fast: boolean) => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = getAudioCtx();
       const buf = ctx.createBuffer(1, ctx.sampleRate * 0.04, ctx.sampleRate);
       const data = buf.getChannelData(0);
       for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
@@ -1353,7 +1754,7 @@ export const TVMode = ({ licao, jogador }: any) => {
 
   const playTvWin = () => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const ctx = getAudioCtx();
       // Ascending arpeggio (casino jackpot feel)
       [523, 659, 784, 988, 1319].forEach((freq, i) => {
         const osc = ctx.createOscillator();
