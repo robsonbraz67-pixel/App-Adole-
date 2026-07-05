@@ -723,6 +723,229 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
   );
 };
 
+/* ===== EXPORTAR RANKING (imagem para WhatsApp) ===== */
+const loadAvatarImg = (src: string): Promise<HTMLImageElement | null> => new Promise(res => {
+  const img = new Image();
+  img.onload = () => res(img);
+  img.onerror = () => res(null);
+  img.src = src;
+});
+
+const rrect = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+};
+
+const truncName = (n: string, max: number) => (n || '').length > max ? (n || '').slice(0, max - 1) + '…' : (n || '');
+
+const drawAvatar = async (c: CanvasRenderingContext2D, avatar: string, cx: number, cy: number, r: number) => {
+  c.save();
+  c.beginPath();
+  c.arc(cx, cy, r, 0, Math.PI * 2);
+  c.fillStyle = 'rgba(255,255,255,.12)';
+  c.fill();
+  c.clip();
+  if (avatar?.startsWith('data:')) {
+    const img = await loadAvatarImg(avatar);
+    if (img) {
+      const s = Math.max((r * 2) / img.width, (r * 2) / img.height);
+      c.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
+    }
+  } else {
+    c.font = `${Math.round(r * 1.15)}px sans-serif`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(avatar || '⭐', cx, cy + r * 0.06);
+  }
+  c.restore();
+};
+
+const gerarImagemRanking = async (opts: {
+  emDia: any[]; atrasados: any[]; regular: any[];
+  type: string; licao: any; metaDias: number; zoneOn: boolean;
+}): Promise<Blob | null> => {
+  const { emDia, atrasados, regular, type, licao, metaDias, zoneOn } = opts;
+  const W = 1080;
+  const podio = regular.slice(0, 3);
+  const listaRows = [...emDia, ...atrasados].slice(0, 12);
+  const nDividers = zoneOn && emDia.length > 0 && atrasados.length > 0 ? 1 : 0;
+  const H = 330 + (podio.length >= 3 ? 470 : 120) + listaRows.length * 96 + nDividers * 70 + 300 + 190;
+
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  if (!c) return null;
+
+  // Fundo com gradiente do app + estrelas
+  const bg = c.createLinearGradient(0, 0, W * .4, H);
+  bg.addColorStop(0, '#0D1E35');
+  bg.addColorStop(1, '#1B3A63');
+  c.fillStyle = bg;
+  c.fillRect(0, 0, W, H);
+  for (let i = 0; i < 70; i++) {
+    c.fillStyle = `rgba(247,198,0,${.08 + Math.random() * .25})`;
+    c.beginPath();
+    c.arc(Math.random() * W, Math.random() * H, 1 + Math.random() * 2.5, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  // Cabeçalho
+  c.textAlign = 'center';
+  c.textBaseline = 'alphabetic';
+  c.font = '900 74px sans-serif';
+  c.fillStyle = '#F7C600';
+  const wSab = c.measureText('SABATINA').width;
+  c.font = '900 74px sans-serif';
+  const wQst = c.measureText('QUEST').width;
+  const x0 = W / 2 - (wSab + wQst) / 2;
+  c.textAlign = 'left';
+  c.fillText('SABATINA', x0, 108);
+  c.fillStyle = '#1E9E86';
+  c.fillText('QUEST', x0 + wSab, 108);
+  c.textAlign = 'center';
+  c.font = '700 24px sans-serif';
+  c.fillStyle = '#7DA4C8';
+  c.fillText('E S C O L A   S A B A T I N A   T E E N', W / 2, 150);
+
+  c.font = '900 52px sans-serif';
+  c.fillStyle = '#FFFFFF';
+  c.fillText(type === 'week' ? '🏆 RANKING DA SEMANA' : '🏆 RANKING DA TEMPORADA', W / 2, 235);
+  c.font = '700 32px sans-serif';
+  c.fillStyle = '#C8D8F0';
+  c.fillText(type === 'week' ? truncName(licao?.titulo || '', 42) : `Temporada ${licao?.trimestre || ''} · 13 semanas`, W / 2, 285);
+
+  let y = 330;
+
+  // Pódio
+  if (podio.length >= 3) {
+    const podX = [W / 2, W / 2 - 330, W / 2 + 330];
+    const podR = [105, 78, 78];
+    const podY = [y + 165, y + 205, y + 205];
+    const medY = [y + 330, y + 330, y + 330];
+    const medalha = ['🥇', '🥈', '🥉'];
+    for (const [ord, pi] of [[1, 1], [2, 2], [0, 0]] as any) {
+      const u = podio[pi];
+      const cx = podX[pi], r = podR[pi], cy = podY[pi];
+      if (pi === 0) {
+        c.font = '64px sans-serif';
+        c.fillText('👑', cx, cy - r - 24);
+        c.strokeStyle = '#F7C600';
+        c.lineWidth = 8;
+        c.beginPath();
+        c.arc(cx, cy, r + 8, 0, Math.PI * 2);
+        c.stroke();
+        c.shadowColor = 'rgba(247,198,0,.8)';
+        c.shadowBlur = 40;
+        c.beginPath();
+        c.arc(cx, cy, r + 8, 0, Math.PI * 2);
+        c.stroke();
+        c.shadowBlur = 0;
+      }
+      await drawAvatar(c, u.avatar, cx, cy, r);
+      c.font = `900 ${pi === 0 ? 40 : 30}px sans-serif`;
+      c.fillStyle = pi === 0 ? '#F7C600' : '#FFFFFF';
+      c.textAlign = 'center';
+      c.fillText(truncName(u.nome, 14), cx, medY[pi]);
+      c.font = '52px sans-serif';
+      c.fillText(medalha[pi], cx, medY[pi] + 62);
+      c.font = '900 32px sans-serif';
+      c.fillStyle = '#F7C600';
+      c.fillText(`${u.xp || 0} XP`, cx, medY[pi] + 112);
+    }
+    y += 470;
+  } else {
+    y += 40;
+  }
+
+  // Lista com zonas
+  const mx = 60, rw = W - mx * 2;
+  const drawDivider = (label: string, cor: string) => {
+    c.strokeStyle = cor;
+    c.lineWidth = 3;
+    c.beginPath(); c.moveTo(mx, y + 32); c.lineTo(W / 2 - 290, y + 32); c.stroke();
+    c.beginPath(); c.moveTo(W / 2 + 290, y + 32); c.lineTo(W - mx, y + 32); c.stroke();
+    c.font = '900 26px sans-serif';
+    c.fillStyle = cor;
+    c.textAlign = 'center';
+    c.fillText(label, W / 2, y + 42);
+    y += 70;
+  };
+
+  for (let gi = 0; gi < listaRows.length; gi++) {
+    const u = listaRows[gi];
+    const promo = zoneOn && gi < emDia.length;
+    if (nDividers && gi === emDia.length) {
+      drawDivider('⬆ ZONA DE PROMOÇÃO — SORTEIO 🎰 ⬆', '#1E9E86');
+    }
+    const pos = regular.indexOf(u);
+    rrect(c, mx, y, rw, 82, 20);
+    c.fillStyle = promo ? 'rgba(30,158,134,.14)' : 'rgba(229,0,109,.09)';
+    if (!zoneOn) c.fillStyle = 'rgba(255,255,255,.06)';
+    c.fill();
+    c.strokeStyle = promo ? 'rgba(30,158,134,.55)' : 'rgba(229,0,109,.4)';
+    if (!zoneOn) c.strokeStyle = 'rgba(255,255,255,.12)';
+    c.lineWidth = 3;
+    c.stroke();
+    c.textAlign = 'left';
+    c.font = '900 34px sans-serif';
+    c.fillStyle = pos < 3 ? '#F5C842' : promo ? '#1E9E86' : '#E5006D';
+    c.fillText(pos < 3 ? ['🥇', '🥈', '🥉'][pos] : `${pos + 1}º`, mx + 26, y + 54);
+    await drawAvatar(c, u.avatar, mx + 150, y + 41, 30);
+    c.font = '800 32px sans-serif';
+    c.fillStyle = '#FFFFFF';
+    c.fillText(truncName(u.nome, 20), mx + 200, y + 43);
+    c.font = '700 22px sans-serif';
+    c.fillStyle = promo ? '#2BBBA0' : '#7DA4C8';
+    c.fillText(promo ? `📅 ${u.dias || 0} dias · em dia 🎰` : `📅 ${u.dias || 0} dia${u.dias !== 1 ? 's' : ''}`, mx + 200, y + 71);
+    c.textAlign = 'right';
+    c.font = '900 34px sans-serif';
+    c.fillStyle = '#F7C600';
+    c.fillText(`${u.xp || 0} XP`, mx + rw - 26, y + 54);
+    y += 96;
+  }
+
+  // Cartão CTA
+  y += 24;
+  const ctaH = 200;
+  rrect(c, mx, y, rw, ctaH, 26);
+  const gld = c.createLinearGradient(mx, y, mx + rw, y + ctaH);
+  gld.addColorStop(0, '#F7C600');
+  gld.addColorStop(1, '#C99F00');
+  c.fillStyle = gld;
+  c.fill();
+  c.textAlign = 'center';
+  c.fillStyle = '#3A2800';
+  if (type === 'week') {
+    c.font = '900 36px sans-serif';
+    c.fillText('🎰 SORTEIO DA SEMANA!', W / 2, y + 70);
+    c.font = '700 28px sans-serif';
+    c.fillText('Estude todos os dias, fique na zona de', W / 2, y + 120);
+    c.fillText('promoção e concorra ao sorteio!', W / 2, y + 158);
+  } else {
+    c.font = '900 36px sans-serif';
+    c.fillText('👑 GRANDE SORTEIO DA TEMPORADA!', W / 2, y + 66);
+    c.font = '700 27px sans-serif';
+    c.fillText('Revise as lições e fique em dia para participar.', W / 2, y + 114);
+    c.fillText('Quem sabe você é o campeão da temporada?', W / 2, y + 154);
+  }
+  y += ctaH + 46;
+
+  // Rodapé com o link do app
+  c.font = '700 26px sans-serif';
+  c.fillStyle = '#C8D8F0';
+  c.fillText('📲 Venha estudar com a gente:', W / 2, y + 16);
+  c.font = '900 34px sans-serif';
+  c.fillStyle = '#F7C600';
+  c.fillText(window.location.origin.replace(/^https?:\/\//, ''), W / 2, y + 64);
+
+  return new Promise(res => cv.toBlob(b => res(b), 'image/png'));
+};
+
 /* ===== RANKING ===== */
 export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao }: any) => {
   const { regular, admins } = useMemo(() => {
@@ -770,6 +993,35 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     };
   }, [regular, type, licao]);
 
+  const [sharing, setSharing] = useState(false);
+  const handleExport = async () => {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const blob = await gerarImagemRanking({ emDia, atrasados, regular, type, licao, metaDias, zoneOn });
+      if (!blob) throw new Error('Falha ao gerar imagem');
+      const url = window.location.origin;
+      const texto = type === 'week'
+        ? `🏆 Ranking da semana — ${licao?.titulo || ''}\n🎰 Estude todos os dias e concorra ao sorteio!\n📲 Venha estudar com a gente: ${url}`
+        : `🏆 Ranking da temporada ${licao?.trimestre || ''}\n👑 Revise as lições, fique em dia e participe do GRANDE SORTEIO da temporada! Quem sabe você é o campeão!\n📲 Venha estudar com a gente: ${url}`;
+      const file = new File([blob], 'ranking-sabatinaquest.png', { type: 'image/png' });
+      if ((navigator as any).canShare?.({ files: [file] })) {
+        await (navigator as any).share({ files: [file], text: texto });
+      } else {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'ranking-sabatinaquest.png';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        try { await navigator.clipboard.writeText(texto); } catch {}
+        alert('Imagem baixada! O texto com o link foi copiado — cole no WhatsApp junto com a imagem. 📲');
+      }
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') console.error('Erro ao exportar ranking:', e);
+    }
+    setSharing(false);
+  };
+
   const renderRow = (r: any, zone: 'promo' | 'down' | '') => {
     const eu = r.id === jogador.id;
     const i = regular.indexOf(r);
@@ -814,6 +1066,14 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           <div onClick={() => onChangeType('season')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='season'?'rgba(247,198,0,.15)':'transparent',color:type==='season'?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>Da Temporada</div>
         </div>
       </div>
+
+      {regular.length > 0 && (
+        <div style={{padding:'0 16px 4px'}}>
+          <button className="btn btn-gold" onClick={handleExport} disabled={sharing} style={{fontSize:14,padding:'12px 20px',opacity:sharing?.7:1}}>
+            {sharing ? '⏳ GERANDO IMAGEM...' : '📤 COMPARTILHAR NO WHATSAPP'}
+          </button>
+        </div>
+      )}
       
       {regular.length >= 3 && (
         <div style={{padding:'8px 16px 0'}}>
