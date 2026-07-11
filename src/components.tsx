@@ -967,7 +967,7 @@ const gerarImagemRanking = async (opts: {
 
 /* ===== RANKING ===== */
 export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao }: any) => {
-  const { regular, admins, professores } = useMemo(() => {
+  const { regular, staff } = useMemo(() => {
     const all = [...ranking].map((r: any) => {
       const isMe = r.id === jogador.id;
       const nome = isMe ? jogador.nome : r.nome;
@@ -981,17 +981,13 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     const byXp = (a: any, b: any) => b.xp - a.xp;
     return {
       regular: all.filter((r: any) => !r.isAdmin && !r.isProfessor).sort(byXp).slice(0, 10),
-      admins: all.filter((r: any) => r.isAdmin).sort(byXp),
-      professores: all.filter((r: any) => r.isProfessor).sort(byXp),
+      staff: all.filter((r: any) => r.isAdmin || r.isProfessor).sort(byXp),
     };
   }, [ranking, jogador, type, prog]);
 
-  const myIsAdmin = !!jogador.isAdmin;
-  const myIsProfessor = !myIsAdmin && !!jogador.isProfessor;
-  const myIdx = myIsAdmin
-    ? admins.findIndex((r: any) => r.id === jogador.id)
-    : myIsProfessor
-    ? professores.findIndex((r: any) => r.id === jogador.id)
+  const myIsStaff = !!jogador.isAdmin || !!jogador.isProfessor;
+  const myIdx = myIsStaff
+    ? staff.findIndex((r: any) => r.id === jogador.id)
     : regular.findIndex((r: any) => r.id === jogador.id);
   const meds = ['🥇','🥈','🥉'];
 
@@ -1163,52 +1159,29 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           {atrasados.map((r: any) => renderRow(r, 'down'))}
           {regular.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
 
-          {admins.length > 0 && (
+          {staff.length > 0 && (
             <>
               <div style={{display:'flex',alignItems:'center',gap:8,margin:'4px 0'}}>
                 <div style={{flex:1,height:1,background:'rgba(155,109,255,.3)'}}/>
-                <div style={{fontSize:11,color:'var(--admin)',fontWeight:800,letterSpacing:1,fontFamily:'Poppins,sans-serif'}}>🛡️ ADMINISTRADORES</div>
+                <div style={{fontSize:11,color:'var(--admin)',fontWeight:800,letterSpacing:1,fontFamily:'Poppins,sans-serif'}}>🛡️🎓 EQUIPE</div>
                 <div style={{flex:1,height:1,background:'rgba(155,109,255,.3)'}}/>
               </div>
-              {admins.map((r: any, i: number) => {
+              {staff.map((r: any, i: number) => {
                 const eu = r.id === jogador.id;
+                const cor = r.isAdmin ? 'var(--admin)' : 'var(--blu)';
+                const rgb = r.isAdmin ? '155,109,255' : '74,144,217';
+                const ic = r.isAdmin ? '🛡️' : '🎓';
                 return (
-                  <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(155,109,255,.16),rgba(155,109,255,.06))':'rgba(155,109,255,.08)',border:`2px solid ${eu?'rgba(155,109,255,.55)':'rgba(155,109,255,.25)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
-                    <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:'var(--admin)'}}>🛡️</div>
-                    <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(155,109,255,.18)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:'1.5px solid rgba(155,109,255,.35)'}}>
+                  <div key={r.id} style={{background:eu?`linear-gradient(135deg,rgba(${rgb},.16),rgba(${rgb},.06))`:`rgba(${rgb},.08)`,border:`2px solid ${eu?`rgba(${rgb},.55)`:`rgba(${rgb},.25)`}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+                    <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:cor}}>{ic}</div>
+                    <div style={{width: 40, height: 40, borderRadius: '50%', background:`rgba(${rgb},.18)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:`1.5px solid rgba(${rgb},.35)`}}>
                       {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
                     </div>
                     <div style={{flex:1, minWidth:0}}>
-                      <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--admin)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
+                      <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:cor}}>{r.nome}{eu ? ' 👈' : ''}</div>
                       <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
                     </div>
-                    <div style={{fontWeight:900,color:'var(--admin)',fontSize:15,flexShrink:0,opacity:.85}}>{r.xp || 0} XP</div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-
-          {professores.length > 0 && (
-            <>
-              <div style={{display:'flex',alignItems:'center',gap:8,margin:'4px 0'}}>
-                <div style={{flex:1,height:1,background:'rgba(74,144,217,.3)'}}/>
-                <div style={{fontSize:11,color:'var(--blu)',fontWeight:800,letterSpacing:1,fontFamily:'Poppins,sans-serif'}}>🎓 PROFESSORES</div>
-                <div style={{flex:1,height:1,background:'rgba(74,144,217,.3)'}}/>
-              </div>
-              {professores.map((r: any, i: number) => {
-                const eu = r.id === jogador.id;
-                return (
-                  <div key={r.id} style={{background:eu?'linear-gradient(135deg,rgba(74,144,217,.16),rgba(74,144,217,.06))':'rgba(74,144,217,.08)',border:`2px solid ${eu?'rgba(74,144,217,.55)':'rgba(74,144,217,.25)'}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
-                    <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:'var(--blu)'}}>🎓</div>
-                    <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(74,144,217,.18)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:'1.5px solid rgba(74,144,217,.35)'}}>
-                      {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
-                    </div>
-                    <div style={{flex:1, minWidth:0}}>
-                      <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--blu)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
-                      <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
-                    </div>
-                    <div style={{fontWeight:900,color:'var(--blu)',fontSize:15,flexShrink:0,opacity:.85}}>{r.xp || 0} XP</div>
+                    <div style={{fontWeight:900,color:cor,fontSize:15,flexShrink:0,opacity:.85}}>{r.xp || 0} XP</div>
                   </div>
                 );
               })}
@@ -1219,15 +1192,13 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       <div className="sec">
         <div className="purple-card" style={{textAlign:'center'}}>
           <div style={{fontSize:13,color:'var(--mut)',marginBottom:4}}>Sua posição</div>
-          {myIsAdmin
-            ? <div style={{fontWeight:900,fontSize:22,color:'var(--admin)'}}>🛡️ Admin</div>
-            : myIsProfessor
-            ? <div style={{fontWeight:900,fontSize:22,color:'var(--blu)'}}>🎓 Professor</div>
+          {myIsStaff
+            ? <div style={{fontWeight:900,fontSize:22,color:jogador.isAdmin?'var(--admin)':'var(--blu)'}}>{jogador.isAdmin ? '🛡️ Admin' : '🎓 Professor'}</div>
             : <div style={{fontWeight:900,fontSize:32,color:'var(--gold)'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
           }
           {myIdx !== -1 && (
             <div style={{fontSize:13,color:'var(--mut)'}}>
-              📅 {(myIsAdmin ? admins : myIsProfessor ? professores : regular)[myIdx]?.dias} dia{(myIsAdmin ? admins : myIsProfessor ? professores : regular)[myIdx]?.dias!==1?'s':''} • ⭐ {(myIsAdmin ? admins : myIsProfessor ? professores : regular)[myIdx]?.xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}
+              📅 {(myIsStaff ? staff : regular)[myIdx]?.dias} dia{(myIsStaff ? staff : regular)[myIdx]?.dias!==1?'s':''} • ⭐ {(myIsStaff ? staff : regular)[myIdx]?.xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}
             </div>
           )}
         </div>
@@ -1489,7 +1460,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const handleToggleAdmin = async (userId: string, currentStatus: boolean) => {
      try {
         await toggleAdmin(userId, !currentStatus);
-        setUsers(users.map(u => u.id === userId ? { ...u, isAdmin: !currentStatus } : u));
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, isAdmin: !currentStatus } : u));
      } catch(e) {
         alert('Erro ao atualizar usuário');
      }
@@ -1498,7 +1469,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const handleToggleProfessor = async (userId: string, currentStatus: boolean) => {
      try {
         await toggleProfessor(userId, !currentStatus);
-        setUsers(users.map(u => u.id === userId ? { ...u, isProfessor: !currentStatus } : u));
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, isProfessor: !currentStatus } : u));
      } catch(e) {
         alert('Erro ao atualizar usuário');
      }
@@ -1514,7 +1485,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const handleToggleGuest = async (userId: string, currentStatus: boolean) => {
      try {
         await toggleGuest(userId, !currentStatus);
-        setUsers(users.map(u => u.id === userId ? { ...u, isGuest: !currentStatus } : u));
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, isGuest: !currentStatus } : u));
      } catch(e) {
         alert('Erro ao atualizar usuário');
      }
@@ -1523,7 +1494,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const handleBlockUser = async (userId: string, currentBlocked: boolean) => {
      try {
         await blockUser(userId, !currentBlocked);
-        setUsers(users.map(u => u.id === userId ? { ...u, bloqueado: !currentBlocked } : u));
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, bloqueado: !currentBlocked } : u));
      } catch(e) {
         alert('Erro ao bloquear/desbloquear usuário');
      }
@@ -1533,7 +1504,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
      if (!window.confirm(`Excluir "${nome}"? Esta ação não pode ser desfeita.`)) return;
      try {
         await deleteUser(userId);
-        setUsers(users.filter(u => u.id !== userId));
+        setUsers(prev => prev.filter(u => u.id !== userId));
      } catch(e) {
         alert('Erro ao excluir usuário');
      }
