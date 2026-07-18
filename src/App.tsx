@@ -240,6 +240,13 @@ export default function App() {
         setInAppNotif({ title: '🚫 Conta bloqueada', body: 'Sua conta foi bloqueada. Entre em contato com o administrador.', id: Date.now() });
         return;
       }
+      // Puxa papéis/config definidos no servidor (isProfessor, isAdmin, isGuest…)
+      // que o perfil vindo do login do Google não conhece — senão o professor
+      // fica sem poderes logo após logar (só voltavam ao recarregar a página).
+      if (dbUser) {
+        j = { ...j, ...dbUser };
+        ss('jogador', j);
+      }
       await saveUser(j);
 
       const dbProg = await getProgress(j.id, l.semana);
