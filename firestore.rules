@@ -137,6 +137,58 @@ service cloud.firestore {
       allow delete: if isUserAdmin();
     }
 
+    function isValidInviteCode(data) {
+      return data.keys().hasOnly(['code', 'locationId', 'track', 'active', 'createdBy', 'createdAt'])
+        && data.code is string && data.code.size() >= 4 && data.code.size() <= 40
+        && data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.active is bool
+        && data.createdBy is string;
+    }
+
+    // Local ao qual o professor autenticado está atribuído (teacherAssignments/{uid}).
+    // Usada só depois de checar exists(), para não estourar em quem não é professor.
+    function myTeacherLocation() {
+      return get(/databases/$(database)/documents/teacherAssignments/$(request.auth.uid)).data.locationId;
+    }
+
+    // Professor só pode emitir convite para o local exatamente atribuído a ele.
+    // É a trava central da Etapa 3: sem isto, dava pra emitir código de qualquer
+    // local via console/API mesmo com a UI restringindo.
+    function professorCanIssueFor(locationId) {
+      return isProfessor()
+        && exists(/databases/$(database)/documents/teacherAssignments/$(request.auth.uid))
+        && myTeacherLocation() == locationId;
+    }
+
+    match /inviteCodes/{codeId} {
+      // Resgate: precisa saber o código exato (== doc id). list só p/ quem gerencia,
+      // pra ninguém enumerar todos os códigos do sistema.
+      allow get: if isAuthenticated();
+      allow list: if canManage();
+
+      // Admin cria para qualquer local+trilha; professor só para o local atribuído.
+      allow create: if isValidInviteCode(incoming())
+        && codeId == incoming().code
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().active == true
+        && (isUserAdmin() || professorCanIssueFor(incoming().locationId));
+
+      // Revogar/reativar: admin qualquer um, professor só os que ele criou.
+      // Só o campo 'active' pode mudar — local/trilha/código são imutáveis.
+      allow update: if isValidInviteCode(incoming())
+        && incoming().code == existing().code
+        && incoming().locationId == existing().locationId
+        && incoming().track == existing().track
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['active'])
+        && (isUserAdmin() || (isProfessor() && existing().createdBy == request.auth.uid));
+
+      allow delete: if isUserAdmin() || (isProfessor() && existing().createdBy == request.auth.uid);
+    }
+
     function isValidProgress(data) {
       return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string

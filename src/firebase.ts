@@ -163,6 +163,65 @@ export const getAllTeacherAssignments = async (): Promise<Record<string, { locat
   return map;
 };
 
+// ===== Códigos de convite por local + trilha (Etapa 3) =====
+// Doc id == o próprio código, para resgate por leitura direta (sem precisar de
+// permissão de list para quem resgata). Alfabeto sem caracteres ambíguos (0/O/1/I).
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const TRACK_PREFIX: Record<string, string> = { teen: 'TEEN', youngAdult: 'JOV', adult: 'ADT' };
+
+const randomCodeSuffix = (len = 5) => {
+  let s = '';
+  const arr = new Uint32Array(len);
+  (globalThis.crypto || (window as any).crypto).getRandomValues(arr);
+  for (let i = 0; i < len; i++) s += CODE_ALPHABET[arr[i] % CODE_ALPHABET.length];
+  return s;
+};
+
+export const normalizeInviteCode = (code: string) => (code || '').trim().toUpperCase().replace(/\s+/g, '');
+
+// Cria um código novo para (locationId, track). createdBy = quem gerou.
+// A regra do Firestore garante que professor só cria para o local atribuído a ele.
+export const generateInviteCode = async (locationId: string, track: string, createdBy: string): Promise<string> => {
+  // tenta algumas vezes para o caso raríssimo de colisão de sufixo
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = `${TRACK_PREFIX[track] || 'TRK'}-${randomCodeSuffix()}`;
+    const ref = doc(db, 'inviteCodes', code);
+    const existing = await getDoc(ref);
+    if (existing.exists()) continue;
+    await setDoc(ref, { code, locationId, track, active: true, createdBy, createdAt: serverTimestamp() });
+    return code;
+  }
+  throw new Error('Não foi possível gerar um código único. Tente novamente.');
+};
+
+// Lista códigos. Admin vê todos; professor filtra pelo próprio local (client-side,
+// já que a regra permite list para quem gerencia).
+export const getInviteCodes = async (locationId?: string): Promise<any[]> => {
+  const base = collection(db, 'inviteCodes');
+  const snap = locationId
+    ? await getDocs(query(base, where('locationId', '==', locationId)))
+    : await getDocs(base);
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list.sort((a, b) => (a.createdAt?.seconds || 0) < (b.createdAt?.seconds || 0) ? 1 : -1);
+};
+
+// Revoga/reativa: a regra só deixa alterar o campo 'active'.
+export const setInviteCodeActive = async (code: string, active: boolean) => {
+  await setDoc(doc(db, 'inviteCodes', code), { active }, { merge: true });
+};
+
+export const deleteInviteCode = async (code: string) => {
+  await deleteDoc(doc(db, 'inviteCodes', code));
+};
+
+// Resgate: leitura direta pelo código (== doc id). Retorna null se não existir.
+export const getInviteCodeByCode = async (code: string): Promise<{ code: string; locationId: string; track: string; active: boolean } | null> => {
+  const ref = doc(db, 'inviteCodes', normalizeInviteCode(code));
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data() as any : null;
+};
+
 export const getAdminIds = async (): Promise<Set<string>> => {
   try {
     const q = query(collection(db, 'users'), where('isAdmin', '==', true));

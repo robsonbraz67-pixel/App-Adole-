@@ -70,7 +70,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -1439,6 +1439,139 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   );
 };
 
+/* ===== CÓDIGOS DE CONVITE (Etapa 3) ===== */
+const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { id: string; name: string }[] }) => {
+  const isAdmin = !!jogador?.isAdmin;
+  const [teacherLocationId, setTeacherLocationId] = useState<string | null>(null);
+  const [loadingAssign, setLoadingAssign] = useState(!isAdmin);
+  const [codes, setCodes] = useState<any[]>([]);
+  const [loadingCodes, setLoadingCodes] = useState(true);
+  const [selLocation, setSelLocation] = useState('');
+  const [selTrack, setSelTrack] = useState<Track>('teen');
+  const [gerando, setGerando] = useState(false);
+
+  const locName = (id: string) => locations.find(l => l.id === id)?.name || id;
+
+  // Professor: descobre o local atribuído (só pode gerar para ele)
+  useEffect(() => {
+    if (isAdmin) return;
+    getTeacherAssignment(jogador.id)
+      .then(a => { setTeacherLocationId(a?.locationId || null); if (a?.locationId) setSelLocation(a.locationId); })
+      .catch(() => {})
+      .finally(() => setLoadingAssign(false));
+  }, [isAdmin, jogador.id]);
+
+  const carregarCodes = () => {
+    setLoadingCodes(true);
+    // Admin vê todos; professor filtra pelo próprio local
+    getInviteCodes(isAdmin ? undefined : (teacherLocationId || '__none__'))
+      .then(setCodes)
+      .catch(() => {})
+      .finally(() => setLoadingCodes(false));
+  };
+  useEffect(() => {
+    if (isAdmin || teacherLocationId !== null) carregarCodes();
+    else if (!loadingAssign) setLoadingCodes(false);
+  }, [isAdmin, teacherLocationId, loadingAssign]);
+
+  const handleGerar = async () => {
+    const loc = isAdmin ? selLocation : teacherLocationId;
+    if (!loc) return alert(isAdmin ? 'Selecione um local.' : 'Você ainda não tem um local atribuído. Peça ao administrador.');
+    setGerando(true);
+    try {
+      await generateInviteCode(loc, selTrack, jogador.id);
+      carregarCodes();
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao gerar código.');
+    }
+    setGerando(false);
+  };
+
+  const handleToggle = async (code: string, active: boolean) => {
+    try {
+      await setInviteCodeActive(code, !active);
+      setCodes(prev => prev.map(c => c.id === code ? { ...c, active: !active } : c));
+    } catch (e) { alert('Erro ao atualizar o código.'); }
+  };
+
+  const handleDelete = async (code: string) => {
+    if (!window.confirm(`Excluir o código ${code}? Quem já entrou continua no local; o código só deixa de existir.`)) return;
+    try {
+      await deleteInviteCode(code);
+      setCodes(prev => prev.filter(c => c.id !== code));
+    } catch (e) { alert('Erro ao excluir o código.'); }
+  };
+
+  const copiar = (code: string) => navigator.clipboard.writeText(code).then(() => alert('Código copiado!')).catch(() => {});
+
+  if (!isAdmin && loadingAssign) {
+    return <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:24, color:'var(--mut)', fontSize:14}}>Carregando...</div>;
+  }
+  if (!isAdmin && !teacherLocationId) {
+    return (
+      <div style={{background:'var(--panel-bg)', padding:14, borderRadius:12, marginBottom:24, fontSize:13, color:'var(--mut)'}}>
+        Você ainda não está atribuído a um local de estudo. Peça ao administrador para atribuir seu local antes de gerar códigos de convite.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:24}}>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10}}>
+        <div>
+          <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, marginBottom:4}}>Local</div>
+          {isAdmin ? (
+            <select value={selLocation} onChange={e => setSelLocation(e.target.value)} style={{width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13}}>
+              <option value="">Selecione...</option>
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          ) : (
+            <div style={{padding:'8px', borderRadius:8, background:'rgba(0,0,0,.2)', color:'var(--txt2)', fontSize:13, fontWeight:700}}>{locName(teacherLocationId!)}</div>
+          )}
+        </div>
+        <div>
+          <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, marginBottom:4}}>Trilha</div>
+          <select value={selTrack} onChange={e => setSelTrack(e.target.value as Track)} style={{width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13}}>
+            <option value="teen">Adolescente</option>
+            <option value="youngAdult">Jovem</option>
+            <option value="adult">Adulto</option>
+          </select>
+        </div>
+      </div>
+      <button onClick={handleGerar} disabled={gerando} className={`btn btn-gold ${gerando ? 'btn-dis' : ''}`} style={{fontSize:14, padding:'10px', marginBottom:14}}>
+        {gerando ? 'Gerando...' : '➕ Gerar código de convite'}
+      </button>
+
+      {loadingCodes ? <div style={{color:'var(--mut)', fontSize:13}}>Carregando códigos...</div> : codes.length === 0 ? (
+        <div style={{color:'var(--mut)', fontSize:13, textAlign:'center', padding:'8px 0'}}>Nenhum código gerado ainda.</div>
+      ) : (
+        <div style={{display:'flex', flexDirection:'column', gap:8, maxHeight:280, overflowY:'auto'}}>
+          {codes.map(c => (
+            <div key={c.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'8px 10px', background:'rgba(0,0,0,.2)', borderRadius:8, opacity: c.active ? 1 : 0.55}}>
+              <div style={{minWidth:0}}>
+                <div style={{display:'flex', alignItems:'center', gap:8}}>
+                  <span style={{fontFamily:'monospace', fontWeight:900, fontSize:15, color:'var(--gold)', letterSpacing:1}}>{c.code}</span>
+                  {!c.active && <span style={{fontSize:10, color:'#FF6B6B', fontWeight:800}}>REVOGADO</span>}
+                </div>
+                <div style={{fontSize:11, color:'var(--mut)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                  {locName(c.locationId)} · {TRACK_LABELS[(c.track as Track)] || c.track}
+                </div>
+              </div>
+              <div style={{display:'flex', gap:6, flexShrink:0}}>
+                <button onClick={() => copiar(c.code)} title="Copiar" style={{background:'rgba(30,158,134,.2)', color:'var(--teal)', border:'none', borderRadius:6, padding:'6px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}>Copiar</button>
+                <button onClick={() => handleToggle(c.code, c.active)} style={{background: c.active ? 'rgba(247,198,0,.15)' : 'rgba(79,184,92,.2)', color: c.active ? '#F7C600' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                  {c.active ? 'Revogar' : 'Reativar'}
+                </button>
+                <button onClick={() => handleDelete(c.code)} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:6, padding:'6px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}>🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const Admin = ({ licao, jogador, onBack }: any) => {
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
@@ -1676,6 +1809,12 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
            )}
         </div>
 
+        <div className="sec-title" style={{marginBottom:8}}>Códigos de Convite 🎟️</div>
+        <div style={{fontSize:12, color:'var(--mut)', marginBottom:8, lineHeight:1.5}}>
+          Gere um código por local + trilha e compartilhe (ex: WhatsApp). Quem entra com o código já fica vinculado ao local e à trilha certos.
+        </div>
+        <InviteCodesPanel jogador={jogador} locations={locations} />
+
         <div className="sec-title" style={{marginBottom:8}}>Notificações Manuais</div>
         <div style={{background:'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24}}>
            {loadingUsers ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : (
@@ -1819,6 +1958,31 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
   const [savingSetup, setSavingSetup] = useState(false);
   const currentLocationName = locations.find(l => l.id === jogador.locationId)?.name;
 
+  // Resgate de código de convite (autopreenche local + trilha)
+  const [inviteInput, setInviteInput] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
+  const [redeemed, setRedeemed] = useState<{ code: string; locationId: string; track: Track } | null>(null);
+
+  const handleRedeem = async () => {
+    const code = normalizeInviteCode(inviteInput);
+    if (!code) return;
+    setRedeeming(true);
+    try {
+      const inv = await getInviteCodeByCode(code);
+      if (!inv || !inv.active) {
+        alert('Código inválido ou desativado. Confira com quem te enviou.');
+      } else {
+        setRedeemed({ code, locationId: inv.locationId, track: inv.track as Track });
+        setLocationId(inv.locationId);
+        setTrack(inv.track as Track);
+        setShowNewLocation(false);
+      }
+    } catch (e) {
+      alert('Não foi possível validar o código. Verifique sua conexão.');
+    }
+    setRedeeming(false);
+  };
+
   // Phone number helpers — store as E164 (5511999999999), display as (11) 99999-9999
   const e164ToDisplay = (v: string) => {
     const d = (v || '').replace(/\D/g, '').replace(/^55/, '');
@@ -1893,8 +2057,33 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
             </div>
           ) : (
             <>
+              {/* Resgate por código: atalho que preenche local + trilha automaticamente */}
+              <div style={{marginBottom:18, padding:'12px 14px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)'}}>
+                <div style={{fontSize:12, fontWeight:800, color:'var(--teal)', marginBottom:8}}>🎟️ Tem um código de convite?</div>
+                {redeemed ? (
+                  <div style={{fontSize:13, color:'var(--txt2)'}}>
+                    ✅ Código <strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{redeemed.code}</strong> aplicado.<br/>
+                    <span style={{fontSize:12, color:'var(--mut)'}}>Local e trilha preenchidos abaixo. Toque em salvar para confirmar.</span>
+                    <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); }} style={{display:'block', marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código / escolher manualmente</button>
+                  </div>
+                ) : (
+                  <div style={{display:'flex', gap:8}}>
+                    <input
+                      type="text"
+                      value={inviteInput}
+                      onChange={e => setInviteInput(e.target.value.toUpperCase())}
+                      placeholder="Ex: TEEN-AB3K9"
+                      style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, fontFamily:'monospace', letterSpacing:1, outline:'none'}}
+                    />
+                    <button type="button" onClick={handleRedeem} disabled={redeeming || !inviteInput.trim()} className={`btn btn-ghost btn-sm ${redeeming || !inviteInput.trim() ? 'btn-dis' : ''}`} style={{width:'auto', fontSize:13, whiteSpace:'nowrap'}}>
+                      {redeeming ? '...' : 'Aplicar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Trilha *</div>
-              <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap'}}>
+              <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', opacity: redeemed ? 0.55 : 1, pointerEvents: redeemed ? 'none' : 'auto'}}>
                 {(['teen', 'youngAdult', 'adult'] as Track[]).map(t => (
                   <button
                     key={t}
@@ -1916,7 +2105,12 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
               </div>
 
               <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Local de Estudo *</div>
-              {!showNewLocation ? (
+              {redeemed ? (
+                <div style={{padding:'12px', borderRadius:10, background:'rgba(0,0,0,.2)', color:'var(--txt2)', fontSize:14, fontWeight:700}}>
+                  {locations.find(l => l.id === redeemed.locationId)?.name || 'Local do convite'}
+                  <span style={{fontSize:11, color:'var(--mut)', fontWeight:400, marginLeft:6}}>(definido pelo código)</span>
+                </div>
+              ) : !showNewLocation ? (
                 <>
                   <select
                     value={locationId}
