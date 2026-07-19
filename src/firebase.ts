@@ -572,6 +572,32 @@ export const getSeasonRanking = async (trimestre: string) => {
   return Object.values(userTotals).sort((a, b) => b.xp - a.xp);
 };
 
+// ===== Ranking por local, pré-calculado (Etapa 6) =====
+// Lê os docs prontos escritos pela Netlify function recompute-rankings.
+// PRECISA bater EXATAMENTE com o slug() da função (mesma regra de caracteres).
+const rankingSlug = (s: string) => (s || 'sem-temporada').replace(/[^A-Za-z0-9]+/g, '_');
+
+export type LocationRankingDoc = {
+  locationId: string;
+  track: string;
+  trimestre: string;
+  entries: any[];
+  count: number;
+  updatedAt?: any;
+} | null;
+
+// track === 'general' → ranking geral do local (todas as trilhas juntas)
+export const getLocationRanking = async (locationId: string, track: string, trimestre: string): Promise<LocationRankingDoc> => {
+  if (!locationId) return null;
+  const id = `${locationId}__${track}__${rankingSlug(trimestre)}`;
+  try {
+    const snap = await getDoc(doc(db, 'rankings', id));
+    return snap.exists() ? (snap.data() as any) : null;
+  } catch {
+    return null;
+  }
+};
+
 // Ofensiva real de todos os usuários da temporada (para o painel Admin/Professor)
 export const getAllUsersStreaks = async (trimestre: string): Promise<Record<string, { nome: string; avatar: string; streak: number; isAdmin: boolean; isProfessor: boolean }>> => {
   const snap = await getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre)));

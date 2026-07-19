@@ -494,5 +494,20 @@ service cloud.firestore {
       allow create, update: if canManage() && isValidOverride(incoming());
       allow delete: if isUserAdmin();
     }
+
+    // ===== Rankings pré-calculados (Etapa 6) =====
+    // Escritos SÓ pela Netlify function (admin SDK, que ignora estas regras).
+    // Cliente só lê o ranking do PRÓPRIO local (mesmo sabendo o id de outro doc,
+    // o campo locationId precisa bater com o seu). Doc inexistente é liberado
+    // para o cliente conseguir a resposta "ainda não calculado" sem erro.
+    match /rankings/{docId} {
+      allow get: if isAuthenticated() && (
+        resource == null
+        || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && resource.data.locationId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.locationId)
+      );
+      allow list: if false;
+      allow write: if false; // só o processo servidor (admin SDK) escreve
+    }
   }
 }

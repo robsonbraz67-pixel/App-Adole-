@@ -1048,7 +1048,10 @@ const gerarImagemRanking = async (opts: {
 };
 
 /* ===== RANKING ===== */
-export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao }: any) => {
+export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao, rankingPending }: any) => {
+  // Rankings por local (trilha/geral) vêm pré-calculados e são ordenados por
+  // DIAS no período (métrica justa entre trilhas); a semana continua por XP.
+  const isLocal = type === 'trilha' || type === 'geral';
   const { regular, staff } = useMemo(() => {
     const all = [...ranking].map((r: any) => {
       const isMe = r.id === jogador.id;
@@ -1060,12 +1063,14 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       const isProfessor = !isAdmin && (r.isProfessor || (isMe && !!jogador.isProfessor));
       return { ...r, nome, avatar, dias, xp, isAdmin, isProfessor };
     });
-    const byXp = (a: any, b: any) => b.xp - a.xp;
+    const bySort = isLocal
+      ? (a: any, b: any) => (b.dias - a.dias) || (b.xp - a.xp)
+      : (a: any, b: any) => b.xp - a.xp;
     return {
-      regular: all.filter((r: any) => !r.isAdmin && !r.isProfessor).sort(byXp).slice(0, 10),
-      staff: all.filter((r: any) => r.isAdmin || r.isProfessor).sort(byXp),
+      regular: all.filter((r: any) => !r.isAdmin && !r.isProfessor).sort(bySort).slice(0, 10),
+      staff: all.filter((r: any) => r.isAdmin || r.isProfessor).sort(bySort),
     };
-  }, [ranking, jogador, type, prog]);
+  }, [ranking, jogador, type, prog, isLocal]);
 
   const myIsStaff = !!jogador.isAdmin || !!jogador.isProfessor;
   const myIdx = myIsStaff
@@ -1163,11 +1168,22 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       </div>
       
       <div style={{padding:'4px 16px 12px'}}>
-        <div style={{display:'flex',background:'var(--g3)',borderRadius:12,padding:4}}>
-          <div onClick={() => onChangeType('week')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='week'?'rgba(247,198,0,.15)':'transparent',color:type==='week'?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>Da Semana</div>
-          <div onClick={() => onChangeType('season')} style={{flex:1,textAlign:'center',padding:'8px',borderRadius:8,fontWeight:800,fontSize:14,cursor:'pointer',transition:'background .2s',background:type==='season'?'rgba(247,198,0,.15)':'transparent',color:type==='season'?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>Da Temporada</div>
+        <div style={{display:'flex',background:'var(--g3)',borderRadius:12,padding:4,gap:2}}>
+          {[
+            { k: 'week', label: 'Semana' },
+            { k: 'trilha', label: 'Minha Trilha' },
+            { k: 'geral', label: 'Meu Local' },
+          ].map(t => (
+            <div key={t.k} onClick={() => onChangeType(t.k)} style={{flex:1,textAlign:'center',padding:'8px 4px',borderRadius:8,fontWeight:800,fontSize:13,cursor:'pointer',transition:'background .2s',background:type===t.k?'rgba(247,198,0,.15)':'transparent',color:type===t.k?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>{t.label}</div>
+          ))}
         </div>
       </div>
+
+      {isLocal && rankingPending && (
+        <div style={{margin:'0 16px 12px', padding:'14px 16px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)', fontSize:13, color:'var(--txt2)', lineHeight:1.5}}>
+          ⏳ O ranking {type === 'trilha' ? 'da sua trilha' : 'do seu local'} está sendo calculado. Ele é atualizado de hora em hora — volte em breve.
+        </div>
+      )}
 
       {regular.length > 0 && (
         <div style={{padding:'0 16px 4px'}}>
@@ -1215,7 +1231,11 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         <div className="sec-title" style={{textTransform:'none', letterSpacing:'normal'}}>
           {type === 'week'
             ? `📖 Lição: ${licao?.titulo || 'Carregando...'}`
-            : `🏆 Geral: ${licao?.trimestre || 'Carregando...'}`}
+            : type === 'trilha'
+              ? `🎯 Minha trilha · ${licao?.trimestre || ''}`
+              : type === 'geral'
+                ? `🏠 Meu local · ${licao?.trimestre || ''}`
+                : `🏆 Geral: ${licao?.trimestre || 'Carregando...'}`}
         </div>
         {zoneOn && (
           <div className="zone-hint">
@@ -1239,7 +1259,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
             </div>
           )}
           {atrasados.map((r: any) => renderRow(r, 'down'))}
-          {regular.length === 0 && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
+          {regular.length === 0 && !(isLocal && rankingPending) && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
 
           {staff.length > 0 && (
             <>

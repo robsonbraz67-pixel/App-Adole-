@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp } from './utils';
-import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite } from './firebase';
+import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getLocationRanking } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, Grupo } from './components';
 
 const CACHE_VERSION = '3T2026';
@@ -402,27 +402,34 @@ export default function App() {
   };
 
   const [rankingType, setRankingType] = useState('week');
+  const [rankingPending, setRankingPending] = useState(false);
 
   const loadLatestRanking = async (type: string = 'week', licaoArg?: any) => {
     setRankingType(type);
     const l = licaoArg || licao || getActiveLicao(jogador?.track);
     // Abre a tela imediatamente com o cache local; atualiza quando o Firestore responder
     if (type === 'week') setRanking(gs('ranking_' + l.semana, []));
+    else setRanking([]); // rankings de local são pré-calculados; evita mostrar dado da aba anterior
+    setRankingPending(false);
     playSound('ranking');
     setTela('ranking');
     try {
       const user = await waitForAuthInit();
       if (user) {
-        let dbRanking: any[] = [];
         if (type === 'week') {
-          dbRanking = await getWeeklyRanking(l.semana);
+          const dbRanking = await getWeeklyRanking(l.semana);
+          setRanking(dbRanking);
+          ss('ranking_' + l.semana, dbRanking);
+          setProg((prev: any) => ({ ...prev, pos: calcPos(dbRanking, jogador?.id, prev.xp || 0) }));
+        } else if (type === 'trilha' || type === 'geral') {
+          // Ranking por local: lê o doc pré-calculado pela Netlify function
+          const track = type === 'trilha' ? (jogador?.track || 'teen') : 'general';
+          const docData = await getLocationRanking(jogador?.locationId, track, l.trimestre);
+          setRanking(docData?.entries || []);
+          setRankingPending(!docData); // doc ainda não existe → "calculando"
         } else {
-          dbRanking = await getSeasonRanking(l.trimestre);
-        }
-        setRanking(dbRanking);
-        if (type === 'week') {
-           ss('ranking_' + l.semana, dbRanking);
-           setProg((prev: any) => ({ ...prev, pos: calcPos(dbRanking, jogador?.id, prev.xp || 0) }));
+          const dbRanking = await getSeasonRanking(l.trimestre);
+          setRanking(dbRanking);
         }
       }
     } catch(e) {
@@ -531,7 +538,7 @@ export default function App() {
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} myGroups={myGroups} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
-      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} />}
+      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingPending={rankingPending} />}
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onSorteador={() => setTela('sorteador')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
