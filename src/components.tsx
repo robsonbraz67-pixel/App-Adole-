@@ -70,7 +70,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType, createGroup, getMyGroups, listenToGroup, createGroupInvite, joinGroupByInvite, leaveGroup, removeGroupMember, closeGroup, setGroupHighlightShare, getGroupHighlights } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -325,7 +325,7 @@ export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstu
 };
 
 /* ===== ESTUDO ===== */
-export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, onDayUpdated, onQuiz, onBack }: any) => {
+export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSaveStudy, onDayUpdated, onQuiz, onBack }: any) => {
   const initHistory = prog.history?.[dia.id] || {};
   const [notes, setNotes] = useState(initHistory.nota || '');
   const [hl, setHl] = useState<any>(initHistory.hl || {});
@@ -352,6 +352,22 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, on
     try {
       await setPairShare(activePair.id, !!pairIsUserA, semana, dia.id, Object.keys(data).length ? data : null);
     } catch (e) { console.error('setPairShare', e); }
+  };
+
+  // Compartilhamento com grupo(s) (Etapa 5): só destaques, nunca anotação —
+  // grupo não expõe anotação individual por padrão.
+  const [shareGroupIds, setShareGroupIds] = useState<string[]>([]);
+  const toggleGroupShare = (groupId: string, checked: boolean) => {
+    const next = checked ? [...shareGroupIds, groupId] : shareGroupIds.filter(id => id !== groupId);
+    setShareGroupIds(next);
+    const texts = allHlTexts(hl);
+    setGroupHighlightShare(groupId, jogador, semana, dia.id, checked && texts.length ? texts : null).catch(e => console.error('setGroupHighlightShare', e));
+  };
+  const applyGroupShares = (curHl: any) => {
+    const texts = allHlTexts(curHl);
+    shareGroupIds.forEach(groupId => {
+      setGroupHighlightShare(groupId, jogador, semana, dia.id, texts.length ? texts : null).catch(e => console.error('setGroupHighlightShare', e));
+    });
   };
 
   const onScroll = () => {
@@ -449,6 +465,7 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, on
     onSaveStudy(notes, hl);
     // Se a nota/destaques estão compartilhados, atualiza o conteúdo mais recente
     if (activePair?.id && (shareNote || shareHl)) applyShare(shareNote, shareHl, notes, hl);
+    if (shareGroupIds.length) applyGroupShares(hl);
     fn();
   };
 
@@ -532,6 +549,20 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, on
               <input type="checkbox" checked={shareHl} disabled={!allHlTexts(hl).length} onChange={e => { const v = e.target.checked; setShareHl(v); applyShare(shareNote, v, notes, hl); }} style={{accentColor:'var(--teal)', width:18, height:18}} />
               <span style={{fontSize:14, color:'var(--txt2)'}}>Compartilhar meus <strong>destaques</strong> deste dia {allHlTexts(hl).length ? `(${allHlTexts(hl).length})` : '(nenhum ainda)'}</span>
             </label>
+          </div>
+        )}
+
+        {/* Compartilhar destaques com grupo(s) — nunca a anotação */}
+        {myGroups?.length > 0 && (
+          <div style={{marginBottom:24, background:'rgba(247,198,0,.06)', border:'1px solid rgba(247,198,0,.22)', padding:'14px 16px', borderRadius:16}}>
+            <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', marginBottom:10}}>🧑‍🤝‍🧑 Compartilhar destaques com o grupo</div>
+            <div style={{fontSize:11, color:'var(--mut)', marginBottom:10}}>A anotação nunca é compartilhada no grupo — só os destaques que você escolher.</div>
+            {myGroups.map((g: any) => (
+              <label key={g.id} style={{display:'flex', alignItems:'center', gap:10, marginBottom:6, cursor:'pointer', opacity: allHlTexts(hl).length ? 1 : 0.5}}>
+                <input type="checkbox" checked={shareGroupIds.includes(g.id)} disabled={!allHlTexts(hl).length} onChange={e => toggleGroupShare(g.id, e.target.checked)} style={{accentColor:'var(--gold)', width:18, height:18}} />
+                <span style={{fontSize:14, color:'var(--txt2)'}}>{g.name}</span>
+              </label>
+            ))}
           </div>
         )}
 
@@ -1479,7 +1510,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
 /* ===== ESTUDO EM DUPLA (Etapa 4) ===== */
 const PAIR_TYPE_LABELS: Record<PairType, string> = { family: '👨‍👧 Família', couple: '💑 Casal', friend: '🤝 Amigo(a)' };
 
-export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange, onClearPending, onBack }: any) => {
+export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange, onClearPending, onBack, onSwitchToGroup }: any) => {
   const [pair, setPair] = useState<any>(activePair || null);
   const [tipo, setTipo] = useState<PairType>('friend');
   const [linkGerado, setLinkGerado] = useState('');
@@ -1567,7 +1598,7 @@ export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange,
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>👥 Estudo em Dupla</div>
-        <div/>
+        {onSwitchToGroup ? <button className="btn btn-ghost btn-sm" onClick={onSwitchToGroup} style={{width:'auto', fontSize:12}}>Grupo →</button> : <div/>}
       </div>
 
       <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:18}}>
@@ -1670,6 +1701,270 @@ export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange,
                 </div>
               )}
             </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ===== GRUPO DE ESTUDO (Etapa 5) ===== */
+// Tela de um grupo específico: membros, progresso da semana, destaques
+// compartilhados e (se for o líder) convite/remover/encerrar.
+const GrupoDetalhe = ({ jogador, licao, group: initialGroup, onChanged, onBack }: any) => {
+  const [group, setGroup] = useState<any>(initialGroup);
+  const [membersProgress, setMembersProgress] = useState<Record<string, number[]>>({});
+  const [highlights, setHighlights] = useState<any[]>([]);
+  const [linkGerado, setLinkGerado] = useState('');
+  const [gerando, setGerando] = useState(false);
+
+  const isLeader = group?.leaderId === jogador.id;
+
+  useEffect(() => {
+    if (!group?.id) return;
+    const unsub = listenToGroup(group.id, g => {
+      if (g && g.active) { setGroup(g); onChanged?.(g); }
+      else { setGroup(null); onChanged?.(null); onBack?.(); }
+    });
+    return () => unsub();
+  }, [group?.id]);
+
+  useEffect(() => {
+    if (!group?.memberIds?.length || !licao?.semana) return;
+    Promise.all(group.memberIds.map((uid: string) => getProgress(uid, licao.semana).then((p: any) => [uid, p?.done || []])))
+      .then(pairs => setMembersProgress(Object.fromEntries(pairs)))
+      .catch(() => {});
+    getGroupHighlights(group.id, licao.semana).then(setHighlights).catch(() => {});
+  }, [group?.id, group?.memberIds?.join(','), licao?.semana]);
+
+  const shareUrl = (id: string) => `${window.location.origin}${window.location.pathname}?grupo=${id}`;
+
+  const handleGerarConvite = async () => {
+    setGerando(true);
+    try {
+      const inviteId = await createGroupInvite(jogador, group.id);
+      setLinkGerado(shareUrl(inviteId));
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao gerar convite.');
+    }
+    setGerando(false);
+  };
+
+  const compartilharLink = async () => {
+    const texto = `Vem estudar a lição com o grupo "${group.name}" no SabatinaQuest? 📖🔥\n${linkGerado}`;
+    try {
+      if (navigator.share) await navigator.share({ title: `Convite de grupo — ${group.name}`, text: texto, url: linkGerado });
+      else { await navigator.clipboard.writeText(linkGerado); alert('Link copiado! Cole no WhatsApp para convidar.'); }
+    } catch (e) { /* cancelado */ }
+  };
+
+  const handleRemover = async (memberId: string, nome: string) => {
+    if (!window.confirm(`Remover ${nome} do grupo?`)) return;
+    try { await removeGroupMember(group.id, memberId); } catch (e) { alert('Erro ao remover membro.'); }
+  };
+
+  const handleSair = async () => {
+    if (!window.confirm('Sair deste grupo?')) return;
+    try { await leaveGroup(group.id, jogador.id); onBack?.(); } catch (e) { alert('Erro ao sair do grupo.'); }
+  };
+
+  const handleEncerrar = async () => {
+    if (!window.confirm(`Encerrar o grupo "${group.name}"? Isso remove o grupo para todos os membros.`)) return;
+    try { await closeGroup(group.id); } catch (e) { alert('Erro ao encerrar o grupo.'); }
+  };
+
+  if (!group) return null;
+  const dias = licao?.dias || [];
+  const hlByMember = (uid: string, dayId: number) => highlights.filter(h => h.userId === uid && h.dayId === dayId);
+
+  return (
+    <div>
+      <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18, marginBottom:16}}>
+        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10}}>
+          <div>
+            <div style={{fontSize:12, color:'var(--mut)', fontWeight:700}}>Grupo</div>
+            <div style={{fontSize:19, fontWeight:900, color:'var(--txt2)'}}>{group.name}</div>
+          </div>
+          {isLeader ? (
+            <button onClick={handleEncerrar} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>Encerrar</button>
+          ) : (
+            <button onClick={handleSair} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>Sair</button>
+          )}
+        </div>
+        <div style={{fontSize:12, color:'var(--mut)'}}>{group.memberIds.length}/{group.maxMembers} membros</div>
+      </div>
+
+      {isLeader && (
+        <div style={{background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)', borderRadius:16, padding:16, marginBottom:16}}>
+          <div style={{fontSize:12, fontWeight:800, color:'var(--teal)', marginBottom:10}}>🎟️ Convidar para o grupo</div>
+          {!linkGerado ? (
+            <button onClick={handleGerarConvite} disabled={gerando} className={`btn btn-gold ${gerando ? 'btn-dis':''}`} style={{fontSize:14}}>{gerando ? 'Gerando...' : '🔗 Gerar link de convite'}</button>
+          ) : (
+            <div>
+              <div style={{fontSize:11, color:'var(--mut)', marginBottom:8}}>Link reutilizável — vale até o grupo lotar ou você encerrá-lo.</div>
+              <div style={{display:'flex', gap:8, marginBottom:10}}>
+                <input readOnly value={linkGerado} style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt2)', border:'1px solid var(--input-border)', fontSize:12, outline:'none'}} />
+                <button onClick={() => navigator.clipboard.writeText(linkGerado).then(() => alert('Link copiado!'))} className="btn btn-ghost btn-sm" style={{width:'auto', fontSize:12}}>Copiar</button>
+              </div>
+              <button onClick={compartilharLink} className="btn btn-gold" style={{fontSize:14}}>📲 Compartilhar convite</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="sec-title" style={{marginBottom:8}}>Membros</div>
+      <div style={{display:'flex', flexDirection:'column', gap:8, marginBottom:20}}>
+        {group.memberIds.map((uid: string) => (
+          <div key={uid} style={{display:'flex', alignItems:'center', justifyContent:'space-between', background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'10px 14px'}}>
+            <div style={{fontSize:13, fontWeight:700, color:'var(--txt2)'}}>
+              {uid === jogador.id ? 'Você' : uid.slice(0, 8)} {uid === group.leaderId && <span style={{color:'var(--gold)', fontSize:11}}>👑 líder</span>}
+            </div>
+            <div style={{fontSize:12, color:'var(--mut)'}}>{(membersProgress[uid] || []).length}/{dias.length} dias</div>
+            {isLeader && uid !== jogador.id && (
+              <button onClick={() => handleRemover(uid, uid.slice(0,8))} style={{background:'none', border:'none', color:'#FF6B6B', fontSize:11, cursor:'pointer'}}>Remover</button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="sec-title" style={{marginBottom:8}}>Progresso da semana — {licao?.semana}</div>
+      <div style={{fontSize:11, color:'var(--mut)', marginBottom:10, lineHeight:1.5}}>
+        Por padrão, o grupo não mostra a anotação de ninguém — só quem completou o dia e os destaques que cada um decidiu compartilhar.
+      </div>
+      <div style={{display:'flex', flexDirection:'column', gap:8}}>
+        {dias.map((d: any) => {
+          const feitos = group.memberIds.filter((uid: string) => (membersProgress[uid] || []).includes(d.id));
+          const hlDoDia = highlights.filter(h => h.dayId === d.id);
+          return (
+            <div key={d.id} style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'12px 14px'}}>
+              <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)', marginBottom:4}}>{formatDiaSemana(d.diaSemana)} — {d.titulo || `Dia ${d.id}`}</div>
+              <div style={{fontSize:11, color:'var(--mut)'}}>✅ {feitos.length}/{group.memberIds.length} concluíram</div>
+              {hlDoDia.length > 0 && (
+                <div style={{marginTop:8, display:'flex', flexDirection:'column', gap:4}}>
+                  {hlDoDia.map((h: any) => h.texts.map((t: string, i: number) => (
+                    <div key={`${h.id}-${i}`} style={{fontSize:12, color:'var(--txt2)', fontStyle:'italic', paddingLeft:8, borderLeft:'2px solid var(--gold)'}}>
+                      "{t}" <span style={{color:'var(--mut)', fontStyle:'normal'}}>— {h.userId === jogador.id ? 'você' : h.userId.slice(0,6)}</span>
+                    </div>
+                  )))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+export const Grupo = ({ jogador, licao, pendingGroupInvite, onClearPendingGroupInvite, onBack, onSwitchToPair }: any) => {
+  const [groups, setGroups] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<any>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newMax, setNewMax] = useState(15);
+  const [creating, setCreating] = useState(false);
+  const [aceitando, setAceitando] = useState(false);
+
+  const carregarGrupos = () => {
+    setLoading(true);
+    getMyGroups(jogador.id).then(setGroups).catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(() => { carregarGrupos(); }, [jogador.id]);
+
+  const handleCriar = async () => {
+    if (!newName.trim()) return alert('Digite o nome do grupo.');
+    if (newMax < 2 || newMax > 50) return alert('O limite de membros deve ser entre 2 e 50.');
+    setCreating(true);
+    try {
+      const id = await createGroup(jogador, newName.trim(), newMax);
+      setShowCreate(false);
+      setNewName('');
+      carregarGrupos();
+      setSelected({ id });
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao criar o grupo.');
+    }
+    setCreating(false);
+  };
+
+  const handleAceitar = async () => {
+    if (!pendingGroupInvite) return;
+    setAceitando(true);
+    const res = await joinGroupByInvite(pendingGroupInvite.id, jogador);
+    setAceitando(false);
+    if (res.ok) {
+      onClearPendingGroupInvite?.();
+      carregarGrupos();
+      setSelected({ id: res.groupId });
+    } else {
+      const msgs: Record<string, string> = {
+        not_found: 'Convite não encontrado ou desativado.',
+        inactive: 'Este grupo já foi encerrado.',
+        mismatch: 'Este convite é de outro local ou trilha. Vocês precisam estar no mesmo grupo de estudo.',
+        full: 'Este grupo já está lotado.',
+        already_member: 'Você já faz parte deste grupo.',
+        error: 'Não foi possível entrar no grupo. Tente novamente.',
+      };
+      alert(msgs[(res as any).reason] || 'Não foi possível entrar no grupo.');
+      onClearPendingGroupInvite?.();
+    }
+  };
+
+  return (
+    <div className="scr" style={{paddingBottom:100}}>
+      <div className="hdr">
+        <button className="btn btn-ghost btn-sm" onClick={() => selected ? setSelected(null) : onBack()} style={{width:'auto'}}>← Voltar</button>
+        <div style={{fontWeight:900,fontSize:17}}>🧑‍🤝‍🧑 Grupo de Estudo</div>
+        {!selected && onSwitchToPair ? <button className="btn btn-ghost btn-sm" onClick={onSwitchToPair} style={{width:'auto', fontSize:12}}>Dupla →</button> : <div/>}
+      </div>
+
+      <div style={{padding:'20px 16px'}}>
+        {pendingGroupInvite && (
+          <div style={{background:'rgba(247,198,0,.1)', border:'1px solid rgba(247,198,0,.35)', borderRadius:16, padding:18, marginBottom:18}}>
+            <div style={{fontSize:15, fontWeight:800, color:'var(--gold)', marginBottom:8}}>🎟️ Você recebeu um convite de grupo!</div>
+            <div style={{fontSize:13, color:'var(--mut)', marginBottom:14}}>Entrar num grupo de estudo do seu local e trilha.</div>
+            <div style={{display:'flex', gap:10}}>
+              <button onClick={handleAceitar} disabled={aceitando} className={`btn btn-gold ${aceitando ? 'btn-dis' : ''}`} style={{flex:1, fontSize:14}}>{aceitando ? 'Entrando...' : '✅ Entrar no grupo'}</button>
+              <button onClick={() => onClearPendingGroupInvite?.()} className="btn btn-ghost" style={{flex:1, fontSize:14, color:'var(--mut)'}}>Agora não</button>
+            </div>
+          </div>
+        )}
+
+        {selected ? (
+          <GrupoDetalhe jogador={jogador} licao={licao} group={groups.find(g => g.id === selected.id) || selected} onChanged={() => carregarGrupos()} onBack={() => { setSelected(null); carregarGrupos(); }} />
+        ) : (
+          <>
+            {loading ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : groups.length === 0 ? (
+              <div style={{textAlign:'center', padding:'40px 20px', color:'var(--mut)'}}>
+                <div style={{fontSize:44, marginBottom:12}}>🧑‍🤝‍🧑</div>
+                <div style={{fontSize:14, lineHeight:1.5}}>Você ainda não faz parte de nenhum grupo. Crie um ou peça um link de convite.</div>
+              </div>
+            ) : (
+              <div style={{display:'flex', flexDirection:'column', gap:10, marginBottom:20}}>
+                {groups.map(g => (
+                  <button key={g.id} onClick={() => setSelected(g)} style={{textAlign:'left', background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:14, padding:'14px 16px', cursor:'pointer'}}>
+                    <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)'}}>{g.name} {g.leaderId === jogador.id && <span style={{color:'var(--gold)', fontSize:11}}>👑</span>}</div>
+                    <div style={{fontSize:12, color:'var(--mut)'}}>{g.memberIds.length}/{g.maxMembers} membros</div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {!showCreate ? (
+              <button onClick={() => setShowCreate(true)} className="btn btn-gold" style={{fontSize:15}}>➕ Criar novo grupo</button>
+            ) : (
+              <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18}}>
+                <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Nome do grupo</div>
+                <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Ex: Turma dos Guerreiros" maxLength={60} style={{width:'100%', padding:'12px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, marginBottom:14, outline:'none'}} />
+                <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Limite de membros</div>
+                <input type="number" min={2} max={50} value={newMax} onChange={e => setNewMax(parseInt(e.target.value, 10) || 2)} style={{width:'100%', padding:'12px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, marginBottom:14, outline:'none'}} />
+                <div style={{display:'flex', gap:10}}>
+                  <button onClick={handleCriar} disabled={creating} className={`btn btn-gold ${creating ? 'btn-dis':''}`} style={{flex:1, fontSize:14}}>{creating ? 'Criando...' : 'Criar'}</button>
+                  <button onClick={() => setShowCreate(false)} className="btn btn-ghost" style={{flex:1, fontSize:14, color:'var(--mut)'}}>Cancelar</button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

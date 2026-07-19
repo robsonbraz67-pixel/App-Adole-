@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { isRankingHidden, computeRealStreak } from './utils';
 import { LICOES } from './data';
 const firebaseConfig = {
@@ -420,6 +420,121 @@ export const setPairShare = async (
   await setDoc(doc(db, 'pairs', pairId), {
     [field]: { [key]: data === null ? deleteField() : data },
   }, { merge: true });
+};
+
+// ===== Grupo de Estudo (Etapa 5) =====
+// Reaproveita boa parte da estrutura da dupla, mas: N membros, convite
+// reutilizável (não uso único), e não expõe anotação individual — só
+// progresso (quem completou o dia) + destaques compartilhados (opt-in).
+
+export const createGroup = async (jogador: any, name: string, maxMembers: number): Promise<string> => {
+  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro (local e trilha) antes de criar um grupo.');
+  const ref = doc(collection(db, 'groups'));
+  await setDoc(ref, {
+    name: name.trim(),
+    leaderId: jogador.id,
+    locationId: jogador.locationId,
+    track: jogador.track,
+    memberIds: [jogador.id],
+    maxMembers,
+    active: true,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+};
+
+export const getGroup = async (groupId: string): Promise<any | null> => {
+  const snap = await getDoc(doc(db, 'groups', groupId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
+
+export const listenToGroup = (groupId: string, cb: (group: any | null) => void) => {
+  return onSnapshot(doc(db, 'groups', groupId), snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null));
+};
+
+// Grupos ativos dos quais o usuário faz parte (array-contains puro, sem índice composto)
+export const getMyGroups = async (userId: string): Promise<any[]> => {
+  const snap = await getDocs(query(collection(db, 'groups'), where('memberIds', 'array-contains', userId)));
+  const list: any[] = [];
+  snap.forEach(d => { const data = d.data(); if (data.active) list.push({ id: d.id, ...data }); });
+  return list;
+};
+
+// Convite reutilizável: só o líder do grupo cria. Continua válido até o
+// líder desativar (active=false) ou encerrar o grupo inteiro.
+export const createGroupInvite = async (jogador: any, groupId: string): Promise<string> => {
+  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro antes de convidar.');
+  const ref = doc(collection(db, 'groupInvites'));
+  await setDoc(ref, {
+    groupId,
+    createdBy: jogador.id,
+    locationId: jogador.locationId,
+    track: jogador.track,
+    active: true,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+};
+
+export const getGroupInvite = async (inviteId: string): Promise<any | null> => {
+  const snap = await getDoc(doc(db, 'groupInvites', inviteId));
+  return snap.exists() ? { id: inviteId, ...snap.data() } : null;
+};
+
+export type JoinGroupResult =
+  | { ok: true; groupId: string }
+  | { ok: false; reason: 'not_found' | 'inactive' | 'mismatch' | 'full' | 'already_member' | 'error' };
+
+export const joinGroupByInvite = async (inviteId: string, jogador: any): Promise<JoinGroupResult> => {
+  try {
+    const inv = await getGroupInvite(inviteId);
+    if (!inv || !inv.active) return { ok: false, reason: 'not_found' };
+    if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
+    const group = await getGroup(inv.groupId);
+    if (!group || !group.active) return { ok: false, reason: 'inactive' };
+    if ((group.memberIds || []).includes(jogador.id)) return { ok: false, reason: 'already_member' };
+    if ((group.memberIds || []).length >= group.maxMembers) return { ok: false, reason: 'full' };
+    await setDoc(doc(db, 'groups', inv.groupId), {
+      memberIds: arrayUnion(jogador.id),
+    }, { merge: true });
+    return { ok: true, groupId: inv.groupId };
+  } catch (e) {
+    console.error('joinGroupByInvite', e);
+    return { ok: false, reason: 'error' };
+  }
+};
+
+export const leaveGroup = async (groupId: string, userId: string) => {
+  await setDoc(doc(db, 'groups', groupId), { memberIds: arrayRemove(userId) }, { merge: true });
+};
+
+// Líder remove um membro (não a si mesmo — use closeGroup para encerrar)
+export const removeGroupMember = async (groupId: string, memberId: string) => {
+  await setDoc(doc(db, 'groups', groupId), { memberIds: arrayRemove(memberId) }, { merge: true });
+};
+
+export const closeGroup = async (groupId: string) => {
+  await setDoc(doc(db, 'groups', groupId), { active: false }, { merge: true });
+};
+
+// Destaques compartilhados do grupo: subcoleção (1 doc por membro/dia) em vez
+// de um mapa único no doc do grupo — evita contenção de escrita quando vários
+// membros do grupo salvam ao mesmo tempo, e permite paginar por semana depois.
+export const setGroupHighlightShare = async (groupId: string, jogador: any, week: string, dayId: number, texts: string[] | null) => {
+  const entryId = `${jogador.id}_${week}_${dayId}`;
+  const ref = doc(db, 'groups', groupId, 'highlights', entryId);
+  if (!texts || texts.length === 0) {
+    await deleteDoc(ref);
+    return;
+  }
+  await setDoc(ref, { userId: jogador.id, week, dayId, texts, updatedAt: serverTimestamp() });
+};
+
+export const getGroupHighlights = async (groupId: string, week: string): Promise<any[]> => {
+  const snap = await getDocs(query(collection(db, 'groups', groupId, 'highlights'), where('week', '==', week)));
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list;
 };
 
 export const getWeeklyRanking = async (week: string) => {

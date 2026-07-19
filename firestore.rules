@@ -315,6 +315,134 @@ service cloud.firestore {
       allow delete: if isUserAdmin();
     }
 
+    // ===== Grupo de Estudo (Etapa 5) =====
+    // Reaproveita o mesmo escopo local+trilha da dupla. Diferença: N membros e
+    // convite reutilizável (revogação é no nível do grupo via 'active', não
+    // por link individual — mesmo modelo já usado para inviteCodes/local).
+    function isValidGroup(data) {
+      return data.keys().hasOnly(['name', 'leaderId', 'locationId', 'track', 'memberIds', 'maxMembers', 'active', 'createdAt'])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 60
+        && data.leaderId is string
+        && data.locationId is string && data.locationId.size() > 0
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.memberIds is list && data.memberIds.size() >= 1
+        && data.leaderId in data.memberIds
+        && data.maxMembers is number && data.maxMembers >= 2 && data.maxMembers <= 50
+        && data.memberIds.size() <= data.maxMembers
+        && data.active is bool;
+    }
+
+    // Só adiciona o próprio uid ao array, sem tirar ninguém, sem estourar o limite.
+    function isSelfJoiningGroup() {
+      return existing().active == true
+        && request.auth.uid in incoming().memberIds
+        && incoming().memberIds.removeAll(existing().memberIds).hasOnly([request.auth.uid])
+        && existing().memberIds.removeAll(incoming().memberIds).size() == 0
+        && incoming().memberIds.size() <= existing().maxMembers
+        && incoming().diff(existing()).affectedKeys().hasOnly(['memberIds'])
+        && myLocationTrackMatches(existing().locationId, existing().track);
+    }
+
+    // Membro (não-líder) sai por conta própria: só tira o próprio uid.
+    function isSelfLeavingGroup() {
+      return request.auth.uid != existing().leaderId
+        && request.auth.uid in existing().memberIds
+        && existing().memberIds.removeAll(incoming().memberIds).hasOnly([request.auth.uid])
+        && incoming().memberIds.removeAll(existing().memberIds).size() == 0
+        && incoming().diff(existing()).affectedKeys().hasOnly(['memberIds']);
+    }
+
+    // Líder remove um ou mais membros (nunca a si mesmo — pra isso é 'active=false').
+    function isLeaderRemovingMembers() {
+      return existing().leaderId == request.auth.uid
+        && request.auth.uid in incoming().memberIds
+        && incoming().memberIds.removeAll(existing().memberIds).size() == 0
+        && incoming().diff(existing()).affectedKeys().hasOnly(['memberIds']);
+    }
+
+    match /groups/{groupId} {
+      // Só membros leem o grupo (progresso/feed ficam visíveis só pra quem está dentro).
+      allow get, list: if isAuthenticated() && request.auth.uid in resource.data.memberIds;
+
+      allow create: if isAuthenticated()
+        && incoming().leaderId == request.auth.uid
+        && incoming().memberIds == [request.auth.uid]
+        && incoming().active == true
+        && incoming().createdAt == request.time
+        && isValidGroup(incoming())
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      allow update: if isAuthenticated() && (
+          // líder: renomear, ajustar limite (nunca abaixo do nº atual de membros),
+          // encerrar o grupo, ou remover membro(s)
+          (existing().leaderId == request.auth.uid && (
+            (incoming().diff(existing()).affectedKeys().hasOnly(['name']) && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 60)
+            || (incoming().diff(existing()).affectedKeys().hasOnly(['maxMembers']) && incoming().maxMembers >= existing().memberIds.size() && incoming().maxMembers <= 50)
+            || (incoming().diff(existing()).affectedKeys().hasOnly(['active']) && incoming().active == false)
+            || isLeaderRemovingMembers()
+          ))
+          || isSelfJoiningGroup()
+          || isSelfLeavingGroup()
+        );
+
+      allow delete: if false; // encerrar é active=false, nunca apagar (mantém histórico dos highlights)
+    }
+
+    function isValidGroupInvite(data) {
+      return data.keys().hasOnly(['groupId', 'createdBy', 'locationId', 'track', 'active', 'createdAt'])
+        && data.groupId is string && data.groupId.size() > 0
+        && data.createdBy is string
+        && data.locationId is string && data.locationId.size() > 0
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.active is bool;
+    }
+
+    match /groupInvites/{inviteId} {
+      // Resgate por link: precisa saber o inviteId. list só dos próprios (painel do líder).
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+
+      // Só o líder do grupo referenciado pode gerar convite pra ele.
+      allow create: if isAuthenticated()
+        && incoming().createdBy == request.auth.uid
+        && incoming().active == true
+        && incoming().createdAt == request.time
+        && isValidGroupInvite(incoming())
+        && exists(/databases/$(database)/documents/groups/$(incoming().groupId))
+        && get(/databases/$(database)/documents/groups/$(incoming().groupId)).data.leaderId == request.auth.uid
+        && get(/databases/$(database)/documents/groups/$(incoming().groupId)).data.locationId == incoming().locationId
+        && get(/databases/$(database)/documents/groups/$(incoming().groupId)).data.track == incoming().track;
+
+      // Revogar: só quem criou. Só o campo 'active' pode mudar.
+      allow update: if isAuthenticated()
+        && existing().createdBy == request.auth.uid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['active']);
+
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // Destaques compartilhados do grupo (subcoleção — 1 doc por membro/dia).
+    // Ler exige ser membro do grupo pai; escrever só no próprio doc (prefixo do
+    // id == próprio uid), sem exigir cast número→string na regra.
+    match /groups/{groupId}/highlights/{entryId} {
+      allow get, list: if isAuthenticated()
+        && exists(/databases/$(database)/documents/groups/$(groupId))
+        && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+
+      allow create, update: if isAuthenticated()
+        && entryId.split('_')[0] == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && incoming().keys().hasOnly(['userId', 'week', 'dayId', 'texts', 'updatedAt'])
+        && incoming().week is string
+        && incoming().dayId is number
+        && incoming().texts is list && incoming().texts.size() > 0 && incoming().texts.size() <= 10
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/groups/$(groupId))
+        && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
     function isValidProgress(data) {
       return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string
