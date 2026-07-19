@@ -1803,7 +1803,9 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
   const [avatar, setAvatar] = useState(jogador.avatar || '🦁');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Local de estudo + trilha: obrigatórios no cadastro, só admin altera depois
+  // Local de estudo + trilha: obrigatórios no cadastro, só admin altera depois.
+  // Só admin/professor cadastra local novo (regra do Firestore); aluno só escolhe.
+  const canManageLocations = !!jogador.isAdmin || !!jogador.isProfessor;
   const locationLocked = !!jogador.locationId;
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(!locationLocked);
@@ -1925,7 +1927,13 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
                     <option value="">{loadingLocations ? 'Carregando...' : 'Selecione seu local...'}</option>
                     {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
-                  <button type="button" onClick={() => setShowNewLocation(true)} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12}}>+ Meu local não está na lista</button>
+                  {canManageLocations ? (
+                    <button type="button" onClick={() => setShowNewLocation(true)} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12}}>+ Cadastrar novo local</button>
+                  ) : (!loadingLocations && locations.length === 0) ? (
+                    <div style={{fontSize:11, color:'var(--mut)', textAlign:'center', padding:'4px 0'}}>Nenhum local cadastrado ainda. Peça ao seu professor ou administrador para cadastrar o seu.</div>
+                  ) : (
+                    <div style={{fontSize:11, color:'var(--mut)', textAlign:'center', padding:'4px 0'}}>Não achou seu local? Peça ao seu professor ou administrador para cadastrá-lo.</div>
+                  )}
                 </>
               ) : (
                 <>

@@ -103,7 +103,10 @@ service cloud.firestore {
       // Todo usuário autenticado precisa listar locais para escolher no cadastro
       allow get, list: if isAuthenticated();
 
-      allow create: if isAuthenticated()
+      // Locais são dado administrativo: só admin/professor cadastra (evita que
+      // aluno comum polua o dropdown de cadastro com locais lixo/spam). Aluno
+      // sem local disponível pede ao professor/admin para cadastrar.
+      allow create: if canManage()
         && isValidStudyLocation(incoming())
         && incoming().createdBy == request.auth.uid
         && incoming().createdAt == request.time;
@@ -128,7 +131,9 @@ service cloud.firestore {
     match /teacherAssignments/{teacherId} {
       allow get: if isOwner(teacherId) || isUserAdmin();
       allow list: if isUserAdmin();
-      allow create, update: if isUserAdmin() && isValidTeacherAssignment(incoming());
+      allow create, update: if isUserAdmin()
+        && isValidTeacherAssignment(incoming())
+        && incoming().assignedBy == request.auth.uid; // audit trail não forjável
       allow delete: if isUserAdmin();
     }
 
