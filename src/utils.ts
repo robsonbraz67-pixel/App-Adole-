@@ -87,10 +87,10 @@ const diaAnteriorISO = (iso: string): string => {
   return d.toISOString().split('T')[0];
 };
 
-// Ofensiva real: conta dias de calendário consecutivos estudados, derivado do
-// Firestore (allDone: { semana: diaIds[] } de getUserAllDone) + LICOES (mapeia
-// diaId -> data real). Independente de localStorage — funciona em qualquer aparelho.
-export const computeRealStreak = (allDone: Record<string, number[]>, licoes: any[], hojeISO: string = hojeLocalISO()): number => {
+// Converte { semana: diaIds[] } (getUserAllDone) num Set de datas reais (YYYY-MM-DD),
+// usando LICOES para mapear diaId -> data. Base tanto da ofensiva pessoal quanto da
+// ofensiva com amigos (interseção de dois desses sets).
+const doneDatesSet = (allDone: Record<string, number[]>, licoes: any[]): Set<string> => {
   const datas = new Set<string>();
   for (const semana of Object.keys(allDone)) {
     const l = licoes.find((x: any) => x.semana === semana);
@@ -100,9 +100,33 @@ export const computeRealStreak = (allDone: Record<string, number[]>, licoes: any
       if (dia?.data) datas.add(dia.data);
     }
   }
+  return datas;
+};
+
+// Ofensiva real: conta dias de calendário consecutivos estudados, derivado do
+// Firestore (allDone: { semana: diaIds[] } de getUserAllDone) + LICOES (mapeia
+// diaId -> data real). Independente de localStorage — funciona em qualquer aparelho.
+export const computeRealStreak = (allDone: Record<string, number[]>, licoes: any[], hojeISO: string = hojeLocalISO()): number => {
+  const datas = doneDatesSet(allDone, licoes);
   let cursor = datas.has(hojeISO) ? hojeISO : diaAnteriorISO(hojeISO);
   let streak = 0;
   while (datas.has(cursor)) {
+    streak++;
+    cursor = diaAnteriorISO(cursor);
+  }
+  return streak;
+};
+
+// Ofensiva com amigos (Etapa 7): dias em que os DOIS completaram — calculada ao
+// vivo a partir do histórico real de progresso (sem contador salvo/cron para
+// "quebrar" a sequência; se um dos dois perde um dia, a interseção já reflete
+// isso automaticamente na próxima leitura, sem precisar de job agendado).
+export const computeMutualStreak = (allDoneA: Record<string, number[]>, allDoneB: Record<string, number[]>, licoes: any[], hojeISO: string = hojeLocalISO()): number => {
+  const datasA = doneDatesSet(allDoneA, licoes);
+  const datasB = doneDatesSet(allDoneB, licoes);
+  let cursor = (datasA.has(hojeISO) && datasB.has(hojeISO)) ? hojeISO : diaAnteriorISO(hojeISO);
+  let streak = 0;
+  while (datasA.has(cursor) && datasB.has(cursor)) {
     streak++;
     cursor = diaAnteriorISO(cursor);
   }

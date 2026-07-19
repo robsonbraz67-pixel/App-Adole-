@@ -57,7 +57,42 @@ service cloud.firestore {
         && (!data.keys().hasAny(['bloqueado']) || data.bloqueado is bool)
         && (!data.keys().hasAny(['telefone']) || (data.telefone is string && data.telefone.size() <= 20))
         && (!data.keys().hasAny(['whatsappOptIn']) || data.whatsappOptIn is bool)
-        && (!data.keys().hasAny(['manualNotification']) || data.manualNotification is map);
+        && (!data.keys().hasAny(['manualNotification']) || data.manualNotification is map)
+        && (!data.keys().hasAny(['track']) || data.track in ['teen', 'youngAdult', 'adult'])
+        && (!data.keys().hasAny(['locationId']) || (data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200))
+        && (!data.keys().hasAny(['inviteCode']) || (data.inviteCode is string && data.inviteCode.size() <= 40));
+    }
+
+    // Uma vez definidos pelo próprio usuário no cadastro, track/locationId só
+    // podem ser trocados por admin (ver bloco de update abaixo) — impede que o
+    // usuário se mova de local/trilha sozinho depois de escolher.
+    function ownerLocationTrackUnchanged() {
+      return (!existing().keys().hasAny(['locationId']) || incoming().locationId == existing().locationId)
+        && (!existing().keys().hasAny(['track']) || incoming().track == existing().track);
+    }
+
+    // Matrícula só por convite: o dono só grava um locationId novo se for
+    // admin/professor (que fazem o setup e não precisam de código) OU se
+    // apresentar um inviteCode ativo cujo local+trilha batem com o que está
+    // gravando. Sem isto, dava pra entrar em qualquer local pelo console/API.
+    function inviteCodeMatchesIncoming() {
+      return incoming().keys().hasAny(['inviteCode'])
+        && incoming().inviteCode is string
+        && exists(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode))
+        && get(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode)).data.active == true
+        && get(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode)).data.locationId == incoming().locationId
+        && get(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode)).data.track == incoming().track;
+    }
+
+    // true quando o dono está DEFININDO um locationId que ainda não existia
+    function ownerSettingNewLocation() {
+      return !existing().keys().hasAny(['locationId']) && incoming().keys().hasAny(['locationId']);
+    }
+    function ownerLocationAllowedOnUpdate() {
+      return !ownerSettingNewLocation() || canManage() || inviteCodeMatchesIncoming();
+    }
+    function ownerLocationAllowedOnCreate() {
+      return !incoming().keys().hasAny(['locationId']) || canManage() || inviteCodeMatchesIncoming();
     }
 
     match /users/{userId} {
@@ -65,19 +100,427 @@ service cloud.firestore {
 
       allow create: if isOwner(userId)
         && incoming().id == userId
-        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification'])
+        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId', 'inviteCode'])
         && (!incoming().keys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
+        && ownerLocationAllowedOnCreate()
         && isValidUser(incoming());
 
       allow update: if (isOwner(userId)
-        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'telefone', 'whatsappOptIn', 'manualNotification'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId', 'inviteCode'])
         && incoming().id == existing().id
         && incoming().email == existing().email
         && (!incoming().diff(existing()).affectedKeys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
+        && ownerLocationTrackUnchanged()
+        && ownerLocationAllowedOnUpdate()
         && isValidUser(incoming())) || (
         isUserAdmin()
-        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'manualNotification'])
+        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'manualNotification', 'locationId', 'track'])
         && isValidUser(incoming()));
+
+      allow delete: if isUserAdmin();
+    }
+
+    function isValidStudyLocation(data) {
+      return data.keys().hasOnly(['name', 'createdBy', 'createdAt'])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+        && data.createdBy is string;
+    }
+
+    match /studyLocations/{locationId} {
+      // Todo usuário autenticado precisa listar locais para escolher no cadastro
+      allow get, list: if isAuthenticated();
+
+      // Locais são dado administrativo: só admin/professor cadastra (evita que
+      // aluno comum polua o dropdown de cadastro com locais lixo/spam). Aluno
+      // sem local disponível pede ao professor/admin para cadastrar.
+      allow create: if canManage()
+        && isValidStudyLocation(incoming())
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time;
+
+      allow update: if isValidStudyLocation(incoming())
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && ((isAuthenticated() && existing().createdBy == request.auth.uid) || isUserAdmin());
+
+      allow delete: if isUserAdmin();
+    }
+
+    function isValidTeacherAssignment(data) {
+      return data.keys().hasOnly(['locationId', 'assignedBy', 'assignedAt'])
+        && data.locationId is string && data.locationId.size() > 0
+        && data.assignedBy is string
+        && data.assignedAt == request.time;
+    }
+
+    // Doc id == uid do professor. Só admin define/altera; o próprio professor
+    // (e o admin) podem ler para saber a que local está vinculado.
+    match /teacherAssignments/{teacherId} {
+      allow get: if isOwner(teacherId) || isUserAdmin();
+      allow list: if isUserAdmin();
+      allow create, update: if isUserAdmin()
+        && isValidTeacherAssignment(incoming())
+        && incoming().assignedBy == request.auth.uid; // audit trail não forjável
+      allow delete: if isUserAdmin();
+    }
+
+    function isValidInviteCode(data) {
+      return data.keys().hasOnly(['code', 'locationId', 'track', 'active', 'createdBy', 'createdAt'])
+        && data.code is string && data.code.size() >= 4 && data.code.size() <= 40
+        && data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.active is bool
+        && data.createdBy is string;
+    }
+
+    // Local ao qual o professor autenticado está atribuído (teacherAssignments/{uid}).
+    // Usada só depois de checar exists(), para não estourar em quem não é professor.
+    function myTeacherLocation() {
+      return get(/databases/$(database)/documents/teacherAssignments/$(request.auth.uid)).data.locationId;
+    }
+
+    // Professor só pode emitir convite para o local exatamente atribuído a ele.
+    // É a trava central da Etapa 3: sem isto, dava pra emitir código de qualquer
+    // local via console/API mesmo com a UI restringindo.
+    function professorCanIssueFor(locationId) {
+      return isProfessor()
+        && exists(/databases/$(database)/documents/teacherAssignments/$(request.auth.uid))
+        && myTeacherLocation() == locationId;
+    }
+
+    match /inviteCodes/{codeId} {
+      // Resgate: precisa saber o código exato (== doc id). list só p/ quem gerencia,
+      // pra ninguém enumerar todos os códigos do sistema.
+      allow get: if isAuthenticated();
+      allow list: if canManage();
+
+      // Admin cria para qualquer local+trilha; professor só para o local atribuído.
+      allow create: if isValidInviteCode(incoming())
+        && codeId == incoming().code
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().active == true
+        && (isUserAdmin() || professorCanIssueFor(incoming().locationId));
+
+      // Revogar/reativar: admin qualquer um, professor só os que ele criou.
+      // Só o campo 'active' pode mudar — local/trilha/código são imutáveis.
+      allow update: if isValidInviteCode(incoming())
+        && incoming().code == existing().code
+        && incoming().locationId == existing().locationId
+        && incoming().track == existing().track
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['active'])
+        && (isUserAdmin() || (isProfessor() && existing().createdBy == request.auth.uid));
+
+      allow delete: if isUserAdmin() || (isProfessor() && existing().createdBy == request.auth.uid);
+    }
+
+    // ===== Estudo em Dupla (Etapa 4) =====
+    // Local+trilha do usuário autenticado batem com os passados? (escopo social)
+    function myLocationTrackMatches(loc, trk) {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.locationId == loc
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.track == trk;
+    }
+
+    function isValidPairInvite(data) {
+      return data.keys().hasOnly(['createdBy', 'createdByName', 'createdByAvatar', 'locationId', 'track', 'type', 'status', 'createdAt', 'expiresAt'])
+        && data.createdBy is string
+        && data.createdByName is string && data.createdByName.size() <= 50
+        && data.createdByAvatar is string && data.createdByAvatar.size() <= 1048576
+        && data.locationId is string && data.locationId.size() > 0
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.type in ['family', 'couple', 'friend']
+        && data.status in ['pending', 'accepted', 'expired']
+        && data.expiresAt is timestamp;
+    }
+
+    match /pairInvites/{inviteId} {
+      // Resgate por link: precisa saber o inviteId (doc id). list só dos próprios.
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+
+      // Só convida para o próprio local+trilha (validado no servidor).
+      allow create: if isAuthenticated()
+        && incoming().createdBy == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time
+        && isValidPairInvite(incoming())
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      allow update: if isAuthenticated() && (
+          // criador cancela o convite
+          (existing().createdBy == request.auth.uid
+           && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+           && incoming().status == 'expired')
+          ||
+          // quem aceita marca como aceito: precisa ser de outro usuário, ainda
+          // válido, e do mesmo local+trilha
+          (existing().status == 'pending'
+           && existing().createdBy != request.auth.uid
+           && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+           && incoming().status == 'accepted'
+           && existing().expiresAt > request.time
+           && myLocationTrackMatches(existing().locationId, existing().track))
+        );
+
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+    }
+
+    function isValidPair(data) {
+      return data.keys().hasOnly(['inviteId', 'members', 'userA', 'userB', 'userAName', 'userAAvatar', 'userBName', 'userBAvatar', 'locationId', 'track', 'type', 'active', 'createdAt', 'sharesA', 'sharesB'])
+        && data.members is list && data.members.size() == 2
+        && data.userA is string && data.userB is string
+        && data.members[0] == data.userA && data.members[1] == data.userB
+        && data.userA != data.userB
+        && data.locationId is string && data.track in ['teen', 'youngAdult', 'adult']
+        && data.type in ['family', 'couple', 'friend']
+        && data.active is bool
+        && data.sharesA is map && data.sharesB is map;
+    }
+
+    match /pairs/{pairId} {
+      // Só os dois membros leem a dupla (e seu conteúdo compartilhado).
+      allow get, list: if isAuthenticated() && request.auth.uid in resource.data.members;
+
+      // Quem aceita (userB) cria o doc; pairId == inviteId garante uso único
+      // (segunda tentativa colide com doc existente). Valida o convite e o
+      // próprio local+trilha do aceitante.
+      allow create: if isAuthenticated()
+        && pairId == incoming().inviteId
+        && incoming().userB == request.auth.uid
+        && incoming().active == true
+        && incoming().sharesA.size() == 0
+        && incoming().sharesB.size() == 0
+        && isValidPair(incoming())
+        && exists(/databases/$(database)/documents/pairInvites/$(pairId))
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.status == 'pending'
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.createdBy == incoming().userA
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.locationId == incoming().locationId
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.track == incoming().track
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.expiresAt > request.time
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      // Desfazer a dupla (active=false) ou cada membro editar só o SEU campo de
+      // compartilhamento (sharesA para userA, sharesB para userB) — ninguém
+      // altera o compartilhamento do outro.
+      allow update: if isAuthenticated() && (request.auth.uid in existing().members) && (
+          (incoming().diff(existing()).affectedKeys().hasOnly(['active']) && incoming().active == false)
+          ||
+          // Compartilhar só faz sentido enquanto a dupla está ativa (Etapa 8:
+          // impede ex-membro continuar escrevendo numa dupla já desfeita)
+          (existing().active == true && request.auth.uid == existing().userA && incoming().diff(existing()).affectedKeys().hasOnly(['sharesA']))
+          ||
+          (existing().active == true && request.auth.uid == existing().userB && incoming().diff(existing()).affectedKeys().hasOnly(['sharesB']))
+        );
+
+      allow delete: if isUserAdmin();
+    }
+
+    // ===== Grupo de Estudo (Etapa 5) =====
+    // Reaproveita o mesmo escopo local+trilha da dupla. Diferença: N membros e
+    // convite reutilizável (revogação é no nível do grupo via 'active', não
+    // por link individual — mesmo modelo já usado para inviteCodes/local).
+    function isValidGroup(data) {
+      return data.keys().hasOnly(['name', 'leaderId', 'locationId', 'track', 'memberIds', 'maxMembers', 'active', 'createdAt'])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 60
+        && data.leaderId is string
+        && data.locationId is string && data.locationId.size() > 0
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.memberIds is list && data.memberIds.size() >= 1
+        && data.leaderId in data.memberIds
+        && data.maxMembers is number && data.maxMembers >= 2 && data.maxMembers <= 50
+        && data.memberIds.size() <= data.maxMembers
+        && data.active is bool;
+    }
+
+    // Só adiciona o próprio uid ao array, sem tirar ninguém, sem estourar o limite.
+    function isSelfJoiningGroup() {
+      return existing().active == true
+        && request.auth.uid in incoming().memberIds
+        && incoming().memberIds.removeAll(existing().memberIds).hasOnly([request.auth.uid])
+        && existing().memberIds.removeAll(incoming().memberIds).size() == 0
+        && incoming().memberIds.size() <= existing().maxMembers
+        && incoming().diff(existing()).affectedKeys().hasOnly(['memberIds'])
+        && myLocationTrackMatches(existing().locationId, existing().track);
+    }
+
+    // Membro (não-líder) sai por conta própria: só tira o próprio uid.
+    function isSelfLeavingGroup() {
+      return request.auth.uid != existing().leaderId
+        && request.auth.uid in existing().memberIds
+        && existing().memberIds.removeAll(incoming().memberIds).hasOnly([request.auth.uid])
+        && incoming().memberIds.removeAll(existing().memberIds).size() == 0
+        && incoming().diff(existing()).affectedKeys().hasOnly(['memberIds']);
+    }
+
+    // Líder remove um ou mais membros (nunca a si mesmo — pra isso é 'active=false').
+    function isLeaderRemovingMembers() {
+      return existing().leaderId == request.auth.uid
+        && request.auth.uid in incoming().memberIds
+        && incoming().memberIds.removeAll(existing().memberIds).size() == 0
+        && incoming().diff(existing()).affectedKeys().hasOnly(['memberIds']);
+    }
+
+    match /groups/{groupId} {
+      // Só membros leem o grupo (progresso/feed ficam visíveis só pra quem está dentro).
+      allow get, list: if isAuthenticated() && request.auth.uid in resource.data.memberIds;
+
+      allow create: if isAuthenticated()
+        && incoming().leaderId == request.auth.uid
+        && incoming().memberIds == [request.auth.uid]
+        && incoming().active == true
+        && incoming().createdAt == request.time
+        && isValidGroup(incoming())
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      allow update: if isAuthenticated() && (
+          // líder: renomear, ajustar limite (nunca abaixo do nº atual de membros),
+          // encerrar o grupo, ou remover membro(s)
+          (existing().leaderId == request.auth.uid && (
+            (incoming().diff(existing()).affectedKeys().hasOnly(['name']) && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 60)
+            || (incoming().diff(existing()).affectedKeys().hasOnly(['maxMembers']) && incoming().maxMembers >= existing().memberIds.size() && incoming().maxMembers <= 50)
+            || (incoming().diff(existing()).affectedKeys().hasOnly(['active']) && incoming().active == false)
+            || isLeaderRemovingMembers()
+          ))
+          || isSelfJoiningGroup()
+          || isSelfLeavingGroup()
+        );
+
+      allow delete: if false; // encerrar é active=false, nunca apagar (mantém histórico dos highlights)
+    }
+
+    function isValidGroupInvite(data) {
+      return data.keys().hasOnly(['groupId', 'createdBy', 'locationId', 'track', 'active', 'createdAt'])
+        && data.groupId is string && data.groupId.size() > 0
+        && data.createdBy is string
+        && data.locationId is string && data.locationId.size() > 0
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.active is bool;
+    }
+
+    match /groupInvites/{inviteId} {
+      // Resgate por link: precisa saber o inviteId. list só dos próprios (painel do líder).
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+
+      // Só o líder do grupo referenciado pode gerar convite pra ele.
+      allow create: if isAuthenticated()
+        && incoming().createdBy == request.auth.uid
+        && incoming().active == true
+        && incoming().createdAt == request.time
+        && isValidGroupInvite(incoming())
+        && exists(/databases/$(database)/documents/groups/$(incoming().groupId))
+        && get(/databases/$(database)/documents/groups/$(incoming().groupId)).data.leaderId == request.auth.uid
+        && get(/databases/$(database)/documents/groups/$(incoming().groupId)).data.locationId == incoming().locationId
+        && get(/databases/$(database)/documents/groups/$(incoming().groupId)).data.track == incoming().track;
+
+      // Revogar: só quem criou. Só o campo 'active' pode mudar.
+      allow update: if isAuthenticated()
+        && existing().createdBy == request.auth.uid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['active']);
+
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+    }
+
+    // Destaques compartilhados do grupo (subcoleção — 1 doc por membro/dia).
+    // Ler exige ser membro do grupo pai; escrever só no próprio doc (prefixo do
+    // id == próprio uid), sem exigir cast número→string na regra.
+    match /groups/{groupId}/highlights/{entryId} {
+      allow get, list: if isAuthenticated()
+        && exists(/databases/$(database)/documents/groups/$(groupId))
+        && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+
+      allow create, update: if isAuthenticated()
+        && entryId.split('_')[0] == request.auth.uid
+        && incoming().userId == request.auth.uid
+        && incoming().keys().hasOnly(['userId', 'week', 'dayId', 'texts', 'updatedAt'])
+        && incoming().week is string
+        && incoming().dayId is number
+        && incoming().texts is list && incoming().texts.size() > 0 && incoming().texts.size() <= 10
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/groups/$(groupId))
+        && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.memberIds;
+
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // ===== Ofensiva com Amigos (Etapa 7) =====
+    // Mesmo mecanismo da dupla (convite por link, escopo local+trilha, uso
+    // único via streakId==inviteId), mas várias ativas por usuário (teto de
+    // 10 — checado no cliente antes de aceitar; não é limite de segurança,
+    // então não precisa ser garantido na regra). Nunca guarda nota/destaque.
+    function isValidFriendStreakInvite(data) {
+      return data.keys().hasOnly(['createdBy', 'createdByName', 'createdByAvatar', 'locationId', 'track', 'status', 'createdAt', 'expiresAt'])
+        && data.createdBy is string
+        && data.createdByName is string && data.createdByName.size() <= 50
+        && data.createdByAvatar is string && data.createdByAvatar.size() <= 1048576
+        && data.locationId is string && data.locationId.size() > 0
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.status in ['pending', 'accepted', 'expired']
+        && data.expiresAt is timestamp;
+    }
+
+    match /friendStreakInvites/{inviteId} {
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+
+      allow create: if isAuthenticated()
+        && incoming().createdBy == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time
+        && isValidFriendStreakInvite(incoming())
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      allow update: if isAuthenticated() && (
+          (existing().createdBy == request.auth.uid
+           && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+           && incoming().status == 'expired')
+          ||
+          (existing().status == 'pending'
+           && existing().createdBy != request.auth.uid
+           && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+           && incoming().status == 'accepted'
+           && existing().expiresAt > request.time
+           && myLocationTrackMatches(existing().locationId, existing().track))
+        );
+
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+    }
+
+    function isValidFriendStreak(data) {
+      return data.keys().hasOnly(['inviteId', 'members', 'userA', 'userB', 'userAName', 'userAAvatar', 'userBName', 'userBAvatar', 'locationId', 'track', 'active', 'createdAt'])
+        && data.members is list && data.members.size() == 2
+        && data.userA is string && data.userB is string
+        && data.members[0] == data.userA && data.members[1] == data.userB
+        && data.userA != data.userB
+        && data.locationId is string && data.track in ['teen', 'youngAdult', 'adult']
+        && data.active is bool;
+    }
+
+    match /friendStreaks/{streakId} {
+      // Só os dois membros veem o vínculo (contador é calculado no cliente
+      // a partir de progress, que já é legível por qualquer autenticado).
+      allow get, list: if isAuthenticated() && request.auth.uid in resource.data.members;
+
+      allow create: if isAuthenticated()
+        && streakId == incoming().inviteId
+        && incoming().userB == request.auth.uid
+        && incoming().active == true
+        && isValidFriendStreak(incoming())
+        && exists(/databases/$(database)/documents/friendStreakInvites/$(streakId))
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.status == 'pending'
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.createdBy == incoming().userA
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.locationId == incoming().locationId
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.track == incoming().track
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.expiresAt > request.time
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      // Só encerrar (active=false) — qualquer um dos dois.
+      allow update: if isAuthenticated()
+        && (request.auth.uid in existing().members)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['active'])
+        && incoming().active == false;
 
       allow delete: if isUserAdmin();
     }
@@ -120,6 +563,22 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ===== Anotações privadas (Etapa 8) =====
+    // nota/destaque do usuário. Doc id == `${uid}_${week}`. Legível/gravável
+    // SÓ pelo dono — diferente de progress, que é público para o ranking.
+    // (UIDs do Firebase Auth não contêm '_', então split('_')[0] isola o uid.)
+    match /studyNotes/{docId} {
+      allow get, list: if isAuthenticated() && docId.split('_')[0] == request.auth.uid;
+      allow create, update: if isAuthenticated()
+        && incoming().userId == request.auth.uid
+        && docId == incoming().userId + '_' + incoming().week
+        && incoming().keys().hasOnly(['userId', 'week', 'notes', 'updatedAt'])
+        && incoming().week is string && incoming().week.size() <= 20
+        && incoming().notes is map
+        && incoming().updatedAt == request.time;
+      allow delete: if isAuthenticated() && docId.split('_')[0] == request.auth.uid;
+    }
+
     function isValidOverride(data) {
       return (!data.keys().hasAny(['titulo']) || data.titulo is string)
         && (!data.keys().hasAny(['conteudo']) || data.conteudo is string)
@@ -132,6 +591,21 @@ service cloud.firestore {
       allow get, list: if isAuthenticated();
       allow create, update: if canManage() && isValidOverride(incoming());
       allow delete: if isUserAdmin();
+    }
+
+    // ===== Rankings pré-calculados (Etapa 6) =====
+    // Escritos SÓ pela Netlify function (admin SDK, que ignora estas regras).
+    // Cliente só lê o ranking do PRÓPRIO local (mesmo sabendo o id de outro doc,
+    // o campo locationId precisa bater com o seu). Doc inexistente é liberado
+    // para o cliente conseguir a resposta "ainda não calculado" sem erro.
+    match /rankings/{docId} {
+      allow get: if isAuthenticated() && (
+        resource == null
+        || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && resource.data.locationId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.locationId)
+      );
+      allow list: if false;
+      allow write: if false; // só o processo servidor (admin SDK) escreve
     }
   }
 }
