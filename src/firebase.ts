@@ -537,6 +537,85 @@ export const getGroupHighlights = async (groupId: string, week: string): Promise
   return list;
 };
 
+// ===== Ofensiva com Amigos (Etapa 7) =====
+// Mesmo mecanismo de convite por link da dupla (7 dias, uso único), mas
+// permite várias ativas ao mesmo tempo (teto de 10). Não expõe conteúdo —
+// só o vínculo; a contagem de dias é calculada ao vivo (computeMutualStreak
+// em utils.ts), sem contador salvo nem job agendado para "quebrar".
+export const FRIEND_STREAK_MAX = 10;
+
+export const createFriendStreakInvite = async (jogador: any): Promise<string> => {
+  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro (local e trilha) antes de convidar.');
+  const inviteId = randomId();
+  await setDoc(doc(db, 'friendStreakInvites', inviteId), {
+    createdBy: jogador.id,
+    createdByName: jogador.nome || '',
+    createdByAvatar: jogador.avatar || '',
+    locationId: jogador.locationId,
+    track: jogador.track,
+    status: 'pending',
+    createdAt: serverTimestamp(),
+    expiresAt: Timestamp.fromMillis(Date.now() + PAIR_INVITE_TTL_MS),
+  });
+  return inviteId;
+};
+
+export const getFriendStreakInvite = async (inviteId: string): Promise<any | null> => {
+  const snap = await getDoc(doc(db, 'friendStreakInvites', inviteId));
+  return snap.exists() ? { id: inviteId, ...snap.data() } : null;
+};
+
+// Streaks ativas de um usuário (array-contains puro, sem índice composto)
+export const getMyFriendStreaks = async (userId: string): Promise<any[]> => {
+  const snap = await getDocs(query(collection(db, 'friendStreaks'), where('members', 'array-contains', userId)));
+  const list: any[] = [];
+  snap.forEach(d => { const data = d.data(); if (data.active) list.push({ id: d.id, ...data }); });
+  return list;
+};
+
+export type AcceptFriendStreakResult =
+  | { ok: true; streakId: string }
+  | { ok: false; reason: 'not_found' | 'expired' | 'self' | 'mismatch' | 'limit_reached' | 'error' };
+
+export const acceptFriendStreakInvite = async (inviteId: string, jogador: any): Promise<AcceptFriendStreakResult> => {
+  try {
+    const inv = await getFriendStreakInvite(inviteId);
+    if (!inv || inv.status !== 'pending') return { ok: false, reason: 'not_found' };
+    const expMs = inv.expiresAt?.toMillis ? inv.expiresAt.toMillis() : 0;
+    if (expMs && expMs < Date.now()) return { ok: false, reason: 'expired' };
+    if (inv.createdBy === jogador.id) return { ok: false, reason: 'self' };
+    if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
+    const [mine, theirs] = await Promise.all([getMyFriendStreaks(jogador.id), getMyFriendStreaks(inv.createdBy)]);
+    if (mine.length >= FRIEND_STREAK_MAX || theirs.length >= FRIEND_STREAK_MAX) return { ok: false, reason: 'limit_reached' };
+
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'friendStreaks', inviteId), {
+      inviteId,
+      members: [inv.createdBy, jogador.id],
+      userA: inv.createdBy,
+      userB: jogador.id,
+      userAName: inv.createdByName || '',
+      userAAvatar: inv.createdByAvatar || '',
+      userBName: jogador.nome || '',
+      userBAvatar: jogador.avatar || '',
+      locationId: inv.locationId,
+      track: inv.track,
+      active: true,
+      createdAt: serverTimestamp(),
+    });
+    batch.update(doc(db, 'friendStreakInvites', inviteId), { status: 'accepted' });
+    await batch.commit();
+    return { ok: true, streakId: inviteId };
+  } catch (e) {
+    console.error('acceptFriendStreakInvite', e);
+    return { ok: false, reason: 'error' };
+  }
+};
+
+export const endFriendStreak = async (streakId: string) => {
+  await setDoc(doc(db, 'friendStreaks', streakId), { active: false }, { merge: true });
+};
+
 export const getWeeklyRanking = async (week: string) => {
   const [snap, adminIds] = await Promise.all([
     getDocs(query(collection(db, 'progress'), where('week', '==', week))),

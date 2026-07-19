@@ -443,6 +443,86 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
+    // ===== Ofensiva com Amigos (Etapa 7) =====
+    // Mesmo mecanismo da dupla (convite por link, escopo local+trilha, uso
+    // único via streakId==inviteId), mas várias ativas por usuário (teto de
+    // 10 — checado no cliente antes de aceitar; não é limite de segurança,
+    // então não precisa ser garantido na regra). Nunca guarda nota/destaque.
+    function isValidFriendStreakInvite(data) {
+      return data.keys().hasOnly(['createdBy', 'createdByName', 'createdByAvatar', 'locationId', 'track', 'status', 'createdAt', 'expiresAt'])
+        && data.createdBy is string
+        && data.createdByName is string && data.createdByName.size() <= 50
+        && data.createdByAvatar is string && data.createdByAvatar.size() <= 1048576
+        && data.locationId is string && data.locationId.size() > 0
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.status in ['pending', 'accepted', 'expired']
+        && data.expiresAt is timestamp;
+    }
+
+    match /friendStreakInvites/{inviteId} {
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+
+      allow create: if isAuthenticated()
+        && incoming().createdBy == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time
+        && isValidFriendStreakInvite(incoming())
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      allow update: if isAuthenticated() && (
+          (existing().createdBy == request.auth.uid
+           && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+           && incoming().status == 'expired')
+          ||
+          (existing().status == 'pending'
+           && existing().createdBy != request.auth.uid
+           && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+           && incoming().status == 'accepted'
+           && existing().expiresAt > request.time
+           && myLocationTrackMatches(existing().locationId, existing().track))
+        );
+
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+    }
+
+    function isValidFriendStreak(data) {
+      return data.keys().hasOnly(['inviteId', 'members', 'userA', 'userB', 'userAName', 'userAAvatar', 'userBName', 'userBAvatar', 'locationId', 'track', 'active', 'createdAt'])
+        && data.members is list && data.members.size() == 2
+        && data.userA is string && data.userB is string
+        && data.members[0] == data.userA && data.members[1] == data.userB
+        && data.userA != data.userB
+        && data.locationId is string && data.track in ['teen', 'youngAdult', 'adult']
+        && data.active is bool;
+    }
+
+    match /friendStreaks/{streakId} {
+      // Só os dois membros veem o vínculo (contador é calculado no cliente
+      // a partir de progress, que já é legível por qualquer autenticado).
+      allow get, list: if isAuthenticated() && request.auth.uid in resource.data.members;
+
+      allow create: if isAuthenticated()
+        && streakId == incoming().inviteId
+        && incoming().userB == request.auth.uid
+        && incoming().active == true
+        && isValidFriendStreak(incoming())
+        && exists(/databases/$(database)/documents/friendStreakInvites/$(streakId))
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.status == 'pending'
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.createdBy == incoming().userA
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.locationId == incoming().locationId
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.track == incoming().track
+        && get(/databases/$(database)/documents/friendStreakInvites/$(streakId)).data.expiresAt > request.time
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      // Só encerrar (active=false) — qualquer um dos dois.
+      allow update: if isAuthenticated()
+        && (request.auth.uid in existing().members)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['active'])
+        && incoming().active == false;
+
+      allow delete: if isUserAdmin();
+    }
+
     function isValidProgress(data) {
       return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { DEMO, LICOES, getTrackLessons } from './data';
-import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak } from './utils';
+import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, computeMutualStreak } from './utils';
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
 export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 Adulto' };
@@ -70,7 +70,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType, createGroup, getMyGroups, listenToGroup, createGroupInvite, joinGroupByInvite, leaveGroup, removeGroupMember, closeGroup, setGroupHighlightShare, getGroupHighlights } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType, createGroup, getMyGroups, listenToGroup, createGroupInvite, joinGroupByInvite, leaveGroup, removeGroupMember, closeGroup, setGroupHighlightShare, getGroupHighlights, createFriendStreakInvite, getFriendStreakInvite, getMyFriendStreaks, acceptFriendStreakInvite, endFriendStreak } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -1530,7 +1530,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
 /* ===== ESTUDO EM DUPLA (Etapa 4) ===== */
 const PAIR_TYPE_LABELS: Record<PairType, string> = { family: '👨‍👧 Família', couple: '💑 Casal', friend: '🤝 Amigo(a)' };
 
-export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange, onClearPending, onBack, onSwitchToGroup }: any) => {
+export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange, onClearPending, onBack, onSwitchToGroup, onSwitchToFriends }: any) => {
   const [pair, setPair] = useState<any>(activePair || null);
   const [tipo, setTipo] = useState<PairType>('friend');
   const [linkGerado, setLinkGerado] = useState('');
@@ -1618,7 +1618,10 @@ export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange,
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>👥 Estudo em Dupla</div>
-        {onSwitchToGroup ? <button className="btn btn-ghost btn-sm" onClick={onSwitchToGroup} style={{width:'auto', fontSize:12}}>Grupo →</button> : <div/>}
+        <div style={{display:'flex', gap:4}}>
+          {onSwitchToGroup && <button className="btn btn-ghost btn-sm" onClick={onSwitchToGroup} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>Grupo</button>}
+          {onSwitchToFriends && <button className="btn btn-ghost btn-sm" onClick={onSwitchToFriends} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>🔥</button>}
+        </div>
       </div>
 
       <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:18}}>
@@ -1876,7 +1879,7 @@ const GrupoDetalhe = ({ jogador, licao, group: initialGroup, onChanged, onBack }
   );
 };
 
-export const Grupo = ({ jogador, licao, pendingGroupInvite, onClearPendingGroupInvite, onBack, onSwitchToPair }: any) => {
+export const Grupo = ({ jogador, licao, pendingGroupInvite, onClearPendingGroupInvite, onBack, onSwitchToPair, onSwitchToFriends }: any) => {
   const [groups, setGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<any>(null);
@@ -1936,7 +1939,10 @@ export const Grupo = ({ jogador, licao, pendingGroupInvite, onClearPendingGroupI
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={() => selected ? setSelected(null) : onBack()} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>🧑‍🤝‍🧑 Grupo de Estudo</div>
-        {!selected && onSwitchToPair ? <button className="btn btn-ghost btn-sm" onClick={onSwitchToPair} style={{width:'auto', fontSize:12}}>Dupla →</button> : <div/>}
+        <div style={{display:'flex', gap:4}}>
+          {!selected && onSwitchToPair && <button className="btn btn-ghost btn-sm" onClick={onSwitchToPair} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>Dupla</button>}
+          {!selected && onSwitchToFriends && <button className="btn btn-ghost btn-sm" onClick={onSwitchToFriends} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>🔥</button>}
+        </div>
       </div>
 
       <div style={{padding:'20px 16px'}}>
@@ -1987,6 +1993,165 @@ export const Grupo = ({ jogador, licao, pendingGroupInvite, onClearPendingGroupI
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+};
+
+/* ===== OFENSIVA COM AMIGOS (Etapa 7) ===== */
+const AmigoLinha = ({ jogador, streak, licao, onEnded }: any) => {
+  const isUserA = streak.userA === jogador.id;
+  const friendId = isUserA ? streak.userB : streak.userA;
+  const friendName = isUserA ? streak.userBName : streak.userAName;
+  const friendAvatar = isUserA ? streak.userBAvatar : streak.userAAvatar;
+  const [mutual, setMutual] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!friendId) return;
+    Promise.all([getUserAllDone(jogador.id), getUserAllDone(friendId)])
+      .then(([mine, theirs]) => setMutual(computeMutualStreak(mine, theirs, getTrackLessons(streak.track))))
+      .catch(() => setMutual(0));
+  }, [friendId, jogador.id]);
+
+  const handleEncerrar = async () => {
+    if (!window.confirm(`Encerrar a ofensiva com ${friendName || 'essa pessoa'}?`)) return;
+    try { await endFriendStreak(streak.id); onEnded?.(streak.id); } catch (e) { alert('Erro ao encerrar.'); }
+  };
+
+  return (
+    <div style={{display:'flex', alignItems:'center', gap:12, background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:14, padding:'12px 14px'}}>
+      <div style={{width:44, height:44, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, background:'rgba(0,0,0,.2)', flexShrink:0}}>
+        {friendAvatar?.startsWith('data:') ? <img src={friendAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/> : <span>{friendAvatar || '👤'}</span>}
+      </div>
+      <div style={{flex:1, minWidth:0}}>
+        <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{friendName || 'Amigo(a)'}</div>
+        <div style={{fontSize:11, color:'var(--mut)'}}>Estudem no mesmo dia para manter a chama acesa</div>
+      </div>
+      <div style={{display:'flex', alignItems:'center', gap:6, fontSize:20, fontWeight:900, color:'#FF9600', flexShrink:0}}>
+        🔥 {mutual === null ? '...' : mutual}
+      </div>
+      <button onClick={handleEncerrar} style={{background:'none', border:'none', color:'var(--mut)', fontSize:16, cursor:'pointer', padding:'4px'}} title="Encerrar">✕</button>
+    </div>
+  );
+};
+
+export const Amigos = ({ jogador, licao, pendingFriendInvite, onClearPendingFriendInvite, onBack, onSwitchToPair, onSwitchToGroup }: any) => {
+  const [streaks, setStreaks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [linkGerado, setLinkGerado] = useState('');
+  const [gerando, setGerando] = useState(false);
+  const [aceitando, setAceitando] = useState(false);
+
+  const carregar = () => {
+    setLoading(true);
+    getMyFriendStreaks(jogador.id).then(setStreaks).catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(() => { carregar(); }, [jogador.id]);
+
+  const atLimit = streaks.length >= 10;
+
+  const shareUrl = (id: string) => `${window.location.origin}${window.location.pathname}?amigo=${id}`;
+
+  const handleGerar = async () => {
+    setGerando(true);
+    try {
+      const inviteId = await createFriendStreakInvite(jogador);
+      setLinkGerado(shareUrl(inviteId));
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao gerar o convite.');
+    }
+    setGerando(false);
+  };
+
+  const compartilharLink = async () => {
+    const texto = `Bora manter a ofensiva de estudo juntos no SabatinaQuest? 🔥📖\n${linkGerado}`;
+    try {
+      if (navigator.share) await navigator.share({ title: 'Ofensiva com amigos — SabatinaQuest', text: texto, url: linkGerado });
+      else { await navigator.clipboard.writeText(linkGerado); alert('Link copiado! Cole no WhatsApp para convidar.'); }
+    } catch (e) { /* cancelado */ }
+  };
+
+  const handleAceitar = async () => {
+    if (!pendingFriendInvite) return;
+    setAceitando(true);
+    const res = await acceptFriendStreakInvite(pendingFriendInvite.id, jogador);
+    setAceitando(false);
+    if (res.ok) {
+      onClearPendingFriendInvite?.();
+      carregar();
+    } else {
+      const msgs: Record<string, string> = {
+        not_found: 'Convite não encontrado ou já usado.',
+        expired: 'Este convite expirou (validade de 7 dias).',
+        self: 'Você não pode convidar a si mesmo.',
+        mismatch: 'Este convite é de outro local ou trilha. Vocês precisam estar no mesmo grupo.',
+        limit_reached: 'Um de vocês já atingiu o limite de 10 ofensivas ativas.',
+        error: 'Não foi possível aceitar o convite. Tente novamente.',
+      };
+      alert(msgs[(res as any).reason] || 'Não foi possível aceitar o convite.');
+      onClearPendingFriendInvite?.();
+    }
+  };
+
+  return (
+    <div className="scr" style={{paddingBottom:100}}>
+      <div className="hdr">
+        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
+        <div style={{fontWeight:900,fontSize:17}}>🔥 Ofensiva com Amigos</div>
+        <div style={{display:'flex', gap:4}}>
+          {onSwitchToPair && <button className="btn btn-ghost btn-sm" onClick={onSwitchToPair} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>Dupla</button>}
+          {onSwitchToGroup && <button className="btn btn-ghost btn-sm" onClick={onSwitchToGroup} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>Grupo</button>}
+        </div>
+      </div>
+
+      <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:18}}>
+        {pendingFriendInvite && (
+          <div style={{background:'rgba(247,198,0,.1)', border:'1px solid rgba(247,198,0,.35)', borderRadius:16, padding:18}}>
+            <div style={{fontSize:15, fontWeight:800, color:'var(--gold)', marginBottom:8}}>🔥 Convite de ofensiva com amigos!</div>
+            <div style={{fontSize:14, color:'var(--txt2)', marginBottom:14}}>
+              {pendingFriendInvite.createdByName ? <><strong>{pendingFriendInvite.createdByName}</strong> quer manter uma ofensiva de estudo com você.</> : 'Alguém quer manter uma ofensiva de estudo com você.'}
+            </div>
+            <div style={{display:'flex', gap:10}}>
+              <button onClick={handleAceitar} disabled={aceitando} className={`btn btn-gold ${aceitando ? 'btn-dis' : ''}`} style={{flex:1, fontSize:15}}>{aceitando ? 'Aceitando...' : '✅ Aceitar'}</button>
+              <button onClick={() => onClearPendingFriendInvite?.()} className="btn btn-ghost" style={{flex:1, fontSize:15, color:'var(--mut)'}}>Agora não</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18}}>
+          <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>Convide um amigo</div>
+          <div style={{fontSize:13, color:'var(--mut)', marginBottom:16, lineHeight:1.5}}>
+            Estudem no mesmo dia para manter o 🔥 aceso. Sem exposição de conteúdo — só o contador. Até {10} ofensivas ativas por vez.
+          </div>
+          {atLimit ? (
+            <div style={{fontSize:13, color:'var(--mut)', textAlign:'center'}}>Você atingiu o limite de 10 ofensivas ativas.</div>
+          ) : !linkGerado ? (
+            <button onClick={handleGerar} disabled={gerando} className={`btn btn-gold ${gerando ? 'btn-dis':''}`} style={{fontSize:15}}>{gerando ? 'Gerando...' : '🔗 Gerar link de convite'}</button>
+          ) : (
+            <div>
+              <div style={{fontSize:12, color:'var(--mut)', marginBottom:8}}>Convite válido por 7 dias e de uso único.</div>
+              <div style={{display:'flex', gap:8, marginBottom:10}}>
+                <input readOnly value={linkGerado} style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt2)', border:'1px solid var(--input-border)', fontSize:12, outline:'none'}} />
+                <button onClick={() => navigator.clipboard.writeText(linkGerado).then(() => alert('Link copiado!'))} className="btn btn-ghost btn-sm" style={{width:'auto', fontSize:12}}>Copiar</button>
+              </div>
+              <button onClick={compartilharLink} className="btn btn-gold" style={{fontSize:15}}>📲 Compartilhar convite</button>
+              <button onClick={() => setLinkGerado('')} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12, marginTop:8, color:'var(--mut)'}}>Gerar outro</button>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="sec-title" style={{marginBottom:8}}>Suas ofensivas ({streaks.length})</div>
+          {loading ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : streaks.length === 0 ? (
+            <div style={{textAlign:'center', padding:'20px', color:'var(--mut)', fontSize:13}}>Nenhuma ofensiva ativa ainda.</div>
+          ) : (
+            <div style={{display:'flex', flexDirection:'column', gap:10}}>
+              {streaks.map(s => (
+                <AmigoLinha key={s.id} jogador={jogador} streak={s} licao={licao} onEnded={(id: string) => setStreaks(prev => prev.filter(x => x.id !== id))} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

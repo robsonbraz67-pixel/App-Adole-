@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp } from './utils';
-import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getLocationRanking } from './firebase';
-import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, Grupo } from './components';
+import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getLocationRanking, getFriendStreakInvite } from './firebase';
+import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, Grupo, Amigos } from './components';
 
 const CACHE_VERSION = '3T2026';
 
@@ -48,15 +48,18 @@ export default function App() {
   const [pendingInvite, setPendingInvite] = useState<any>(null);
   const [myGroups, setMyGroups] = useState<any[]>([]);
   const [pendingGroupInvite, setPendingGroupInvite] = useState<any>(null);
+  const [pendingFriendInvite, setPendingFriendInvite] = useState<any>(null);
 
-  // Deep links ?dupla=<inviteId> / ?grupo=<inviteId>: guarda e limpa da URL (sobrevive ao login)
+  // Deep links ?dupla=<id> / ?grupo=<id> / ?amigo=<id>: guarda e limpa da URL (sobrevive ao login)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const pairParam = params.get('dupla');
     const groupParam = params.get('grupo');
+    const friendParam = params.get('amigo');
     if (pairParam) localStorage.setItem('pendingPairInvite', pairParam);
     if (groupParam) localStorage.setItem('pendingGroupInvite', groupParam);
-    if (pairParam || groupParam) window.history.replaceState({}, '', window.location.pathname);
+    if (friendParam) localStorage.setItem('pendingFriendInvite', friendParam);
+    if (pairParam || groupParam || friendParam) window.history.replaceState({}, '', window.location.pathname);
   }, []);
 
   // Carrega a dupla ativa e os grupos quando há usuário matriculado
@@ -86,8 +89,19 @@ export default function App() {
     }).catch(() => {});
   }, [jogador?.id, jogador?.locationId]);
 
+  // Resgata convite de ofensiva com amigos pendente (chegou por link) após login + matrícula
+  useEffect(() => {
+    const fid = localStorage.getItem('pendingFriendInvite');
+    if (!fid || !jogador?.id || !jogador?.locationId) return;
+    getFriendStreakInvite(fid).then(inv => {
+      if (inv && inv.status === 'pending') { setPendingFriendInvite(inv); setTela('amigos'); }
+      else localStorage.removeItem('pendingFriendInvite');
+    }).catch(() => {});
+  }, [jogador?.id, jogador?.locationId]);
+
   const clearPendingInvite = () => { localStorage.removeItem('pendingPairInvite'); setPendingInvite(null); };
   const clearPendingGroupInvite = () => { localStorage.removeItem('pendingGroupInvite'); setPendingGroupInvite(null); };
+  const clearPendingFriendInvite = () => { localStorage.removeItem('pendingFriendInvite'); setPendingFriendInvite(null); };
 
   // PWA fica dias em memória sem recarregar: quando uma nova semana começa,
   // avança a lição automaticamente para não salvar progresso na semana errada
@@ -542,8 +556,9 @@ export default function App() {
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onSorteador={() => setTela('sorteador')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
-      {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onSwitchToGroup={() => setTela('grupo')} />}
-      {tela === 'grupo' && <Grupo jogador={jogador} licao={licao} pendingGroupInvite={pendingGroupInvite} onClearPendingGroupInvite={clearPendingGroupInvite} onBack={() => setTela('home')} onSwitchToPair={() => setTela('dupla')} />}
+      {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onSwitchToGroup={() => setTela('grupo')} onSwitchToFriends={() => setTela('amigos')} />}
+      {tela === 'grupo' && <Grupo jogador={jogador} licao={licao} pendingGroupInvite={pendingGroupInvite} onClearPendingGroupInvite={clearPendingGroupInvite} onBack={() => setTela('home')} onSwitchToPair={() => setTela('dupla')} onSwitchToFriends={() => setTela('amigos')} />}
+      {tela === 'amigos' && <Amigos jogador={jogador} licao={licao} pendingFriendInvite={pendingFriendInvite} onClearPendingFriendInvite={clearPendingFriendInvite} onBack={() => setTela('home')} onSwitchToPair={() => setTela('dupla')} onSwitchToGroup={() => setTela('grupo')} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
 
       {!['splash', 'login', 'quiz'].includes(tela) && !(tela === 'config' && !jogador.locationId) && (
