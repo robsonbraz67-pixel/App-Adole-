@@ -99,3 +99,14 @@ export const LICOES = [
   LICAO_1, LICAO_2, LICAO_3, LICAO_4, LICAO_5, LICAO_6,
   LICAO_7, LICAO_8, LICAO_9, LICAO_10, LICAO_11, LICAO_12, LICAO_13
 ];
+
+// Conteúdo por trilha: teen já tem as 13 semanas: youngAdult/adult ainda não
+// têm lição nenhuma — ficam como lista vazia até o import do markdown chegar
+// (nenhuma mudança de schema/tela será necessária quando isso acontecer).
+export const LESSONS_BY_TRACK: Record<'teen' | 'youngAdult' | 'adult', typeof LICOES> = {
+  teen: LICOES,
+  youngAdult: [],
+  adult: [],
+};
+
+export const getTrackLessons = (track?: string | null) => LESSONS_BY_TRACK[(track as 'teen' | 'youngAdult' | 'adult') || 'teen'] || LICOES;

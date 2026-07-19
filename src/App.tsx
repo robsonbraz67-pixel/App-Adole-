@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LICOES } from './data';
+import { getTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp } from './utils';
 import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador } from './components';
@@ -15,11 +15,16 @@ const clearStaleCache = () => {
   localStorage.setItem('cacheVersion', CACHE_VERSION);
 };
 
-const getActiveLicao = () => {
+// Trilhas sem conteúdo ainda (youngAdult/adult) caem nesse placeholder em vez
+// de quebrar as telas que esperam sempre ter uma lição ativa com .dias/.semana.
+const EM_BREVE_LICAO = { semana: '__em_breve__', trimestre: '', titulo: 'Em breve', dias: [], isComingSoon: true };
+
+const getActiveLicao = (track?: string | null) => {
   const hoje = new Date();
   const offset = hoje.getTimezoneOffset() * 60000;
   const h = new Date(hoje.getTime() - offset).toISOString().split('T')[0];
-  const visible = (LICOES as any[]).filter(l => !l.isAdminOnly);
+  const visible = (getTrackLessons(track) as any[]).filter(l => !l.isAdminOnly);
+  if (visible.length === 0) return EM_BREVE_LICAO;
   const active = visible.find(l => {
     const dates = l.dias.map((d: any) => d.data);
     return h >= dates[0] && h <= dates[dates.length - 1];
@@ -46,7 +51,7 @@ export default function App() {
   useEffect(() => {
     const check = () => {
       if (document.visibilityState === 'hidden') return;
-      const active = getActiveLicao();
+      const active = getActiveLicao(jogador?.track);
       if (active.semana === activeSemanaRef.current) return; // semana não virou
       activeSemanaRef.current = active.semana;
       if (jogador && licao && licao.semana < active.semana) handleChangeLicao(active);
@@ -124,7 +129,7 @@ export default function App() {
     const initApp = async () => {
       clearStaleCache();
       const j = gs('jogador');
-      const activeLicao = getActiveLicao();
+      const activeLicao = getActiveLicao(j?.track);
       const savedLicao = gs('licao_atual', null);
       // Auto-switch to current week's lesson; keep saved only if it's the same week or a future week
       const l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
@@ -189,7 +194,7 @@ export default function App() {
 
             // Also sync previous lesson's local progress if it never reached Firestore
             if (dbUser) {
-              const allVisible = (LICOES as any[]).filter((x: any) => !x.isAdminOnly);
+              const allVisible = (getTrackLessons(dbUser.track) as any[]).filter((x: any) => !x.isAdminOnly);
               const curIdx = allVisible.findIndex((x: any) => x.semana === l.semana);
               if (curIdx > 0) {
                 const prevL = allVisible[curIdx - 1];
@@ -225,7 +230,7 @@ export default function App() {
   }, []);
 
   const handleLogin = async (j: any) => {
-    const activeLicao = getActiveLicao();
+    const activeLicao = getActiveLicao(j?.track);
     const savedLicao = gs('licao_atual', null);
     const l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
     ss('licao_atual', l);
@@ -272,11 +277,11 @@ export default function App() {
 
   const handleDoneQuiz = async (res: any) => {
     setResultado(res);
-    const l = licao || LICOES[0];
+    const l = licao || getActiveLicao(jogador?.track);
 
     let dbLicaoData = null;
     try {
-      const selectedLicaoData = LICOES.find((x:any) => x.semana === l.semana);
+      const selectedLicaoData = getTrackLessons(jogador?.track).find((x:any) => x.semana === l.semana);
       if (selectedLicaoData) {
         dbLicaoData = selectedLicaoData.dias.find((d: any) => d.id === diaAtual.id)?.data;
       }
@@ -356,7 +361,7 @@ export default function App() {
 
   const loadLatestRanking = async (type: string = 'week', licaoArg?: any) => {
     setRankingType(type);
-    const l = licaoArg || licao || LICOES[0];
+    const l = licaoArg || licao || getActiveLicao(jogador?.track);
     // Abre a tela imediatamente com o cache local; atualiza quando o Firestore responder
     if (type === 'week') setRanking(gs('ranking_' + l.semana, []));
     playSound('ranking');
@@ -421,7 +426,7 @@ export default function App() {
   };
 
   const handleSaveStudy = async (nota: string, hl: any) => {
-    const l = licao || LICOES[0];
+    const l = licao || getActiveLicao(jogador?.track);
     const diaHist = prog.history[diaAtual.id] || {};
     const np = {
       ...prog,
@@ -456,7 +461,7 @@ export default function App() {
     try {
       const user = await waitForAuthInit();
       if (user) {
-        const l = licao || LICOES[0];
+        const l = licao || getActiveLicao(novoJ.track);
         await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, !!novoJ.isAdmin, !!novoJ.isGuest, !!novoJ.isProfessor);
       }
     } catch(e) { console.error(e); }

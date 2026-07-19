@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { DEMO, LICOES } from './data';
+import { DEMO, LICOES, getTrackLessons } from './data';
 import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak } from './utils';
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
@@ -131,8 +131,9 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 
 /* ===== HOME ===== */
 export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSemana, onConfig, onChangeLicao }: any) => {
-  const diaId = getDiaId(licao.dias);
-  const diaAtual = licao.dias.find((d: any) => d.id === diaId);
+  const temConteudo = !licao.isComingSoon && licao.dias?.length > 0;
+  const diaId = temConteudo ? getDiaId(licao.dias) : null;
+  const diaAtual = temConteudo ? licao.dias.find((d: any) => d.id === diaId) : null;
 
   const getSt = (dia: any) => {
     if (prog.done.includes(dia.id)) return 'done';
@@ -143,7 +144,8 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
   };
   const concHoje = prog.done.includes(diaId);
 
-  const visiveis = useMemo(() => LICOES.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin || jogador?.isProfessor), [jogador?.isAdmin, jogador?.isProfessor]);
+  const trackLessons = useMemo(() => getTrackLessons(jogador?.track), [jogador?.track]);
+  const visiveis = useMemo(() => trackLessons.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin || jogador?.isProfessor), [trackLessons, jogador?.isAdmin, jogador?.isProfessor]);
 
   // Dias concluídos de todas as semanas (para marcar semanas anteriores na trilha)
   const [allDone, setAllDone] = useState<Record<string, number[]>>({});
@@ -158,9 +160,9 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
     .replace(/\s*\([^)]*\)\s*$/, '')
     .trim();
 
-  // Ofensiva real da temporada (🔥) — derivada do Firestore (allDone + LICOES),
+  // Ofensiva real da temporada (🔥) — derivada do Firestore (allDone + trackLessons),
   // não do localStorage do aparelho (troca de celular não zera mais)
-  const seasonStreak = useMemo(() => computeRealStreak(allDone, LICOES), [allDone]);
+  const seasonStreak = useMemo(() => computeRealStreak(allDone, trackLessons), [allDone, trackLessons]);
 
   // Banner suspenso acompanha a semana visível na rolagem (e a selecionada)
   const [bannerL, setBannerL] = useState<any>(licao);
@@ -203,7 +205,16 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
       </div>
 
       <div className="sec" style={{paddingTop:10}}>
-        {(() => {
+        {visiveis.length === 0 ? (
+          <div style={{textAlign:'center', padding:'60px 24px', color:'var(--mut)'}}>
+            <div style={{fontSize:52, marginBottom:16}}>🚧</div>
+            <div style={{fontSize:18, fontWeight:900, color:'var(--txt2)', marginBottom:8}}>Em breve</div>
+            <div style={{fontSize:14, lineHeight:1.5}}>
+              A lição da sua trilha ({TRACK_LABELS[(jogador.track as Track) || 'teen']}) ainda está sendo preparada.<br/>
+              Assim que estiver pronta, ela aparece aqui automaticamente.
+            </div>
+          </div>
+        ) : (() => {
           const h = new Date();
           const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
           const totalSemanas = visiveis.filter((l: any) => !l.isAdminOnly).length;
