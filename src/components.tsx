@@ -1938,10 +1938,8 @@ export const Grupo = ({ jogador, licao, pendingGroupInvite, onClearPendingGroupI
     } else {
       const msgs: Record<string, string> = {
         not_found: 'Convite não encontrado ou desativado.',
-        inactive: 'Este grupo já foi encerrado.',
         mismatch: 'Este convite é de outro local ou trilha. Vocês precisam estar no mesmo grupo de estudo.',
-        full: 'Este grupo já está lotado.',
-        already_member: 'Você já faz parte deste grupo.',
+        rejected: 'Não foi possível entrar. O grupo pode estar cheio, encerrado, ou você já é membro.',
         error: 'Não foi possível entrar no grupo. Tente novamente.',
       };
       alert(msgs[(res as any).reason] || 'Não foi possível entrar no grupo.');
@@ -2100,7 +2098,7 @@ export const Amigos = ({ jogador, licao, pendingFriendInvite, onClearPendingFrie
         expired: 'Este convite expirou (validade de 7 dias).',
         self: 'Você não pode convidar a si mesmo.',
         mismatch: 'Este convite é de outro local ou trilha. Vocês precisam estar no mesmo grupo.',
-        limit_reached: 'Um de vocês já atingiu o limite de 10 ofensivas ativas.',
+        limit_reached: 'Você já atingiu o limite de 10 ofensivas ativas.',
         error: 'Não foi possível aceitar o convite. Tente novamente.',
       };
       alert(msgs[(res as any).reason] || 'Não foi possível aceitar o convite.');
