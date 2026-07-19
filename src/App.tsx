@@ -145,6 +145,8 @@ export default function App() {
       if (unmounted) return;
       setRanking(r);
 
+      let hasLocation = !!j?.locationId;
+
       if (j) {
         setJogador(j);
 
@@ -175,6 +177,7 @@ export default function App() {
                }
                setJogador(updatedJ);
                ss('jogador', updatedJ);
+               hasLocation = !!updatedJ.locationId;
             }
             const dbProg = await getProgress(j.id, l.semana);
             if (dbProg) {
@@ -212,7 +215,7 @@ export default function App() {
       }
 
       if (!unmounted) {
-        setTela(j ? 'home' : 'login');
+        setTela(j ? (hasLocation ? 'home' : 'config') : 'login');
         if (j && shouldAskNotif()) setShowNotifPrompt(true);
       }
     };
@@ -261,13 +264,9 @@ export default function App() {
 
     setRanking(r);
     setProg({ ...p, pos: calcPos(r, j.id, p.xp || 0) });
-    if (j.isNew) {
-      delete j.isNew;
-      ss('jogador', j);
-      setTela('config');
-    } else {
-      setTela('home');
-    }
+    if (j.isNew) delete j.isNew;
+    ss('jogador', j);
+    setTela(j.locationId ? 'home' : 'config');
     if (shouldAskNotif()) setShowNotifPrompt(true);
   };
 
@@ -489,7 +488,7 @@ export default function App() {
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
 
-      {!['splash', 'login', 'quiz'].includes(tela) && (
+      {!['splash', 'login', 'quiz'].includes(tela) && !(tela === 'config' && !jogador.locationId) && (
         <BottomNav
           active={tela}
           jogador={jogador}

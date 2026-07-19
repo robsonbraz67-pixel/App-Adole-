@@ -57,7 +57,17 @@ service cloud.firestore {
         && (!data.keys().hasAny(['bloqueado']) || data.bloqueado is bool)
         && (!data.keys().hasAny(['telefone']) || (data.telefone is string && data.telefone.size() <= 20))
         && (!data.keys().hasAny(['whatsappOptIn']) || data.whatsappOptIn is bool)
-        && (!data.keys().hasAny(['manualNotification']) || data.manualNotification is map);
+        && (!data.keys().hasAny(['manualNotification']) || data.manualNotification is map)
+        && (!data.keys().hasAny(['track']) || data.track in ['teen', 'youngAdult', 'adult'])
+        && (!data.keys().hasAny(['locationId']) || (data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200));
+    }
+
+    // Uma vez definidos pelo próprio usuário no cadastro, track/locationId só
+    // podem ser trocados por admin (ver bloco de update abaixo) — impede que o
+    // usuário se mova de local/trilha sozinho depois de escolher.
+    function ownerLocationTrackUnchanged() {
+      return (!existing().keys().hasAny(['locationId']) || incoming().locationId == existing().locationId)
+        && (!existing().keys().hasAny(['track']) || incoming().track == existing().track);
     }
 
     match /users/{userId} {
@@ -65,20 +75,60 @@ service cloud.firestore {
 
       allow create: if isOwner(userId)
         && incoming().id == userId
-        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification'])
+        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId'])
         && (!incoming().keys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && isValidUser(incoming());
 
       allow update: if (isOwner(userId)
-        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'telefone', 'whatsappOptIn', 'manualNotification'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId'])
         && incoming().id == existing().id
         && incoming().email == existing().email
         && (!incoming().diff(existing()).affectedKeys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
+        && ownerLocationTrackUnchanged()
         && isValidUser(incoming())) || (
         isUserAdmin()
-        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'manualNotification'])
+        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'manualNotification', 'locationId', 'track'])
         && isValidUser(incoming()));
 
+      allow delete: if isUserAdmin();
+    }
+
+    function isValidStudyLocation(data) {
+      return data.keys().hasOnly(['name', 'createdBy', 'createdAt'])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+        && data.createdBy is string;
+    }
+
+    match /studyLocations/{locationId} {
+      // Todo usuário autenticado precisa listar locais para escolher no cadastro
+      allow get, list: if isAuthenticated();
+
+      allow create: if isAuthenticated()
+        && isValidStudyLocation(incoming())
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time;
+
+      allow update: if isValidStudyLocation(incoming())
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && ((isAuthenticated() && existing().createdBy == request.auth.uid) || isUserAdmin());
+
+      allow delete: if isUserAdmin();
+    }
+
+    function isValidTeacherAssignment(data) {
+      return data.keys().hasOnly(['locationId', 'assignedBy', 'assignedAt'])
+        && data.locationId is string && data.locationId.size() > 0
+        && data.assignedBy is string
+        && data.assignedAt == request.time;
+    }
+
+    // Doc id == uid do professor. Só admin define/altera; o próprio professor
+    // (e o admin) podem ler para saber a que local está vinculado.
+    match /teacherAssignments/{teacherId} {
+      allow get: if isOwner(teacherId) || isUserAdmin();
+      allow list: if isUserAdmin();
+      allow create, update: if isUserAdmin() && isValidTeacherAssignment(incoming());
       allow delete: if isUserAdmin();
     }
 

@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { DEMO, LICOES } from './data';
 import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak } from './utils';
 
+export type Track = 'teen' | 'youngAdult' | 'adult';
+export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 Adulto' };
+
 /* ===== CONFETTI ===== */
 const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
 
@@ -67,7 +70,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -1440,6 +1443,10 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const [relatorio, setRelatorio] = useState<{ narrativa: string; promptVideo: string; ranking: any[] } | null>(null);
   const [loadingRelatorio, setLoadingRelatorio] = useState(false);
 
+  // Locais de estudo + atribuição de professor por local
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [teacherAssignments, setTeacherAssignments] = useState<Record<string, { locationId: string }>>({});
+
   useEffect(() => {
     let unmounted = false;
     const loadUsers = async () => {
@@ -1454,8 +1461,38 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
       }
     };
     loadUsers();
+    getStudyLocations().then(l => { if (!unmounted) setLocations(l); }).catch(() => {});
+    getAllTeacherAssignments().then(a => { if (!unmounted) setTeacherAssignments(a); }).catch(() => {});
     return () => { unmounted = true; };
   }, []);
+
+  const handleSetUserLocation = async (userId: string, locationId: string) => {
+    try {
+      await adminSetUserLocation(userId, locationId);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, locationId } : u));
+    } catch (e) {
+      alert('Erro ao alterar local do usuário');
+    }
+  };
+
+  const handleAssignTeacher = async (teacherId: string, locationId: string) => {
+    if (!locationId) return;
+    try {
+      await assignTeacherLocation(teacherId, locationId, jogador.id);
+      setTeacherAssignments(prev => ({ ...prev, [teacherId]: { locationId } }));
+    } catch (e) {
+      alert('Erro ao atribuir local ao professor');
+    }
+  };
+
+  const handleRemoveTeacherAssignment = async (teacherId: string) => {
+    try {
+      await removeTeacherAssignment(teacherId);
+      setTeacherAssignments(prev => { const n = { ...prev }; delete n[teacherId]; return n; });
+    } catch (e) {
+      alert('Erro ao remover atribuição do professor');
+    }
+  };
 
   const handleToggleAdmin = async (userId: string, currentStatus: boolean) => {
      try {
@@ -1578,6 +1615,28 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                         </div>
                      </div>
                      {isSuperAdmin && u.email?.toLowerCase() !== SUPER_ADMIN_EMAIL && (
+                       <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap: 6}}>
+                       <div style={{display:'flex', alignItems:'center', gap:6}}>
+                         <select
+                           value={u.locationId || ''}
+                           onChange={e => handleSetUserLocation(u.id, e.target.value)}
+                           style={{fontSize:11, padding:'4px 6px', borderRadius:6, background:'var(--input-bg)', color:'var(--txt2)', border:'1px solid var(--input-border)', maxWidth:130}}
+                         >
+                           <option value="">Sem local</option>
+                           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                         </select>
+                         {u.isProfessor && (
+                           <select
+                             value={teacherAssignments[u.id]?.locationId || ''}
+                             onChange={e => e.target.value ? handleAssignTeacher(u.id, e.target.value) : handleRemoveTeacherAssignment(u.id)}
+                             title="Local onde este professor pode gerar convite"
+                             style={{fontSize:11, padding:'4px 6px', borderRadius:6, background:'rgba(124,79,224,.15)', color:'var(--admin)', border:'1px solid var(--input-border)', maxWidth:130}}
+                           >
+                             <option value="">🎓 sem atribuição</option>
+                             {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                           </select>
+                         )}
+                       </div>
                        <div style={{display:'flex', flexWrap:'wrap', gap: 6, justifyContent:'flex-end'}}>
                          {u.isAdmin ? (
                            <button onClick={() => handleToggleAdmin(u.id, true)} style={{background:'rgba(227,28,61,.2)', color:'#FF6B6B', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
@@ -1597,6 +1656,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
                          <button onClick={() => handleDeleteUser(u.id, u.nome)} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                             🗑️ Excluir
                          </button>
+                       </div>
                        </div>
                      )}
                   </div>
@@ -1732,6 +1792,20 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
   const [avatar, setAvatar] = useState(jogador.avatar || '🦁');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Local de estudo + trilha: obrigatórios no cadastro, só admin altera depois
+  const locationLocked = !!jogador.locationId;
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(!locationLocked);
+  useEffect(() => {
+    getStudyLocations().then(setLocations).catch(() => {}).finally(() => setLoadingLocations(false));
+  }, []);
+  const [locationId, setLocationId] = useState(jogador.locationId || '');
+  const [showNewLocation, setShowNewLocation] = useState(false);
+  const [newLocationName, setNewLocationName] = useState('');
+  const [track, setTrack] = useState<Track>(jogador.track || 'teen');
+  const [savingSetup, setSavingSetup] = useState(false);
+  const currentLocationName = locations.find(l => l.id === jogador.locationId)?.name;
+
   // Phone number helpers — store as E164 (5511999999999), display as (11) 99999-9999
   const e164ToDisplay = (v: string) => {
     const d = (v || '').replace(/\D/g, '').replace(/^55/, '');
@@ -1785,12 +1859,80 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
   return (
     <div className="scr" style={{paddingBottom:100}}>
       <div className="hdr">
-        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
+        {locationLocked ? <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button> : <div/>}
         <div style={{fontWeight:900,fontSize:17}}>⚙️ Configurações</div>
         <div/>
       </div>
+      {!locationLocked && (
+        <div style={{margin:'0 16px 8px', padding:'10px 14px', borderRadius:10, background:'rgba(247,198,0,.1)', border:'1px solid rgba(247,198,0,.3)', fontSize:12, color:'var(--gold)', fontWeight:700}}>
+          Complete seu cadastro escolhendo trilha e local de estudo para continuar.
+        </div>
+      )}
       <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:20, flex: 1}}>
-        
+
+        <div style={{background:'var(--panel-bg)', padding: '20px 16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
+          <div style={{fontWeight:800, marginBottom:16, color:'var(--txt2)'}}>🏠 Local de Estudo e Trilha</div>
+          {locationLocked ? (
+            <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.6}}>
+              Local: <strong>{currentLocationName || '...'}</strong><br/>
+              Trilha: <strong>{TRACK_LABELS[(jogador.track as Track) || 'teen']}</strong>
+              <div style={{fontSize:11, color:'var(--mut)', marginTop:8}}>Só um admin pode alterar seu local ou trilha depois do cadastro.</div>
+            </div>
+          ) : (
+            <>
+              <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Trilha *</div>
+              <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap'}}>
+                {(['teen', 'youngAdult', 'adult'] as Track[]).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={t !== 'teen'}
+                    onClick={() => setTrack(t)}
+                    style={{
+                      flex: '1 1 30%', padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 800,
+                      border: track === t ? '2px solid var(--gold)' : '1px solid var(--input-border)',
+                      background: track === t ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
+                      color: t !== 'teen' ? 'var(--mut)' : 'var(--txt)',
+                      opacity: t !== 'teen' ? 0.6 : 1,
+                      cursor: t !== 'teen' ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {TRACK_LABELS[t]}{t !== 'teen' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Local de Estudo *</div>
+              {!showNewLocation ? (
+                <>
+                  <select
+                    value={locationId}
+                    onChange={e => setLocationId(e.target.value)}
+                    disabled={loadingLocations}
+                    style={{width:'100%', padding:'12px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, marginBottom:8, outline:'none'}}
+                  >
+                    <option value="">{loadingLocations ? 'Carregando...' : 'Selecione seu local...'}</option>
+                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setShowNewLocation(true)} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12}}>+ Meu local não está na lista</button>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={newLocationName}
+                    onChange={e => setNewLocationName(e.target.value)}
+                    placeholder="Ex: Igreja Central"
+                    maxLength={80}
+                    style={{width:'100%', padding:'12px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, marginBottom:8, outline:'none'}}
+                  />
+                  <button type="button" onClick={() => { setShowNewLocation(false); setNewLocationName(''); }} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12}}>← Escolher da lista</button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
         <div style={{background:'var(--panel-bg)', padding: '20px 16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
           <div style={{fontWeight:800, marginBottom:20, color:'var(--txt2)'}}>Seu Perfil</div>
           
@@ -1912,7 +2054,33 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
           </div>
         </div>
 
-        <button className="btn btn-gold" onClick={() => onSave({ ...jogador, nome, avatar, telefone: telefoneE164, whatsappOptIn })} style={{fontSize: 18, marginTop: 10}}>✅ SALVAR ALTERAÇÕES</button>
+        <button
+          className={`btn btn-gold${savingSetup ? ' btn-dis' : ''}`}
+          disabled={savingSetup}
+          onClick={async () => {
+            let finalLocationId = jogador.locationId || '';
+            if (!locationLocked) {
+              if (showNewLocation) {
+                if (!newLocationName.trim()) { alert('Digite o nome do seu local de estudo.'); return; }
+                setSavingSetup(true);
+                try {
+                  finalLocationId = await createStudyLocation(newLocationName.trim(), jogador.id);
+                } catch (e) {
+                  alert('Erro ao criar local de estudo. Tente novamente.');
+                  setSavingSetup(false);
+                  return;
+                }
+              } else {
+                if (!locationId) { alert('Selecione seu local de estudo.'); return; }
+                finalLocationId = locationId;
+              }
+            }
+            onSave({ ...jogador, nome, avatar, telefone: telefoneE164, whatsappOptIn, track: jogador.track || track, locationId: finalLocationId });
+          }}
+          style={{fontSize: 18, marginTop: 10}}
+        >
+          {savingSetup ? 'Salvando...' : '✅ SALVAR ALTERAÇÕES'}
+        </button>
         
         <div style={{marginTop: 'auto', paddingTop: 40}}>
            <button className="btn btn-ghost" onClick={onLogout} style={{color:'#FF6B6B', borderColor:'rgba(227,28,61,.3)', width:'100%'}}>🚪 Sair da conta (Logout)</button>

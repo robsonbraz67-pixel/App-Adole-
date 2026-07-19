@@ -50,7 +50,7 @@ export const logout = async () => {
 export const saveUser = async (userProfile: any) => {
   const userRef = doc(db, 'users', userProfile.id);
   const snap = await getDoc(userRef);
-  
+
   const { isNew, ...cleanProfile } = userProfile;
   if (!snap.exists() && cleanProfile.email && cleanProfile.email.toLowerCase() === 'robsonbraz67@gmail.com') {
      cleanProfile.isAdmin = true;
@@ -61,6 +61,8 @@ export const saveUser = async (userProfile: any) => {
   if (!cleanProfile.telefone) delete cleanProfile.telefone;
   if (!cleanProfile.whatsappOptIn) delete cleanProfile.whatsappOptIn;
   if (!cleanProfile.isGuest) delete cleanProfile.isGuest;
+  if (!cleanProfile.track) delete cleanProfile.track;
+  if (!cleanProfile.locationId) delete cleanProfile.locationId;
 
   await setDoc(userRef, {
     ...cleanProfile,
@@ -114,6 +116,51 @@ export const blockUser = async (userId: string, blocked: boolean) => {
 
 export const deleteUser = async (userId: string) => {
   await deleteDoc(doc(db, 'users', userId));
+};
+
+// Locais de estudo (igreja/grupo). Lista completa é pequena — ok carregar tudo
+// de uma vez pro seletor do cadastro.
+export const getStudyLocations = async (): Promise<{ id: string; name: string; createdBy: string }[]> => {
+  const snap = await getDocs(collection(db, 'studyLocations'));
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+};
+
+export const createStudyLocation = async (name: string, createdBy: string): Promise<string> => {
+  const ref = doc(collection(db, 'studyLocations'));
+  await setDoc(ref, { name: name.trim(), createdBy, createdAt: serverTimestamp() });
+  return ref.id;
+};
+
+// Só admin altera o local de um usuário depois do cadastro (correção de erro, mudança de igreja etc.)
+export const adminSetUserLocation = async (userId: string, locationId: string) => {
+  const userRef = doc(db, 'users', userId);
+  await setDoc(userRef, { locationId }, { merge: true });
+};
+
+// Admin define em qual local cada professor pode gerar convite
+export const assignTeacherLocation = async (teacherId: string, locationId: string, assignedBy: string) => {
+  const ref = doc(db, 'teacherAssignments', teacherId);
+  await setDoc(ref, { locationId, assignedBy, assignedAt: serverTimestamp() });
+};
+
+export const removeTeacherAssignment = async (teacherId: string) => {
+  await deleteDoc(doc(db, 'teacherAssignments', teacherId));
+};
+
+export const getTeacherAssignment = async (teacherId: string) => {
+  const ref = doc(db, 'teacherAssignments', teacherId);
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data() as { locationId: string; assignedBy: string; assignedAt: any } : null;
+};
+
+// Painel Admin: mapa completo {teacherId: {...}} para exibir o local de cada professor
+export const getAllTeacherAssignments = async (): Promise<Record<string, { locationId: string; assignedBy: string; assignedAt: any }>> => {
+  const snap = await getDocs(collection(db, 'teacherAssignments'));
+  const map: Record<string, any> = {};
+  snap.forEach(d => { map[d.id] = d.data(); });
+  return map;
 };
 
 export const getAdminIds = async (): Promise<Set<string>> => {
