@@ -63,6 +63,7 @@ export const saveUser = async (userProfile: any) => {
   if (!cleanProfile.isGuest) delete cleanProfile.isGuest;
   if (!cleanProfile.track) delete cleanProfile.track;
   if (!cleanProfile.locationId) delete cleanProfile.locationId;
+  if (!cleanProfile.inviteCode) delete cleanProfile.inviteCode;
 
   await setDoc(userRef, {
     ...cleanProfile,

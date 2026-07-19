@@ -2055,35 +2055,11 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
               Trilha: <strong>{TRACK_LABELS[(jogador.track as Track) || 'teen']}</strong>
               <div style={{fontSize:11, color:'var(--mut)', marginTop:8}}>Só um admin pode alterar seu local ou trilha depois do cadastro.</div>
             </div>
-          ) : (
+          ) : canManageLocations ? (
+            /* Admin/professor: setup manual (escolhem trilha + local sem código) */
             <>
-              {/* Resgate por código: atalho que preenche local + trilha automaticamente */}
-              <div style={{marginBottom:18, padding:'12px 14px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)'}}>
-                <div style={{fontSize:12, fontWeight:800, color:'var(--teal)', marginBottom:8}}>🎟️ Tem um código de convite?</div>
-                {redeemed ? (
-                  <div style={{fontSize:13, color:'var(--txt2)'}}>
-                    ✅ Código <strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{redeemed.code}</strong> aplicado.<br/>
-                    <span style={{fontSize:12, color:'var(--mut)'}}>Local e trilha preenchidos abaixo. Toque em salvar para confirmar.</span>
-                    <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); }} style={{display:'block', marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código / escolher manualmente</button>
-                  </div>
-                ) : (
-                  <div style={{display:'flex', gap:8}}>
-                    <input
-                      type="text"
-                      value={inviteInput}
-                      onChange={e => setInviteInput(e.target.value.toUpperCase())}
-                      placeholder="Ex: TEEN-AB3K9"
-                      style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, fontFamily:'monospace', letterSpacing:1, outline:'none'}}
-                    />
-                    <button type="button" onClick={handleRedeem} disabled={redeeming || !inviteInput.trim()} className={`btn btn-ghost btn-sm ${redeeming || !inviteInput.trim() ? 'btn-dis' : ''}`} style={{width:'auto', fontSize:13, whiteSpace:'nowrap'}}>
-                      {redeeming ? '...' : 'Aplicar'}
-                    </button>
-                  </div>
-                )}
-              </div>
-
               <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Trilha *</div>
-              <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', opacity: redeemed ? 0.55 : 1, pointerEvents: redeemed ? 'none' : 'auto'}}>
+              <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap'}}>
                 {(['teen', 'youngAdult', 'adult'] as Track[]).map(t => (
                   <button
                     key={t}
@@ -2105,12 +2081,7 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
               </div>
 
               <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Local de Estudo *</div>
-              {redeemed ? (
-                <div style={{padding:'12px', borderRadius:10, background:'rgba(0,0,0,.2)', color:'var(--txt2)', fontSize:14, fontWeight:700}}>
-                  {locations.find(l => l.id === redeemed.locationId)?.name || 'Local do convite'}
-                  <span style={{fontSize:11, color:'var(--mut)', fontWeight:400, marginLeft:6}}>(definido pelo código)</span>
-                </div>
-              ) : !showNewLocation ? (
+              {!showNewLocation ? (
                 <>
                   <select
                     value={locationId}
@@ -2121,13 +2092,7 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
                     <option value="">{loadingLocations ? 'Carregando...' : 'Selecione seu local...'}</option>
                     {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                   </select>
-                  {canManageLocations ? (
-                    <button type="button" onClick={() => setShowNewLocation(true)} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12}}>+ Cadastrar novo local</button>
-                  ) : (!loadingLocations && locations.length === 0) ? (
-                    <div style={{fontSize:11, color:'var(--mut)', textAlign:'center', padding:'4px 0'}}>Nenhum local cadastrado ainda. Peça ao seu professor ou administrador para cadastrar o seu.</div>
-                  ) : (
-                    <div style={{fontSize:11, color:'var(--mut)', textAlign:'center', padding:'4px 0'}}>Não achou seu local? Peça ao seu professor ou administrador para cadastrá-lo.</div>
-                  )}
+                  <button type="button" onClick={() => setShowNewLocation(true)} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12}}>+ Cadastrar novo local</button>
                 </>
               ) : (
                 <>
@@ -2142,6 +2107,38 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
                   <button type="button" onClick={() => { setShowNewLocation(false); setNewLocationName(''); }} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12}}>← Escolher da lista</button>
                 </>
               )}
+            </>
+          ) : (
+            /* Aluno: matrícula só por convite — precisa de um código válido */
+            <>
+              <div style={{marginBottom:14, padding:'12px 14px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)'}}>
+                <div style={{fontSize:13, fontWeight:800, color:'var(--teal)', marginBottom:8}}>🎟️ Digite seu código de convite</div>
+                <div style={{fontSize:12, color:'var(--mut)', marginBottom:10, lineHeight:1.5}}>
+                  Peça o código ao seu professor ou administrador. Ele define seu local e sua trilha automaticamente.
+                </div>
+                {redeemed ? (
+                  <div style={{fontSize:13, color:'var(--txt2)', background:'rgba(0,0,0,.2)', borderRadius:10, padding:'12px'}}>
+                    ✅ Código <strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{redeemed.code}</strong> aplicado.<br/>
+                    <span style={{display:'block', marginTop:6}}>📍 <strong>{locations.find(l => l.id === redeemed.locationId)?.name || 'Local do convite'}</strong></span>
+                    <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>
+                    <span style={{fontSize:12, color:'var(--mut)', display:'block', marginTop:6}}>Toque em salvar para confirmar sua entrada.</span>
+                    <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); setLocationId(''); }} style={{marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código</button>
+                  </div>
+                ) : (
+                  <div style={{display:'flex', gap:8}}>
+                    <input
+                      type="text"
+                      value={inviteInput}
+                      onChange={e => setInviteInput(e.target.value.toUpperCase())}
+                      placeholder="Ex: TEEN-AB3K9"
+                      style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, fontFamily:'monospace', letterSpacing:1, outline:'none'}}
+                    />
+                    <button type="button" onClick={handleRedeem} disabled={redeeming || !inviteInput.trim()} className={`btn btn-gold btn-sm ${redeeming || !inviteInput.trim() ? 'btn-dis' : ''}`} style={{width:'auto', fontSize:13, whiteSpace:'nowrap'}}>
+                      {redeeming ? '...' : 'Aplicar'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -2272,23 +2269,37 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
           disabled={savingSetup}
           onClick={async () => {
             let finalLocationId = jogador.locationId || '';
+            let finalTrack: Track = jogador.track || track;
+            let finalInviteCode: string | undefined = jogador.inviteCode;
             if (!locationLocked) {
-              if (showNewLocation) {
-                if (!newLocationName.trim()) { alert('Digite o nome do seu local de estudo.'); return; }
-                setSavingSetup(true);
-                try {
-                  finalLocationId = await createStudyLocation(newLocationName.trim(), jogador.id);
-                } catch (e) {
-                  alert('Erro ao criar local de estudo. Tente novamente.');
-                  setSavingSetup(false);
-                  return;
+              if (canManageLocations) {
+                // Admin/professor: setup manual
+                if (showNewLocation) {
+                  if (!newLocationName.trim()) { alert('Digite o nome do seu local de estudo.'); return; }
+                  setSavingSetup(true);
+                  try {
+                    finalLocationId = await createStudyLocation(newLocationName.trim(), jogador.id);
+                  } catch (e) {
+                    alert('Erro ao criar local de estudo. Tente novamente.');
+                    setSavingSetup(false);
+                    return;
+                  }
+                } else {
+                  if (!locationId) { alert('Selecione seu local de estudo.'); return; }
+                  finalLocationId = locationId;
                 }
+                finalTrack = track;
               } else {
-                if (!locationId) { alert('Selecione seu local de estudo.'); return; }
-                finalLocationId = locationId;
+                // Aluno: matrícula só por convite
+                if (!redeemed) { alert('Digite e aplique um código de convite para entrar.'); return; }
+                finalLocationId = redeemed.locationId;
+                finalTrack = redeemed.track;
+                finalInviteCode = redeemed.code;
               }
             }
-            onSave({ ...jogador, nome, avatar, telefone: telefoneE164, whatsappOptIn, track: jogador.track || track, locationId: finalLocationId });
+            const payload: any = { ...jogador, nome, avatar, telefone: telefoneE164, whatsappOptIn, track: finalTrack, locationId: finalLocationId };
+            if (finalInviteCode) payload.inviteCode = finalInviteCode;
+            onSave(payload);
           }}
           style={{fontSize: 18, marginTop: 10}}
         >

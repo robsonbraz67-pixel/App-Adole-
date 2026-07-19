@@ -59,7 +59,8 @@ service cloud.firestore {
         && (!data.keys().hasAny(['whatsappOptIn']) || data.whatsappOptIn is bool)
         && (!data.keys().hasAny(['manualNotification']) || data.manualNotification is map)
         && (!data.keys().hasAny(['track']) || data.track in ['teen', 'youngAdult', 'adult'])
-        && (!data.keys().hasAny(['locationId']) || (data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200));
+        && (!data.keys().hasAny(['locationId']) || (data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200))
+        && (!data.keys().hasAny(['inviteCode']) || (data.inviteCode is string && data.inviteCode.size() <= 40));
     }
 
     // Uma vez definidos pelo próprio usuário no cadastro, track/locationId só
@@ -70,21 +71,47 @@ service cloud.firestore {
         && (!existing().keys().hasAny(['track']) || incoming().track == existing().track);
     }
 
+    // Matrícula só por convite: o dono só grava um locationId novo se for
+    // admin/professor (que fazem o setup e não precisam de código) OU se
+    // apresentar um inviteCode ativo cujo local+trilha batem com o que está
+    // gravando. Sem isto, dava pra entrar em qualquer local pelo console/API.
+    function inviteCodeMatchesIncoming() {
+      return incoming().keys().hasAny(['inviteCode'])
+        && incoming().inviteCode is string
+        && exists(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode))
+        && get(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode)).data.active == true
+        && get(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode)).data.locationId == incoming().locationId
+        && get(/databases/$(database)/documents/inviteCodes/$(incoming().inviteCode)).data.track == incoming().track;
+    }
+
+    // true quando o dono está DEFININDO um locationId que ainda não existia
+    function ownerSettingNewLocation() {
+      return !existing().keys().hasAny(['locationId']) && incoming().keys().hasAny(['locationId']);
+    }
+    function ownerLocationAllowedOnUpdate() {
+      return !ownerSettingNewLocation() || canManage() || inviteCodeMatchesIncoming();
+    }
+    function ownerLocationAllowedOnCreate() {
+      return !incoming().keys().hasAny(['locationId']) || canManage() || inviteCodeMatchesIncoming();
+    }
+
     match /users/{userId} {
       allow get, list: if isOwner(userId) || canManage();
 
       allow create: if isOwner(userId)
         && incoming().id == userId
-        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId'])
+        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId', 'inviteCode'])
         && (!incoming().keys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
+        && ownerLocationAllowedOnCreate()
         && isValidUser(incoming());
 
       allow update: if (isOwner(userId)
-        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId', 'inviteCode'])
         && incoming().id == existing().id
         && incoming().email == existing().email
         && (!incoming().diff(existing()).affectedKeys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && ownerLocationTrackUnchanged()
+        && ownerLocationAllowedOnUpdate()
         && isValidUser(incoming())) || (
         isUserAdmin()
         && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'manualNotification', 'locationId', 'track'])
