@@ -255,6 +255,19 @@ export const listenToUserNotifications = (userId: string, callback: (notificatio
   });
 };
 
+// Remove nota/hl (conteúdo privado) do history antes de mandar pro Firestore:
+// o doc de progresso é legível por qualquer autenticado (ranking), então nota
+// e destaque NUNCA podem morar nele (Etapa 8). Eles vão para studyNotes (privado).
+const stripPrivateNotes = (history: any): any => {
+  if (!history || typeof history !== 'object') return history;
+  const clean: any = {};
+  for (const dayId of Object.keys(history)) {
+    const { nota, hl, ...rest } = history[dayId] || {};
+    clean[dayId] = rest; // mantém xp/acertos do quiz; descarta nota/hl
+  }
+  return clean;
+};
+
 export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean) => {
   const progId = `${userId}_${week}`;
   const progRef = doc(db, 'progress', progId);
@@ -265,7 +278,7 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     xp: prog.xp,
     streak: prog.streak,
     done: prog.done,
-    history: prog.history,
+    history: stripPrivateNotes(prog.history),
     nome,
     avatar,
     isAdmin: !!isAdmin,
@@ -282,6 +295,25 @@ export const getProgress = async (userId: string, week: string) => {
   const progRef = doc(db, 'progress', progId);
   const snap = await getDoc(progRef);
   return snap.exists() ? snap.data() : null;
+};
+
+// ===== Anotações privadas (Etapa 8) =====
+// nota/destaque do usuário ficam aqui, legíveis SÓ pelo dono — nunca no
+// progress (que é público para o ranking).
+export const saveStudyNote = async (userId: string, week: string, dayId: number, nota: string, hl: any) => {
+  const ref = doc(db, 'studyNotes', `${userId}_${week}`);
+  await setDoc(ref, {
+    userId,
+    week,
+    notes: { [String(dayId)]: { nota: nota || '', hl: hl || {} } },
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+export const getStudyNotes = async (userId: string, week: string): Promise<Record<string, { nota: string; hl: any }>> => {
+  const ref = doc(db, 'studyNotes', `${userId}_${week}`);
+  const snap = await getDoc(ref);
+  return snap.exists() ? (snap.data().notes || {}) : {};
 };
 
 // Mapa { semana: [diaIds concluídos] } de todas as semanas do usuário —

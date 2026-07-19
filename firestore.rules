@@ -307,9 +307,11 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (request.auth.uid in existing().members) && (
           (incoming().diff(existing()).affectedKeys().hasOnly(['active']) && incoming().active == false)
           ||
-          (request.auth.uid == existing().userA && incoming().diff(existing()).affectedKeys().hasOnly(['sharesA']))
+          // Compartilhar só faz sentido enquanto a dupla está ativa (Etapa 8:
+          // impede ex-membro continuar escrevendo numa dupla já desfeita)
+          (existing().active == true && request.auth.uid == existing().userA && incoming().diff(existing()).affectedKeys().hasOnly(['sharesA']))
           ||
-          (request.auth.uid == existing().userB && incoming().diff(existing()).affectedKeys().hasOnly(['sharesB']))
+          (existing().active == true && request.auth.uid == existing().userB && incoming().diff(existing()).affectedKeys().hasOnly(['sharesB']))
         );
 
       allow delete: if isUserAdmin();
@@ -559,6 +561,22 @@ service cloud.firestore {
         && isValidProgress(incoming());
 
       allow delete: if false;
+    }
+
+    // ===== Anotações privadas (Etapa 8) =====
+    // nota/destaque do usuário. Doc id == `${uid}_${week}`. Legível/gravável
+    // SÓ pelo dono — diferente de progress, que é público para o ranking.
+    // (UIDs do Firebase Auth não contêm '_', então split('_')[0] isola o uid.)
+    match /studyNotes/{docId} {
+      allow get, list: if isAuthenticated() && docId.split('_')[0] == request.auth.uid;
+      allow create, update: if isAuthenticated()
+        && incoming().userId == request.auth.uid
+        && docId == incoming().userId + '_' + incoming().week
+        && incoming().keys().hasOnly(['userId', 'week', 'notes', 'updatedAt'])
+        && incoming().week is string && incoming().week.size() <= 20
+        && incoming().notes is map
+        && incoming().updatedAt == request.time;
+      allow delete: if isAuthenticated() && docId.split('_')[0] == request.auth.uid;
     }
 
     function isValidOverride(data) {

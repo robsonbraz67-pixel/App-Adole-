@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp } from './utils';
-import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getLocationRanking, getFriendStreakInvite } from './firebase';
+import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getLocationRanking, getFriendStreakInvite } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, Grupo, Amigos } from './components';
 
 const CACHE_VERSION = '3T2026';
@@ -493,6 +493,8 @@ export default function App() {
   const handleSaveStudy = async (nota: string, hl: any) => {
     const l = licao || getActiveLicao(jogador?.track);
     const diaHist = prog.history[diaAtual.id] || {};
+    // nota/hl ficam no state/localStorage (device-local, ok); no Firestore vão
+    // para studyNotes (privado). saveProgress já remove nota/hl do progress público.
     const np = {
       ...prog,
       history: { ...prog.history, [diaAtual.id]: { ...diaHist, nota, hl } }
@@ -503,6 +505,7 @@ export default function App() {
       const user = await waitForAuthInit();
       if (user) {
         await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor);
+        await saveStudyNote(jogador.id, l.semana, diaAtual.id, nota, hl);
       }
     } catch(e) {
       console.error(e);

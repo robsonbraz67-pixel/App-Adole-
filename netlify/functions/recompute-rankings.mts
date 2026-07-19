@@ -60,8 +60,30 @@ export default async (): Promise<Response> => {
   };
 
   const progSnap = await db.collection('progress').get();
+  // Scrub de notas antigas já vazadas (Etapa 8): progress é público para o
+  // ranking, então nota/hl no history são um vazamento. Limpamos legados aqui
+  // (idempotente — depois da 1ª passada não há mais o que limpar).
+  const scrubs: Promise<any>[] = [];
   progSnap.forEach(d => {
     const p = d.data();
+
+    const history = p.history;
+    if (history && typeof history === 'object') {
+      let dirty = false;
+      const clean: any = {};
+      for (const dayId of Object.keys(history)) {
+        const entry = history[dayId] || {};
+        if (entry.nota !== undefined || entry.hl !== undefined) {
+          dirty = true;
+          const { nota, hl, ...rest } = entry;
+          clean[dayId] = rest;
+        } else {
+          clean[dayId] = entry;
+        }
+      }
+      if (dirty) scrubs.push(d.ref.update({ history: clean }));
+    }
+
     const u = users[p.userId];
     if (!u || !u.locationId || !u.track) return;   // não matriculado → fora de qualquer local
     if (u.isGuest) return;                          // convidado não entra em ranking
@@ -72,6 +94,7 @@ export default async (): Promise<Response> => {
     add(u.locationId, u.track, trimestre, p.userId, u, dias, xp);   // ranking por trilha
     add(u.locationId, 'general', trimestre, p.userId, u, dias, xp); // ranking geral do local
   });
+  if (scrubs.length) { await Promise.all(scrubs); console.log(`Notas legadas removidas de ${scrubs.length} docs de progresso.`); }
 
   // 3) Ordena por dias no período (métrica justa entre trilhas), XP como desempate,
   //    e grava um doc pronto por bucket.

@@ -70,7 +70,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType, createGroup, getMyGroups, listenToGroup, createGroupInvite, joinGroupByInvite, leaveGroup, removeGroupMember, closeGroup, setGroupHighlightShare, getGroupHighlights, createFriendStreakInvite, getFriendStreakInvite, getMyFriendStreaks, acceptFriendStreakInvite, endFriendStreak } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType, createGroup, getMyGroups, listenToGroup, createGroupInvite, joinGroupByInvite, leaveGroup, removeGroupMember, closeGroup, setGroupHighlightShare, getGroupHighlights, createFriendStreakInvite, getFriendStreakInvite, getMyFriendStreaks, acceptFriendStreakInvite, endFriendStreak, getStudyNotes } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -333,6 +333,21 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSav
   const [sel, setSel] = useState<any>(null);
   const [editOpen, setEditOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  // Notas privadas (Etapa 8): carrega do studyNotes (cross-device). O state local
+  // vem do localStorage; só preenche com a nuvem o que estiver vazio aqui (não
+  // sobrescreve o que o usuário já tem no aparelho / acabou de digitar).
+  useEffect(() => {
+    let cancelled = false;
+    getStudyNotes(jogador.id, semana).then(map => {
+      if (cancelled) return;
+      const dn = map[String(dia.id)];
+      if (!dn) return;
+      setNotes(prev => prev && prev.length ? prev : (dn.nota || ''));
+      setHl(prev => (prev && Object.keys(prev).length ? prev : (dn.hl || {})));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [jogador.id, semana, dia.id]);
 
   // Compartilhamento com a dupla (Etapa 4): cada item tem toggle próprio
   const pairIsUserA = activePair && activePair.userA === jogador?.id;
