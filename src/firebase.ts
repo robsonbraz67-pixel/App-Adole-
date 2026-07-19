@@ -398,9 +398,15 @@ export const acceptPairInvite = async (inviteId: string, jogador: any): Promise<
     if (expMs && expMs < Date.now()) return { ok: false, reason: 'expired' };
     if (inv.createdBy === jogador.id) return { ok: false, reason: 'self' };
     if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
-    // Uma dupla ativa por vez (checagem no cliente; a regra garante o resto)
-    const [mine, theirs] = await Promise.all([getActivePair(jogador.id), getActivePair(inv.createdBy)]);
-    if (mine || theirs) return { ok: false, reason: 'already_paired' };
+    // Uma dupla ativa por vez (checagem no cliente; a regra garante o resto).
+    // Só dá pra checar a PRÓPRIA dupla aqui — a regra do Firestore não deixa
+    // consultar as duplas de outro usuário (query 'array-contains' exige que o
+    // uid buscado seja o do próprio autenticado). Se quem convidou já tiver
+    // uma dupla ativa, o pior caso é um vínculo extra que fica invisível pra
+    // ele (getActivePair só retorna a primeira encontrada) — não é falha de
+    // segurança, só uma checagem de UX que não dá pra fazer nos dois lados.
+    const mine = await getActivePair(jogador.id);
+    if (mine) return { ok: false, reason: 'already_paired' };
 
     const batch = writeBatch(db);
     batch.set(doc(db, 'pairs', inviteId), {
@@ -515,20 +521,26 @@ export const getGroupInvite = async (inviteId: string): Promise<any | null> => {
 
 export type JoinGroupResult =
   | { ok: true; groupId: string }
-  | { ok: false; reason: 'not_found' | 'inactive' | 'mismatch' | 'full' | 'already_member' | 'error' };
+  | { ok: false; reason: 'not_found' | 'mismatch' | 'rejected' | 'error' };
 
 export const joinGroupByInvite = async (inviteId: string, jogador: any): Promise<JoinGroupResult> => {
   try {
     const inv = await getGroupInvite(inviteId);
     if (!inv || !inv.active) return { ok: false, reason: 'not_found' };
     if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
-    const group = await getGroup(inv.groupId);
-    if (!group || !group.active) return { ok: false, reason: 'inactive' };
-    if ((group.memberIds || []).includes(jogador.id)) return { ok: false, reason: 'already_member' };
-    if ((group.memberIds || []).length >= group.maxMembers) return { ok: false, reason: 'full' };
-    await setDoc(doc(db, 'groups', inv.groupId), {
-      memberIds: arrayUnion(jogador.id),
-    }, { merge: true });
+    // Não dá pra ler o grupo (groups/{id}) antes de já ser membro — a regra de
+    // leitura exige membership, e é exatamente isso que ainda não temos aqui.
+    // Então entra direto: a regra do servidor (isSelfJoiningGroup) garante
+    // grupo ativo, limite de membros e local+trilha batendo. Se falhar, não dá
+    // pra distinguir "cheio" de "encerrado" no cliente — mensagem genérica.
+    try {
+      await setDoc(doc(db, 'groups', inv.groupId), {
+        memberIds: arrayUnion(jogador.id),
+      }, { merge: true });
+    } catch (writeErr) {
+      console.error('joinGroupByInvite write', writeErr);
+      return { ok: false, reason: 'rejected' };
+    }
     return { ok: true, groupId: inv.groupId };
   } catch (e) {
     console.error('joinGroupByInvite', e);
@@ -617,8 +629,10 @@ export const acceptFriendStreakInvite = async (inviteId: string, jogador: any): 
     if (expMs && expMs < Date.now()) return { ok: false, reason: 'expired' };
     if (inv.createdBy === jogador.id) return { ok: false, reason: 'self' };
     if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
-    const [mine, theirs] = await Promise.all([getMyFriendStreaks(jogador.id), getMyFriendStreaks(inv.createdBy)]);
-    if (mine.length >= FRIEND_STREAK_MAX || theirs.length >= FRIEND_STREAK_MAX) return { ok: false, reason: 'limit_reached' };
+    // Só dá pra checar o PRÓPRIO teto aqui — a regra do Firestore não deixa
+    // consultar as ofensivas de outro usuário (mesma razão do getActivePair).
+    const mine = await getMyFriendStreaks(jogador.id);
+    if (mine.length >= FRIEND_STREAK_MAX) return { ok: false, reason: 'limit_reached' };
 
     const batch = writeBatch(db);
     batch.set(doc(db, 'friendStreaks', inviteId), {
