@@ -70,7 +70,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -306,7 +306,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
 };
 
 /* ===== NAVBAR FIXA (global, renderizada pelo App em todas as telas exceto Quiz) ===== */
-export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstudo, onConfig, onAdmin, onSorteador, onMais }: any) => {
+export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstudo, onConfig, onAdmin, onDupla, onMais }: any) => {
   const canManage = !!jogador?.isAdmin || !!jogador?.isProfessor;
   return (
     <div className="bot-nav" style={{padding:'6px 8px 14px'}}>
@@ -314,7 +314,7 @@ export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstu
         <button className={`nav-it ${active === 'home' ? 'active' : ''}`} onClick={onHome} aria-label="Início"><span className="nav-ic">🏠</span>Início</button>
         <button className={`nav-it ${active === 'ranking' ? 'active' : ''}`} onClick={onRanking} aria-label="Ranking"><span className="nav-ic">🏆</span>Ranking</button>
         {diaAtual && <button className={`nav-it ${active === 'estudo' ? 'active' : ''}`} onClick={() => onEstudo(diaAtual)} aria-label="Praticar"><span className="nav-ic">📖</span>Praticar</button>}
-        {canManage && <button className={`nav-it ${active === 'sorteador' ? 'active' : ''}`} onClick={onSorteador} aria-label="Sorteio"><span className="nav-ic">🎰</span>Sorteio</button>}
+        <button className={`nav-it ${active === 'dupla' ? 'active' : ''}`} onClick={onDupla} aria-label="Dupla"><span className="nav-ic">👥</span>Dupla</button>
         <button className={`nav-it ${active === 'config' ? 'active' : ''}`} onClick={onConfig} aria-label="Perfil"><span className="nav-ic">⚙️</span>Perfil</button>
         {canManage
           ? <button className={`nav-it ${active === 'admin' ? 'active' : ''}`} onClick={onAdmin} aria-label="Admin"><span className="nav-ic">🛡️</span>Admin</button>
@@ -325,7 +325,7 @@ export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstu
 };
 
 /* ===== ESTUDO ===== */
-export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, onQuiz, onBack }: any) => {
+export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, onDayUpdated, onQuiz, onBack }: any) => {
   const initHistory = prog.history?.[dia.id] || {};
   const [notes, setNotes] = useState(initHistory.nota || '');
   const [hl, setHl] = useState<any>(initHistory.hl || {});
@@ -333,7 +333,27 @@ export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, 
   const [sel, setSel] = useState<any>(null);
   const [editOpen, setEditOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  
+
+  // Compartilhamento com a dupla (Etapa 4): cada item tem toggle próprio
+  const pairIsUserA = activePair && activePair.userA === jogador?.id;
+  const myShareKey = `${semana}__${dia.id}`;
+  const existingShare = activePair ? (pairIsUserA ? activePair.sharesA : activePair.sharesB)?.[myShareKey] : null;
+  const [shareNote, setShareNote] = useState(!!existingShare?.note);
+  const [shareHl, setShareHl] = useState((existingShare?.highlights?.length || 0) > 0);
+
+  const allHlTexts = (h: any): string[] => Object.values(h || {}).flat().map((x: any) => x?.text).filter(Boolean);
+
+  const applyShare = async (wantNote: boolean, wantHl: boolean, curNotes: string, curHl: any) => {
+    if (!activePair?.id) return;
+    const data: any = {};
+    if (wantNote && curNotes.trim()) data.note = curNotes.trim();
+    const texts = wantHl ? allHlTexts(curHl) : [];
+    if (texts.length) data.highlights = texts;
+    try {
+      await setPairShare(activePair.id, !!pairIsUserA, semana, dia.id, Object.keys(data).length ? data : null);
+    } catch (e) { console.error('setPairShare', e); }
+  };
+
   const onScroll = () => {
     const el = ref.current;
     if (!el) return;
@@ -427,6 +447,8 @@ export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, 
 
   const wrapLeave = (fn: any) => {
     onSaveStudy(notes, hl);
+    // Se a nota/destaques estão compartilhados, atualiza o conteúdo mais recente
+    if (activePair?.id && (shareNote || shareHl)) applyShare(shareNote, shareHl, notes, hl);
     fn();
   };
 
@@ -488,7 +510,7 @@ export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, 
           <div style={{fontWeight:800,color:'var(--gold)',fontSize:13}}>— {dia.versiculoChave.referencia}</div>
         </div>
         
-        <div style={{marginBottom: 24, background:'var(--panel-bg)', padding: '16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
+        <div style={{marginBottom: activePair ? 12 : 24, background:'var(--panel-bg)', padding: '16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
           <div style={{fontSize:13,fontWeight:800,color:'var(--mut)',textTransform:'uppercase',letterSpacing:1,marginBottom:12,fontFamily:'Poppins,sans-serif'}}>📝 Minhas Anotações</div>
           <textarea
             value={notes}
@@ -497,6 +519,21 @@ export const Estudo = ({ dia, prog, jogador, semana, onSaveStudy, onDayUpdated, 
             style={{width:'100%', minHeight: 120, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize: 15, lineHeight: 1.6, padding: '14px', borderRadius: 12, resize:'vertical', outline:'none', fontFamily:'Lora,Georgia,serif', transition:'background .3s,color .3s'}}
           />
         </div>
+
+        {/* Compartilhar com a dupla (só aparece se houver dupla ativa) */}
+        {activePair && (
+          <div style={{marginBottom:24, background:'rgba(30,158,134,.06)', border:'1px solid rgba(30,158,134,.22)', padding:'14px 16px', borderRadius:16}}>
+            <div style={{fontSize:12, fontWeight:800, color:'var(--teal)', marginBottom:10}}>👥 Compartilhar com minha dupla</div>
+            <label style={{display:'flex', alignItems:'center', gap:10, marginBottom:10, cursor:'pointer'}}>
+              <input type="checkbox" checked={shareNote} onChange={e => { const v = e.target.checked; setShareNote(v); applyShare(v, shareHl, notes, hl); }} style={{accentColor:'var(--teal)', width:18, height:18}} />
+              <span style={{fontSize:14, color:'var(--txt2)'}}>Compartilhar minha <strong>anotação</strong> deste dia</span>
+            </label>
+            <label style={{display:'flex', alignItems:'center', gap:10, cursor:'pointer', opacity: allHlTexts(hl).length ? 1 : 0.5}}>
+              <input type="checkbox" checked={shareHl} disabled={!allHlTexts(hl).length} onChange={e => { const v = e.target.checked; setShareHl(v); applyShare(shareNote, v, notes, hl); }} style={{accentColor:'var(--teal)', width:18, height:18}} />
+              <span style={{fontSize:14, color:'var(--txt2)'}}>Compartilhar meus <strong>destaques</strong> deste dia {allHlTexts(hl).length ? `(${allHlTexts(hl).length})` : '(nenhum ainda)'}</span>
+            </label>
+          </div>
+        )}
 
         {prog.done.includes(dia.id) && !jogador?.isAdmin && !jogador?.isProfessor ? (
           <button className="btn btn-gold" style={{fontSize:19, background:'#2ECC71', filter:'brightness(0.8)', cursor:'not-allowed'}} onClick={(e) => e.preventDefault()}>✅ QUIZ CONCLUÍDO</button>
@@ -1439,6 +1476,207 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   );
 };
 
+/* ===== ESTUDO EM DUPLA (Etapa 4) ===== */
+const PAIR_TYPE_LABELS: Record<PairType, string> = { family: '👨‍👧 Família', couple: '💑 Casal', friend: '🤝 Amigo(a)' };
+
+export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange, onClearPending, onBack }: any) => {
+  const [pair, setPair] = useState<any>(activePair || null);
+  const [tipo, setTipo] = useState<PairType>('friend');
+  const [linkGerado, setLinkGerado] = useState('');
+  const [gerando, setGerando] = useState(false);
+  const [aceitando, setAceitando] = useState(false);
+  const [partnerDone, setPartnerDone] = useState<number[]>([]);
+
+  // Feed em tempo real da dupla ativa
+  useEffect(() => {
+    if (!pair?.id) return;
+    const unsub = listenToPair(pair.id, p => { if (p && p.active) { setPair(p); onPairChange?.(p); } else { setPair(null); onPairChange?.(null); } });
+    return () => unsub();
+  }, [pair?.id]);
+
+  const isUserA = pair && pair.userA === jogador.id;
+  const partnerId = pair ? (isUserA ? pair.userB : pair.userA) : null;
+  const partnerName = pair ? (isUserA ? pair.userBName : pair.userAName) : '';
+  const partnerAvatar = pair ? (isUserA ? pair.userBAvatar : pair.userAAvatar) : '';
+  const partnerShares = pair ? (isUserA ? pair.sharesB : pair.sharesA) : {};
+
+  // Progresso do parceiro na semana atual (dias concluídos)
+  useEffect(() => {
+    if (!partnerId || !licao?.semana) return;
+    getProgress(partnerId, licao.semana).then((p: any) => setPartnerDone(p?.done || [])).catch(() => {});
+  }, [partnerId, licao?.semana, pair]);
+
+  const shareUrl = (id: string) => `${window.location.origin}${window.location.pathname}?dupla=${id}`;
+
+  const handleGerar = async () => {
+    setGerando(true);
+    try {
+      const inviteId = await createPairInvite(jogador, tipo);
+      setLinkGerado(shareUrl(inviteId));
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao gerar o convite.');
+    }
+    setGerando(false);
+  };
+
+  const compartilharLink = async () => {
+    const texto = `Bora estudar a lição em dupla no SabatinaQuest? 📖🔥\n${linkGerado}`;
+    try {
+      if (navigator.share) await navigator.share({ title: 'Convite de dupla — SabatinaQuest', text: texto, url: linkGerado });
+      else { await navigator.clipboard.writeText(linkGerado); alert('Link copiado! Cole no WhatsApp para convidar.'); }
+    } catch (e) { /* usuário cancelou */ }
+  };
+
+  const handleAceitar = async () => {
+    if (!pendingInvite) return;
+    setAceitando(true);
+    const res = await acceptPairInvite(pendingInvite.id, jogador);
+    setAceitando(false);
+    if (res.ok) {
+      onClearPending?.();
+      const np = { id: res.pairId };
+      setPair(np as any);
+      onPairChange?.(np);
+    } else {
+      const msgs: Record<string, string> = {
+        not_found: 'Convite não encontrado ou já usado.',
+        expired: 'Este convite expirou (validade de 7 dias).',
+        self: 'Você não pode formar dupla consigo mesmo.',
+        mismatch: 'Este convite é de outro local ou trilha. Vocês precisam estar no mesmo grupo.',
+        already_paired: 'Um de vocês já está em uma dupla ativa. Desfaça a atual antes de formar outra.',
+        error: 'Não foi possível aceitar o convite. Tente novamente.',
+      };
+      alert(msgs[(res as any).reason] || 'Não foi possível aceitar o convite.');
+      onClearPending?.();
+    }
+  };
+
+  const handleDesfazer = async () => {
+    if (!pair || !window.confirm('Desfazer a dupla? Vocês deixam de ver o progresso um do outro.')) return;
+    try {
+      await unpair(pair.id);
+      setPair(null);
+      onPairChange?.(null);
+    } catch (e) { alert('Erro ao desfazer a dupla.'); }
+  };
+
+  const dias = licao?.dias || [];
+
+  return (
+    <div className="scr" style={{paddingBottom:100}}>
+      <div className="hdr">
+        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
+        <div style={{fontWeight:900,fontSize:17}}>👥 Estudo em Dupla</div>
+        <div/>
+      </div>
+
+      <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:18}}>
+        {/* Convite pendente (chegou por link) */}
+        {pendingInvite && !pair && (
+          <div style={{background:'rgba(247,198,0,.1)', border:'1px solid rgba(247,198,0,.35)', borderRadius:16, padding:18}}>
+            <div style={{fontSize:15, fontWeight:800, color:'var(--gold)', marginBottom:8}}>🎟️ Você recebeu um convite de dupla!</div>
+            <div style={{fontSize:14, color:'var(--txt2)', marginBottom:6}}>
+              {pendingInvite.createdByName ? <><strong>{pendingInvite.createdByName}</strong> quer estudar a lição em dupla com você.</> : 'Alguém quer estudar a lição em dupla com você.'}
+            </div>
+            <div style={{fontSize:12, color:'var(--mut)', marginBottom:14}}>Tipo: {PAIR_TYPE_LABELS[(pendingInvite.type as PairType)] || pendingInvite.type}</div>
+            <div style={{display:'flex', gap:10}}>
+              <button onClick={handleAceitar} disabled={aceitando} className={`btn btn-gold ${aceitando ? 'btn-dis' : ''}`} style={{flex:1, fontSize:15}}>{aceitando ? 'Aceitando...' : '✅ Aceitar'}</button>
+              <button onClick={() => onClearPending?.()} className="btn btn-ghost" style={{flex:1, fontSize:15, color:'var(--mut)'}}>Agora não</button>
+            </div>
+          </div>
+        )}
+
+        {pair ? (
+          /* ===== Dupla ativa: feed do parceiro ===== */
+          <>
+            <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18, display:'flex', alignItems:'center', gap:14}}>
+              <div style={{width:56, height:56, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, background:'rgba(0,0,0,.2)', flexShrink:0}}>
+                {partnerAvatar?.startsWith('data:') ? <img src={partnerAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/> : <span>{partnerAvatar || '👤'}</span>}
+              </div>
+              <div style={{flex:1, minWidth:0}}>
+                <div style={{fontSize:12, color:'var(--mut)', fontWeight:700}}>Sua dupla {PAIR_TYPE_LABELS[(pair.type as PairType)] || ''}</div>
+                <div style={{fontSize:18, fontWeight:900, color:'var(--txt2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{partnerName || 'Parceiro(a)'}</div>
+              </div>
+              <button onClick={handleDesfazer} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>Desfazer</button>
+            </div>
+
+            <div>
+              <div className="sec-title" style={{marginBottom:8}}>Progresso de {(partnerName||'').split(' ')[0] || 'quem estuda com você'} — {licao?.semana}</div>
+              <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                {dias.map((d: any) => {
+                  const feito = partnerDone.includes(d.id);
+                  const shared = partnerShares?.[`${licao.semana}__${d.id}`];
+                  return (
+                    <div key={d.id} style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'12px 14px'}}>
+                      <div style={{display:'flex', alignItems:'center', gap:10}}>
+                        <span style={{fontSize:18}}>{feito ? '✅' : '⬜'}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{formatDiaSemana(d.diaSemana)} — {d.titulo || `Dia ${d.id}`}</div>
+                          <div style={{fontSize:11, color:'var(--mut)'}}>{feito ? 'Concluiu este dia' : 'Ainda não fez'}</div>
+                        </div>
+                      </div>
+                      {shared?.note && (
+                        <div style={{marginTop:10, padding:'10px 12px', background:'rgba(30,158,134,.08)', borderRadius:10, borderLeft:'3px solid var(--teal)'}}>
+                          <div style={{fontSize:10, color:'var(--teal)', fontWeight:800, textTransform:'uppercase', letterSpacing:1, marginBottom:4}}>📝 Anotação compartilhada</div>
+                          <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.5, whiteSpace:'pre-wrap', fontFamily:'Lora,Georgia,serif'}}>{shared.note}</div>
+                        </div>
+                      )}
+                      {shared?.highlights?.length > 0 && (
+                        <div style={{marginTop:10, display:'flex', flexDirection:'column', gap:6}}>
+                          <div style={{fontSize:10, color:'var(--gold)', fontWeight:800, textTransform:'uppercase', letterSpacing:1}}>🖍️ Destaques compartilhados</div>
+                          {shared.highlights.map((t: string, i: number) => (
+                            <div key={i} style={{fontSize:13, color:'var(--txt2)', fontStyle:'italic', paddingLeft:8, borderLeft:'2px solid var(--gold)'}}>"{t}"</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{fontSize:11, color:'var(--mut)', textAlign:'center', marginTop:12, lineHeight:1.5}}>
+                Para compartilhar suas anotações ou destaques de um dia, abra o estudo daquele dia e use os botões de compartilhar com a dupla.
+              </div>
+            </div>
+          </>
+        ) : !pendingInvite && (
+          /* ===== Sem dupla: convidar ===== */
+          <>
+            <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18}}>
+              <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>Convide alguém para estudar em dupla</div>
+              <div style={{fontSize:13, color:'var(--mut)', marginBottom:16, lineHeight:1.5}}>
+                Pai, mãe, namorado(a) ou um amigo do mesmo grupo. Vocês veem o progresso um do outro e podem compartilhar anotações. (Uma dupla ativa por vez.)
+              </div>
+
+              <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, textTransform:'uppercase', letterSpacing:1, marginBottom:8}}>Tipo de vínculo</div>
+              <div style={{display:'flex', gap:8, marginBottom:16}}>
+                {(['friend','family','couple'] as PairType[]).map(t => (
+                  <button key={t} type="button" onClick={() => setTipo(t)} style={{flex:1, padding:'10px 6px', borderRadius:10, fontSize:12, fontWeight:800, border: tipo===t ? '2px solid var(--gold)':'1px solid var(--input-border)', background: tipo===t ? 'rgba(247,198,0,.12)':'var(--input-bg)', color:'var(--txt)', cursor:'pointer'}}>
+                    {PAIR_TYPE_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+
+              {!linkGerado ? (
+                <button onClick={handleGerar} disabled={gerando} className={`btn btn-gold ${gerando ? 'btn-dis':''}`} style={{fontSize:15}}>{gerando ? 'Gerando...' : '🔗 Gerar link de convite'}</button>
+              ) : (
+                <div>
+                  <div style={{fontSize:12, color:'var(--mut)', marginBottom:8}}>Convite válido por 7 dias e de uso único. Envie para a pessoa:</div>
+                  <div style={{display:'flex', gap:8, marginBottom:10}}>
+                    <input readOnly value={linkGerado} style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt2)', border:'1px solid var(--input-border)', fontSize:12, outline:'none'}} />
+                    <button onClick={() => navigator.clipboard.writeText(linkGerado).then(() => alert('Link copiado!'))} className="btn btn-ghost btn-sm" style={{width:'auto', fontSize:12}}>Copiar</button>
+                  </div>
+                  <button onClick={compartilharLink} className="btn btn-gold" style={{fontSize:15}}>📲 Compartilhar convite</button>
+                  <button onClick={() => setLinkGerado('')} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12, marginTop:8, color:'var(--mut)'}}>Gerar outro</button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 /* ===== CÓDIGOS DE CONVITE (Etapa 3) ===== */
 const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { id: string; name: string }[] }) => {
   const isAdmin = !!jogador?.isAdmin;
@@ -1572,7 +1810,7 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
   );
 };
 
-export const Admin = ({ licao, jogador, onBack }: any) => {
+export const Admin = ({ licao, jogador, onBack, onSorteador }: any) => {
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -1737,7 +1975,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>⚙️ Painel Admin</div>
-        <div/>
+        {onSorteador ? <button className="btn btn-ghost btn-sm" onClick={onSorteador} style={{width:'auto'}} title="Sorteador">🎰</button> : <div/>}
       </div>
       <div style={{padding:'20px 16px'}}>
         <div className="sec-title" style={{marginBottom:8}}>Gerenciar Usuários (Admins)</div>

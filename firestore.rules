@@ -216,6 +216,105 @@ service cloud.firestore {
       allow delete: if isUserAdmin() || (isProfessor() && existing().createdBy == request.auth.uid);
     }
 
+    // ===== Estudo em Dupla (Etapa 4) =====
+    // Local+trilha do usuário autenticado batem com os passados? (escopo social)
+    function myLocationTrackMatches(loc, trk) {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.locationId == loc
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.track == trk;
+    }
+
+    function isValidPairInvite(data) {
+      return data.keys().hasOnly(['createdBy', 'createdByName', 'createdByAvatar', 'locationId', 'track', 'type', 'status', 'createdAt', 'expiresAt'])
+        && data.createdBy is string
+        && data.createdByName is string && data.createdByName.size() <= 50
+        && data.createdByAvatar is string && data.createdByAvatar.size() <= 1048576
+        && data.locationId is string && data.locationId.size() > 0
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.type in ['family', 'couple', 'friend']
+        && data.status in ['pending', 'accepted', 'expired']
+        && data.expiresAt is timestamp;
+    }
+
+    match /pairInvites/{inviteId} {
+      // Resgate por link: precisa saber o inviteId (doc id). list só dos próprios.
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+
+      // Só convida para o próprio local+trilha (validado no servidor).
+      allow create: if isAuthenticated()
+        && incoming().createdBy == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time
+        && isValidPairInvite(incoming())
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      allow update: if isAuthenticated() && (
+          // criador cancela o convite
+          (existing().createdBy == request.auth.uid
+           && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+           && incoming().status == 'expired')
+          ||
+          // quem aceita marca como aceito: precisa ser de outro usuário, ainda
+          // válido, e do mesmo local+trilha
+          (existing().status == 'pending'
+           && existing().createdBy != request.auth.uid
+           && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+           && incoming().status == 'accepted'
+           && existing().expiresAt > request.time
+           && myLocationTrackMatches(existing().locationId, existing().track))
+        );
+
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+    }
+
+    function isValidPair(data) {
+      return data.keys().hasOnly(['inviteId', 'members', 'userA', 'userB', 'userAName', 'userAAvatar', 'userBName', 'userBAvatar', 'locationId', 'track', 'type', 'active', 'createdAt', 'sharesA', 'sharesB'])
+        && data.members is list && data.members.size() == 2
+        && data.userA is string && data.userB is string
+        && data.members[0] == data.userA && data.members[1] == data.userB
+        && data.userA != data.userB
+        && data.locationId is string && data.track in ['teen', 'youngAdult', 'adult']
+        && data.type in ['family', 'couple', 'friend']
+        && data.active is bool
+        && data.sharesA is map && data.sharesB is map;
+    }
+
+    match /pairs/{pairId} {
+      // Só os dois membros leem a dupla (e seu conteúdo compartilhado).
+      allow get, list: if isAuthenticated() && request.auth.uid in resource.data.members;
+
+      // Quem aceita (userB) cria o doc; pairId == inviteId garante uso único
+      // (segunda tentativa colide com doc existente). Valida o convite e o
+      // próprio local+trilha do aceitante.
+      allow create: if isAuthenticated()
+        && pairId == incoming().inviteId
+        && incoming().userB == request.auth.uid
+        && incoming().active == true
+        && incoming().sharesA.size() == 0
+        && incoming().sharesB.size() == 0
+        && isValidPair(incoming())
+        && exists(/databases/$(database)/documents/pairInvites/$(pairId))
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.status == 'pending'
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.createdBy == incoming().userA
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.locationId == incoming().locationId
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.track == incoming().track
+        && get(/databases/$(database)/documents/pairInvites/$(pairId)).data.expiresAt > request.time
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      // Desfazer a dupla (active=false) ou cada membro editar só o SEU campo de
+      // compartilhamento (sharesA para userA, sharesB para userB) — ninguém
+      // altera o compartilhamento do outro.
+      allow update: if isAuthenticated() && (request.auth.uid in existing().members) && (
+          (incoming().diff(existing()).affectedKeys().hasOnly(['active']) && incoming().active == false)
+          ||
+          (request.auth.uid == existing().userA && incoming().diff(existing()).affectedKeys().hasOnly(['sharesA']))
+          ||
+          (request.auth.uid == existing().userB && incoming().diff(existing()).affectedKeys().hasOnly(['sharesB']))
+        );
+
+      allow delete: if isUserAdmin();
+    }
+
     function isValidProgress(data) {
       return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string

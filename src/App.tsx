@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp } from './utils';
-import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride } from './firebase';
-import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador } from './components';
+import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite } from './firebase';
+import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla } from './components';
 
 const CACHE_VERSION = '3T2026';
 
@@ -44,6 +44,35 @@ export default function App() {
   const [inAppNotif, setInAppNotif] = useState<{title: string, body: string, id: number} | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => (localStorage.getItem('theme') as 'light' | 'dark' | 'auto') || 'auto');
   const [showNotifPrompt, setShowNotifPrompt] = useState(false);
+  const [activePair, setActivePair] = useState<any>(null);
+  const [pendingInvite, setPendingInvite] = useState<any>(null);
+
+  // Deep link ?dupla=<inviteId>: guarda e limpa da URL (sobrevive ao login)
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get('dupla');
+    if (param) {
+      localStorage.setItem('pendingPairInvite', param);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // Carrega a dupla ativa quando há usuário matriculado
+  useEffect(() => {
+    if (!jogador?.id || !jogador?.locationId) { setActivePair(null); return; }
+    getActivePair(jogador.id).then(setActivePair).catch(() => {});
+  }, [jogador?.id, jogador?.locationId]);
+
+  // Resgata convite de dupla pendente (chegou por link) após login + matrícula
+  useEffect(() => {
+    const pid = localStorage.getItem('pendingPairInvite');
+    if (!pid || !jogador?.id || !jogador?.locationId) return;
+    getPairInvite(pid).then(inv => {
+      if (inv && inv.status === 'pending') { setPendingInvite(inv); setTela('dupla'); }
+      else localStorage.removeItem('pendingPairInvite');
+    }).catch(() => {});
+  }, [jogador?.id, jogador?.locationId]);
+
+  const clearPendingInvite = () => { localStorage.removeItem('pendingPairInvite'); setPendingInvite(null); };
 
   // PWA fica dias em memória sem recarregar: quando uma nova semana começa,
   // avança a lição automaticamente para não salvar progresso na semana errada
@@ -484,13 +513,14 @@ export default function App() {
   return (
     <>
       {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onChangeLicao={handleChangeLicao} />}
-      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
+      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} />}
-      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
+      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onSorteador={() => setTela('sorteador')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
+      {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
 
       {!['splash', 'login', 'quiz'].includes(tela) && !(tela === 'config' && !jogador.locationId) && (
@@ -504,6 +534,7 @@ export default function App() {
           onConfig={() => setTela('config')}
           onAdmin={() => setTela('admin')}
           onSorteador={() => setTela('sorteador')}
+          onDupla={() => setTela('dupla')}
           onMais={shareApp}
         />
       )}

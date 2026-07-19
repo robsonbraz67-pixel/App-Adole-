@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField } from 'firebase/firestore';
 import { isRankingHidden, computeRealStreak } from './utils';
 import { LICOES } from './data';
 const firebaseConfig = {
@@ -305,6 +305,121 @@ export const getDayOverride = async (semana: string, diaId: number) => {
 export const saveDayOverride = async (semana: string, diaId: number, data: any) => {
   const ref = doc(db, 'conteudoOverrides', `${semana}_${diaId}`);
   await setDoc(ref, { ...data, updatedAt: serverTimestamp() }, { merge: true });
+};
+
+// ===== Estudo em Dupla (Etapa 4) =====
+const PAIR_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+const randomId = (len = 20) => {
+  const alpha = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const arr = new Uint32Array(len);
+  (globalThis.crypto || (window as any).crypto).getRandomValues(arr);
+  let s = '';
+  for (let i = 0; i < len; i++) s += alpha[arr[i] % alpha.length];
+  return s;
+};
+
+export type PairType = 'family' | 'couple' | 'friend';
+
+// Dupla ativa do usuário (no máx. 1). Usa só array-contains (índice automático)
+// e filtra 'active' no cliente — evita exigir índice composto no Firestore.
+export const getActivePair = async (userId: string): Promise<any | null> => {
+  const snap = await getDocs(query(collection(db, 'pairs'), where('members', 'array-contains', userId)));
+  let pair: any = null;
+  snap.forEach(d => { const data = d.data(); if (!pair && data.active) pair = { id: d.id, ...data }; });
+  return pair;
+};
+
+// Cria o convite de dupla. Só quem tem locationId+track (matriculado) pode.
+export const createPairInvite = async (jogador: any, type: PairType): Promise<string> => {
+  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro (local e trilha) antes de convidar.');
+  const inviteId = randomId();
+  await setDoc(doc(db, 'pairInvites', inviteId), {
+    createdBy: jogador.id,
+    createdByName: jogador.nome || '',
+    createdByAvatar: jogador.avatar || '',
+    locationId: jogador.locationId,
+    track: jogador.track,
+    type,
+    status: 'pending',
+    createdAt: serverTimestamp(),
+    expiresAt: Timestamp.fromMillis(Date.now() + PAIR_INVITE_TTL_MS),
+  });
+  return inviteId;
+};
+
+export const getPairInvite = async (inviteId: string): Promise<any | null> => {
+  const snap = await getDoc(doc(db, 'pairInvites', inviteId));
+  return snap.exists() ? { id: inviteId, ...snap.data() } : null;
+};
+
+// Motivos de recusa amigáveis para a UI decidir a mensagem.
+export type AcceptPairResult =
+  | { ok: true; pairId: string }
+  | { ok: false; reason: 'not_found' | 'expired' | 'self' | 'mismatch' | 'already_paired' | 'error' };
+
+export const acceptPairInvite = async (inviteId: string, jogador: any): Promise<AcceptPairResult> => {
+  try {
+    const inv = await getPairInvite(inviteId);
+    if (!inv || inv.status !== 'pending') return { ok: false, reason: 'not_found' };
+    const expMs = inv.expiresAt?.toMillis ? inv.expiresAt.toMillis() : 0;
+    if (expMs && expMs < Date.now()) return { ok: false, reason: 'expired' };
+    if (inv.createdBy === jogador.id) return { ok: false, reason: 'self' };
+    if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
+    // Uma dupla ativa por vez (checagem no cliente; a regra garante o resto)
+    const [mine, theirs] = await Promise.all([getActivePair(jogador.id), getActivePair(inv.createdBy)]);
+    if (mine || theirs) return { ok: false, reason: 'already_paired' };
+
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'pairs', inviteId), {
+      inviteId,
+      members: [inv.createdBy, jogador.id],
+      userA: inv.createdBy,
+      userB: jogador.id,
+      userAName: inv.createdByName || '',
+      userAAvatar: inv.createdByAvatar || '',
+      userBName: jogador.nome || '',
+      userBAvatar: jogador.avatar || '',
+      locationId: inv.locationId,
+      track: inv.track,
+      type: inv.type,
+      active: true,
+      createdAt: serverTimestamp(),
+      sharesA: {},
+      sharesB: {},
+    });
+    batch.update(doc(db, 'pairInvites', inviteId), { status: 'accepted' });
+    await batch.commit();
+    return { ok: true, pairId: inviteId };
+  } catch (e) {
+    console.error('acceptPairInvite', e);
+    return { ok: false, reason: 'error' };
+  }
+};
+
+export const unpair = async (pairId: string) => {
+  await setDoc(doc(db, 'pairs', pairId), { active: false }, { merge: true });
+};
+
+// Escuta a dupla em tempo real (feed). Retorna unsubscribe.
+export const listenToPair = (pairId: string, cb: (pair: any | null) => void) => {
+  return onSnapshot(doc(db, 'pairs', pairId), snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null));
+};
+
+// Define/remove o compartilhamento de um item (nota ou destaques) de um dia.
+// Cada membro só escreve no próprio campo (sharesA xor sharesB) — garantido na regra.
+export const setPairShare = async (
+  pairId: string,
+  isUserA: boolean,
+  week: string,
+  dayId: number,
+  data: { note?: string; highlights?: string[] } | null
+) => {
+  const field = isUserA ? 'sharesA' : 'sharesB';
+  const key = `${week}__${dayId}`;
+  await setDoc(doc(db, 'pairs', pairId), {
+    [field]: { [key]: data === null ? deleteField() : data },
+  }, { merge: true });
 };
 
 export const getWeeklyRanking = async (week: string) => {
