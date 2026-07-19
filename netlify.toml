@@ -1,6 +1,8 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  # Produção (branch main) só builda quando o commit tem [deploy] — protege
+  # créditos e evita deploy acidental. (ignore: sai 0 = pula build, ≠0 = builda)
   ignore = "! git log -1 --pretty=%B | grep -qF '[deploy]'"
 
 [build.environment]
@@ -9,3 +11,11 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+
+# Deploy previews (PRs) e branch deploys SEMPRE buildam, para testar antes de ir
+# pra produção — sem precisar de [deploy] no commit. Produção segue protegida.
+[context.deploy-preview]
+  ignore = "false"
+
+[context.branch-deploy]
+  ignore = "false"
