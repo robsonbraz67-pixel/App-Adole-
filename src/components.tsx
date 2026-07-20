@@ -2668,6 +2668,15 @@ export const Admin = ({ licao, jogador, onBack, onSorteador }: any) => {
 };
 
 /* ===== CONFIG ===== */
+// Desativado em 2026-07-20: usuários antigos (cadastrados antes da Etapa 1,
+// sem locationId ainda) ficavam travados no cadastro porque só sobrava o
+// campo de código, sem dropdown nem forma de prosseguir. A ferramenta de
+// código continua pronta (geração/validação/painel Admin intactos) — só a
+// exigência de usá-la para entrar foi desligada. Reativar: trocar por `true`
+// e também reverter ownerLocationAllowedOnCreate/OnUpdate no firestore.rules
+// (ver comentário lá) para exigir de novo no servidor, não só na UI.
+const REQUIRE_INVITE_CODE_FOR_STUDENTS = false;
+
 export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange }: any) => {
   const [nome, setNome] = useState(jogador.nome || '');
   const [avatar, setAvatar] = useState(jogador.avatar || '🦁');
@@ -2839,8 +2848,8 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
                 </>
               )}
             </>
-          ) : (
-            /* Aluno: matrícula só por convite — precisa de um código válido */
+          ) : REQUIRE_INVITE_CODE_FOR_STUDENTS ? (
+            /* Aluno com exigência de código LIGADA: só o código (ver flag no topo do arquivo) */
             <>
               <div style={{marginBottom:14, padding:'12px 14px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)'}}>
                 <div style={{fontSize:13, fontWeight:800, color:'var(--teal)', marginBottom:8}}>🎟️ Digite seu código de convite</div>
@@ -2870,6 +2879,78 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
                   </div>
                 )}
               </div>
+            </>
+          ) : (
+            /* Aluno com exigência DESLIGADA: código é um atalho opcional; sem
+               código, escolhe da lista (não pode cadastrar local novo — isso
+               continua só para admin/professor). */
+            <>
+              <div style={{marginBottom:14, padding:'12px 14px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)'}}>
+                <div style={{fontSize:13, fontWeight:800, color:'var(--teal)', marginBottom:8}}>🎟️ Tem um código de convite? (opcional)</div>
+                {redeemed ? (
+                  <div style={{fontSize:13, color:'var(--txt2)', background:'rgba(0,0,0,.2)', borderRadius:10, padding:'12px'}}>
+                    ✅ Código <strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{redeemed.code}</strong> aplicado.<br/>
+                    <span style={{display:'block', marginTop:6}}>📍 <strong>{locations.find(l => l.id === redeemed.locationId)?.name || 'Local do convite'}</strong></span>
+                    <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>
+                    <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); setLocationId(''); }} style={{marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código / escolher manualmente</button>
+                  </div>
+                ) : (
+                  <div style={{display:'flex', gap:8}}>
+                    <input
+                      type="text"
+                      value={inviteInput}
+                      onChange={e => setInviteInput(e.target.value.toUpperCase())}
+                      placeholder="Ex: TEEN-AB3K9"
+                      style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, fontFamily:'monospace', letterSpacing:1, outline:'none'}}
+                    />
+                    <button type="button" onClick={handleRedeem} disabled={redeeming || !inviteInput.trim()} className={`btn btn-ghost btn-sm ${redeeming || !inviteInput.trim() ? 'btn-dis' : ''}`} style={{width:'auto', fontSize:13, whiteSpace:'nowrap'}}>
+                      {redeeming ? '...' : 'Aplicar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {!redeemed && (
+                <>
+                  <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Trilha *</div>
+                  <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap'}}>
+                    {(['teen', 'youngAdult', 'adult'] as Track[]).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        disabled={t !== 'teen'}
+                        onClick={() => setTrack(t)}
+                        style={{
+                          flex: '1 1 30%', padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 800,
+                          border: track === t ? '2px solid var(--gold)' : '1px solid var(--input-border)',
+                          background: track === t ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
+                          color: t !== 'teen' ? 'var(--mut)' : 'var(--txt)',
+                          opacity: t !== 'teen' ? 0.6 : 1,
+                          cursor: t !== 'teen' ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        {TRACK_LABELS[t]}{t !== 'teen' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Local de Estudo *</div>
+                  <select
+                    value={locationId}
+                    onChange={e => setLocationId(e.target.value)}
+                    disabled={loadingLocations}
+                    style={{width:'100%', padding:'12px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, marginBottom:8, outline:'none'}}
+                  >
+                    <option value="">{loadingLocations ? 'Carregando...' : 'Selecione seu local...'}</option>
+                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                  {!loadingLocations && locations.length === 0 ? (
+                    <div style={{fontSize:11, color:'var(--mut)', textAlign:'center', padding:'4px 0'}}>Nenhum local cadastrado ainda. Peça ao seu professor ou administrador para cadastrar o seu.</div>
+                  ) : (
+                    <div style={{fontSize:11, color:'var(--mut)', textAlign:'center', padding:'4px 0'}}>Não achou seu local? Peça ao seu professor ou administrador para cadastrá-lo.</div>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>
@@ -3020,12 +3101,22 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
                   finalLocationId = locationId;
                 }
                 finalTrack = track;
-              } else {
-                // Aluno: matrícula só por convite
+              } else if (REQUIRE_INVITE_CODE_FOR_STUDENTS) {
+                // Aluno com exigência de código LIGADA
                 if (!redeemed) { alert('Digite e aplique um código de convite para entrar.'); return; }
                 finalLocationId = redeemed.locationId;
                 finalTrack = redeemed.track;
                 finalInviteCode = redeemed.code;
+              } else if (redeemed) {
+                // Aluno usou o código (atalho opcional)
+                finalLocationId = redeemed.locationId;
+                finalTrack = redeemed.track;
+                finalInviteCode = redeemed.code;
+              } else {
+                // Aluno escolheu manualmente da lista
+                if (!locationId) { alert('Selecione seu local de estudo.'); return; }
+                finalLocationId = locationId;
+                finalTrack = track;
               }
             }
             const payload: any = { ...jogador, nome, avatar, telefone: telefoneE164, whatsappOptIn, track: finalTrack, locationId: finalLocationId };
