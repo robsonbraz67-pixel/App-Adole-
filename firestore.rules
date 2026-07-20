@@ -71,10 +71,10 @@ service cloud.firestore {
         && (!existing().keys().hasAny(['track']) || incoming().track == existing().track);
     }
 
-    // Matrícula só por convite: o dono só grava um locationId novo se for
-    // admin/professor (que fazem o setup e não precisam de código) OU se
-    // apresentar um inviteCode ativo cujo local+trilha batem com o que está
-    // gravando. Sem isto, dava pra entrar em qualquer local pelo console/API.
+    // Convite por código (ferramenta pronta, mas não obrigatória agora — ver
+    // baixo): valida um inviteCode ativo cujo local+trilha batem com o que
+    // está sendo gravado. Continua funcionando de ponta a ponta (professor/
+    // admin geram, aluno pode resgatar) mesmo com a exigência desligada.
     function inviteCodeMatchesIncoming() {
       return incoming().keys().hasAny(['inviteCode'])
         && incoming().inviteCode is string
@@ -88,11 +88,28 @@ service cloud.firestore {
     function ownerSettingNewLocation() {
       return !existing().keys().hasAny(['locationId']) && incoming().keys().hasAny(['locationId']);
     }
+
+    // Desativado em 2026-07-20: usuários antigos (sem locationId, cadastrados
+    // antes da Etapa 1) ficavam travados no cadastro — só sobrava o campo de
+    // código, sem forma de prosseguir. Agora o dono pode se matricular
+    // livremente em QUALQUER local que exista de verdade (exists() abaixo —
+    // ainda bloqueia locationId inventado/de outro projeto), sem precisar de
+    // código; o código continua sendo um caminho válido (inviteCodeMatchesIncoming).
+    // Para reativar "matrícula só por convite": troque o
+    // `|| exists(.../studyLocations/$(incoming().locationId))` por nada (ou
+    // seja, remova esse último `||`) nas duas funções abaixo, e troque
+    // REQUIRE_INVITE_CODE_FOR_STUDENTS para `true` em components.tsx.
     function ownerLocationAllowedOnUpdate() {
-      return !ownerSettingNewLocation() || canManage() || inviteCodeMatchesIncoming();
+      return !ownerSettingNewLocation()
+        || canManage()
+        || inviteCodeMatchesIncoming()
+        || exists(/databases/$(database)/documents/studyLocations/$(incoming().locationId));
     }
     function ownerLocationAllowedOnCreate() {
-      return !incoming().keys().hasAny(['locationId']) || canManage() || inviteCodeMatchesIncoming();
+      return !incoming().keys().hasAny(['locationId'])
+        || canManage()
+        || inviteCodeMatchesIncoming()
+        || exists(/databases/$(database)/documents/studyLocations/$(incoming().locationId));
     }
 
     match /users/{userId} {
