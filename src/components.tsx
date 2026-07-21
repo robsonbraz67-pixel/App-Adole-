@@ -3,7 +3,7 @@ import { DEMO, LICOES, getTrackLessons } from './data';
 import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, computeMutualStreak } from './utils';
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
-export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 Adulto' };
+export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 1 e 2 Coríntios' };
 
 /* ===== CONFETTI ===== */
 const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
@@ -2265,7 +2265,7 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
           <select value={selTrack} onChange={e => setSelTrack(e.target.value as Track)} style={{width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13}}>
             <option value="teen">Adolescente</option>
             <option value="youngAdult">Jovem</option>
-            <option value="adult">Adulto</option>
+            <option value="adult">1 e 2 Coríntios</option>
           </select>
         </div>
       </div>
