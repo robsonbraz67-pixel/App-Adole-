@@ -3,7 +3,7 @@ import { DEMO, LICOES, getTrackLessons } from './data';
 import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, computeMutualStreak } from './utils';
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
-export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 Adulto' };
+export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 1 e 2 Coríntios' };
 
 /* ===== CONFETTI ===== */
 const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
@@ -522,6 +522,7 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSav
         <EditDayModal
           dia={dia}
           semana={semana}
+          track={jogador?.track || 'teen'}
           onClose={() => setEditOpen(false)}
           onSaved={(updated: any) => { onDayUpdated?.(updated); setEditOpen(false); }}
         />
@@ -599,7 +600,7 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSav
 };
 
 /* ===== EDIT DAY MODAL (ADMIN) ===== */
-const EditDayModal = ({ dia, semana, onClose, onSaved }: any) => {
+const EditDayModal = ({ dia, semana, track, onClose, onSaved }: any) => {
   const [titulo, setTitulo] = useState(dia.titulo || '');
   const [conteudo, setConteudo] = useState(dia.conteudo || '');
   const [vTexto, setVTexto] = useState(dia.versiculoChave?.texto || '');
@@ -618,7 +619,7 @@ const EditDayModal = ({ dia, semana, onClose, onSaved }: any) => {
     setSaving(true);
     const data = { titulo, conteudo, versiculoChave: { texto: vTexto, referencia: vRef }, perguntas: pergs };
     try {
-      await saveDayOverride(semana, dia.id, data);
+      await saveDayOverride(track || 'teen', semana, dia.id, data);
       onSaved({ ...dia, ...data });
     } catch (e) {
       alert('Erro ao salvar edição. Verifique sua conexão e tente novamente.');
@@ -2265,7 +2266,7 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
           <select value={selTrack} onChange={e => setSelTrack(e.target.value as Track)} style={{width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13}}>
             <option value="teen">Adolescente</option>
             <option value="youngAdult">Jovem</option>
-            <option value="adult">Adulto</option>
+            <option value="adult">1 e 2 Coríntios</option>
           </select>
         </div>
       </div>
@@ -2804,18 +2805,18 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
                   <button
                     key={t}
                     type="button"
-                    disabled={t !== 'teen'}
+                    disabled={t === 'youngAdult'}
                     onClick={() => setTrack(t)}
                     style={{
                       flex: '1 1 30%', padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 800,
                       border: track === t ? '2px solid var(--gold)' : '1px solid var(--input-border)',
                       background: track === t ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
-                      color: t !== 'teen' ? 'var(--mut)' : 'var(--txt)',
-                      opacity: t !== 'teen' ? 0.6 : 1,
-                      cursor: t !== 'teen' ? 'not-allowed' : 'pointer'
+                      color: t === 'youngAdult' ? 'var(--mut)' : 'var(--txt)',
+                      opacity: t === 'youngAdult' ? 0.6 : 1,
+                      cursor: t === 'youngAdult' ? 'not-allowed' : 'pointer'
                     }}
                   >
-                    {TRACK_LABELS[t]}{t !== 'teen' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
+                    {TRACK_LABELS[t]}{t === 'youngAdult' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
                   </button>
                 ))}
               </div>
@@ -2918,18 +2919,18 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
                       <button
                         key={t}
                         type="button"
-                        disabled={t !== 'teen'}
+                        disabled={t === 'youngAdult'}
                         onClick={() => setTrack(t)}
                         style={{
                           flex: '1 1 30%', padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 800,
                           border: track === t ? '2px solid var(--gold)' : '1px solid var(--input-border)',
                           background: track === t ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
-                          color: t !== 'teen' ? 'var(--mut)' : 'var(--txt)',
-                          opacity: t !== 'teen' ? 0.6 : 1,
-                          cursor: t !== 'teen' ? 'not-allowed' : 'pointer'
+                          color: t === 'youngAdult' ? 'var(--mut)' : 'var(--txt)',
+                          opacity: t === 'youngAdult' ? 0.6 : 1,
+                          cursor: t === 'youngAdult' ? 'not-allowed' : 'pointer'
                         }}
                       >
-                        {TRACK_LABELS[t]}{t !== 'teen' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
+                        {TRACK_LABELS[t]}{t === 'youngAdult' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
                       </button>
                     ))}
                   </div>

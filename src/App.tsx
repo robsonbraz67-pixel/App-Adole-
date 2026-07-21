@@ -551,7 +551,7 @@ export default function App() {
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onChangeLicao={handleChangeLicao} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(jogador?.track || 'teen', licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} myGroups={myGroups} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}

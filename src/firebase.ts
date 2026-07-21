@@ -328,14 +328,14 @@ export const getUserAllDone = async (userId: string): Promise<Record<string, num
   return map;
 };
 
-export const getDayOverride = async (semana: string, diaId: number) => {
-  const ref = doc(db, 'conteudoOverrides', `${semana}_${diaId}`);
+export const getDayOverride = async (track: string, semana: string, diaId: number) => {
+  const ref = doc(db, 'conteudoOverrides', `${track}_${semana}_${diaId}`);
   const snap = await getDoc(ref);
   return snap.exists() ? snap.data() : null;
 };
 
-export const saveDayOverride = async (semana: string, diaId: number, data: any) => {
-  const ref = doc(db, 'conteudoOverrides', `${semana}_${diaId}`);
+export const saveDayOverride = async (track: string, semana: string, diaId: number, data: any) => {
+  const ref = doc(db, 'conteudoOverrides', `${track}_${semana}_${diaId}`);
   await setDoc(ref, { ...data, updatedAt: serverTimestamp() }, { merge: true });
 };
 

@@ -2,6 +2,11 @@ import { LICAO_2, LICAO_3 } from "./data2";
 import { LICAO_4, LICAO_5, LICAO_6 } from "./data3";
 import { LICAO_7, LICAO_8, LICAO_9 } from "./data4";
 import { LICAO_10, LICAO_11, LICAO_12, LICAO_13 } from "./data5";
+import { LICAO_ADULT_1 } from "./dataAdult1";
+import { LICAO_ADULT_2, LICAO_ADULT_3 } from "./dataAdult2";
+import { LICAO_ADULT_4, LICAO_ADULT_5, LICAO_ADULT_6 } from "./dataAdult3";
+import { LICAO_ADULT_7, LICAO_ADULT_8, LICAO_ADULT_9 } from "./dataAdult4";
+import { LICAO_ADULT_10, LICAO_ADULT_11, LICAO_ADULT_12, LICAO_ADULT_13 } from "./dataAdult5";
 
 export const LICAO_1 = {
   titulo: "Lição 1 - Entregando a Vida pela Fé (27 de junho a 3 de julho)",
@@ -100,13 +105,19 @@ export const LICOES = [
   LICAO_7, LICAO_8, LICAO_9, LICAO_10, LICAO_11, LICAO_12, LICAO_13
 ];
 
-// Conteúdo por trilha: teen já tem as 13 semanas: youngAdult/adult ainda não
-// têm lição nenhuma — ficam como lista vazia até o import do markdown chegar
-// (nenhuma mudança de schema/tela será necessária quando isso acontecer).
+export const LICOES_ADULT = [
+  LICAO_ADULT_1, LICAO_ADULT_2, LICAO_ADULT_3, LICAO_ADULT_4, LICAO_ADULT_5, LICAO_ADULT_6,
+  LICAO_ADULT_7, LICAO_ADULT_8, LICAO_ADULT_9, LICAO_ADULT_10, LICAO_ADULT_11, LICAO_ADULT_12, LICAO_ADULT_13
+];
+
+// Conteúdo por trilha: teen e adult já têm as 13 semanas do trimestre;
+// youngAdult ainda não tem lição nenhuma — fica como lista vazia até o
+// import do markdown chegar (nenhuma mudança de schema/tela será necessária
+// quando isso acontecer).
 export const LESSONS_BY_TRACK: Record<'teen' | 'youngAdult' | 'adult', typeof LICOES> = {
   teen: LICOES,
   youngAdult: [],
-  adult: [],
+  adult: LICOES_ADULT,
 };
 
 export const getTrackLessons = (track?: string | null) => LESSONS_BY_TRACK[(track as 'teen' | 'youngAdult' | 'adult') || 'teen'] || LICOES;
