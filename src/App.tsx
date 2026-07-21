@@ -148,7 +148,7 @@ export default function App() {
     }
   }, [theme]);
 
-  const semKey = (l: any) => 'prog_' + (l?.semana || 'w');
+  const semKey = (l: any, track?: string) => 'prog_' + (track || 'teen') + '_' + (l?.semana || 'w');
 
   useEffect(() => {
     if (!jogador?.id) return;
@@ -213,7 +213,8 @@ export default function App() {
       if (j) {
         setJogador(j);
 
-        let p = gs(semKey(l), PROG0);
+        const initialTrack = j?.track || 'teen';
+        let p = gs(semKey(l, initialTrack), PROG0);
         try {
           const user = await waitForAuthInit();
           if (user) {
@@ -242,24 +243,25 @@ export default function App() {
                ss('jogador', updatedJ);
                hasLocation = !!updatedJ.locationId;
             }
-            const dbProg = await getProgress(j.id, l.semana);
+            const track = dbUser?.track || initialTrack;
+            const dbProg = await getProgress(j.id, l.semana, track);
             if (dbProg) {
               p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
-              ss(semKey(l), p);
+              ss(semKey(l, track), p);
             } else if ((p.xp > 0 || (p.done?.length ?? 0) > 0) && dbUser) {
-              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor).catch(console.error);
+              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor).catch(console.error);
             }
 
             // Also sync previous lesson's local progress if it never reached Firestore
             if (dbUser) {
-              const allVisible = (getTrackLessons(dbUser.track) as any[]).filter((x: any) => !x.isAdminOnly);
+              const allVisible = (getTrackLessons(track) as any[]).filter((x: any) => !x.isAdminOnly);
               const curIdx = allVisible.findIndex((x: any) => x.semana === l.semana);
               if (curIdx > 0) {
                 const prevL = allVisible[curIdx - 1];
-                const prevLocal = gs(`prog_${prevL.semana}`, null);
+                const prevLocal = gs(semKey(prevL, track), null);
                 if (prevLocal && (prevLocal.xp > 0 || (prevLocal.done?.length ?? 0) > 0)) {
-                  getProgress(j.id, prevL.semana).then(prevDb => {
-                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor).catch(console.error);
+                  getProgress(j.id, prevL.semana, track).then(prevDb => {
+                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor).catch(console.error);
                   }).catch(console.error);
                 }
               }
@@ -294,7 +296,7 @@ export default function App() {
     ss('licao_atual', l);
     setLicao(l);
 
-    let p = gs(semKey(l), PROG0);
+    let p = gs(semKey(l, j?.track), PROG0);
     let r = gs('ranking_' + l.semana, []);
 
     try {
@@ -315,10 +317,10 @@ export default function App() {
       }
       await saveUser(j);
 
-      const dbProg = await getProgress(j.id, l.semana);
+      const dbProg = await getProgress(j.id, l.semana, j?.track || 'teen');
       if (dbProg) {
         p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
-        ss(semKey(l), p);
+        ss(semKey(l, j?.track), p);
       }
     } catch(e) {
       console.error("Error saving user profile or loading progress:", e);
@@ -379,7 +381,7 @@ export default function App() {
     r.sort((a, b) => b.xp - a.xp);
 
     ss('ranking_' + l.semana, r);
-    ss(semKey(l), np);
+    ss(semKey(l, jogador?.track), np);
     setRanking(r);
     setProg({ ...np, pos: calcPos(r, jogador.id, novoXP) });
 
@@ -390,7 +392,7 @@ export default function App() {
       try {
          const user = await waitForAuthInit();
          if (user) {
-            await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor);
+            await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor);
          }
       } catch(e) {
          console.error("Error updating online progress:", e);
@@ -451,11 +453,12 @@ export default function App() {
     }
   };
 
-  const handleChangeLicao = async (newLicao: any) => {
+  const handleChangeLicao = async (newLicao: any, trackOverride?: string) => {
     ss('licao_atual', newLicao);
     setLicao(newLicao);
+    const track = trackOverride || jogador?.track || 'teen';
 
-    let p = gs(semKey(newLicao), PROG0);
+    let p = gs(semKey(newLicao, track), PROG0);
     let r = gs('ranking_' + newLicao.semana, []);
 
     setRanking(r);
@@ -468,10 +471,10 @@ export default function App() {
         r = dbRanking;
         setRanking(r);
 
-        const dbProg = await getProgress(jogador.id, newLicao.semana);
+        const dbProg = await getProgress(jogador.id, newLicao.semana, track);
         if (dbProg) {
           p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
-          ss(semKey(newLicao), p);
+          ss(semKey(newLicao, track), p);
         }
 
         setProg({ ...p, pos: calcPos(r, jogador.id, p.xp || 0) });
@@ -479,6 +482,26 @@ export default function App() {
     } catch(e) {
       console.error(e);
     }
+  };
+
+  // Admin/professor podem alternar a própria trilha livremente (uso próprio:
+  // testar/acompanhar outras trilhas). Diferente de handleUpdateConfig — aqui
+  // o progresso/ranking em tela são recarregados para a trilha nova, em vez
+  // de salvar o progresso da trilha antiga sob a chave da trilha nova.
+  const handleSwitchTrack = async (newTrack: string) => {
+    if (!jogador || (!jogador.isAdmin && !jogador.isProfessor) || newTrack === jogador.track) return;
+    const novoJ = { ...jogador, track: newTrack };
+    try {
+      const user = await waitForAuthInit();
+      if (user) await saveUser(novoJ);
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao trocar de trilha. Verifique sua conexão e tente novamente.');
+      return;
+    }
+    setJogador(novoJ);
+    ss('jogador', novoJ);
+    await handleChangeLicao(getActiveLicao(newTrack), newTrack);
   };
 
   const handleLogoTap = () => {
@@ -499,13 +522,13 @@ export default function App() {
       ...prog,
       history: { ...prog.history, [diaAtual.id]: { ...diaHist, nota, hl } }
     };
-    ss(semKey(l), np);
+    ss(semKey(l, jogador?.track), np);
     setProg(np);
     try {
       const user = await waitForAuthInit();
       if (user) {
-        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor);
-        await saveStudyNote(jogador.id, l.semana, diaAtual.id, nota, hl);
+        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor);
+        await saveStudyNote(jogador.id, l.semana, jogador?.track || 'teen', diaAtual.id, nota, hl);
       }
     } catch(e) {
       console.error(e);
@@ -529,8 +552,11 @@ export default function App() {
     try {
       const user = await waitForAuthInit();
       if (user) {
-        const l = licao || getActiveLicao(novoJ.track);
-        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, !!novoJ.isAdmin, !!novoJ.isGuest, !!novoJ.isProfessor);
+        // Recalcula a lição ativa se a trilha mudou nesse save (ex: 1º cadastro
+        // escolhendo a trilha) — senão `licao` ficaria com a trilha antiga/placeholder.
+        const trackChanged = (jogador?.track || 'teen') !== (novoJ.track || 'teen');
+        const l = (!trackChanged && licao) || getActiveLicao(novoJ.track);
+        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, novoJ.track || 'teen', !!novoJ.isAdmin, !!novoJ.isGuest, !!novoJ.isProfessor);
       }
     } catch(e) { console.error(e); }
 
@@ -557,7 +583,7 @@ export default function App() {
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingPending={rankingPending} />}
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onSorteador={() => setTela('sorteador')} />}
-      {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
+      {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onSwitchTrack={handleSwitchTrack} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
       {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onSwitchToGroup={() => setTela('grupo')} onSwitchToFriends={() => setTela('amigos')} />}
       {tela === 'grupo' && <Grupo jogador={jogador} licao={licao} pendingGroupInvite={pendingGroupInvite} onClearPendingGroupInvite={clearPendingGroupInvite} onBack={() => setTela('home')} onSwitchToPair={() => setTela('dupla')} onSwitchToFriends={() => setTela('amigos')} />}

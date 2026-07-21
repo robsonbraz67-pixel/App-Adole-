@@ -151,8 +151,8 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
   const [allDone, setAllDone] = useState<Record<string, number[]>>({});
   useEffect(() => {
     if (!jogador?.id) return;
-    getUserAllDone(jogador.id).then(setAllDone).catch(() => {});
-  }, [jogador?.id]);
+    getUserAllDone(jogador.id, jogador?.track || 'teen').then(setAllDone).catch(() => {});
+  }, [jogador?.id, jogador?.track]);
 
   // Remove o prefixo "Lição N -/—" e a data entre parênteses do título bruto
   const tituloCurto = (titulo: string) => (titulo || '')
@@ -339,7 +339,7 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSav
   // sobrescreve o que o usuário já tem no aparelho / acabou de digitar).
   useEffect(() => {
     let cancelled = false;
-    getStudyNotes(jogador.id, semana).then(map => {
+    getStudyNotes(jogador.id, semana, jogador?.track || 'teen').then(map => {
       if (cancelled) return;
       const dn = map[String(dia.id)];
       if (!dn) return;
@@ -347,7 +347,7 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSav
       setHl(prev => (prev && Object.keys(prev).length ? prev : (dn.hl || {})));
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [jogador.id, semana, dia.id]);
+  }, [jogador.id, jogador?.track, semana, dia.id]);
 
   // Compartilhamento com a dupla (Etapa 4): cada item tem toggle próprio
   const pairIsUserA = activePair && activePair.userA === jogador?.id;
@@ -1570,8 +1570,8 @@ export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange,
   // Progresso do parceiro na semana atual (dias concluídos)
   useEffect(() => {
     if (!partnerId || !licao?.semana) return;
-    getProgress(partnerId, licao.semana).then((p: any) => setPartnerDone(p?.done || [])).catch(() => {});
-  }, [partnerId, licao?.semana, pair]);
+    getProgress(partnerId, licao.semana, jogador?.track || 'teen').then((p: any) => setPartnerDone(p?.done || [])).catch(() => {});
+  }, [partnerId, licao?.semana, jogador?.track, pair]);
 
   const shareUrl = (id: string) => `${window.location.origin}${window.location.pathname}?dupla=${id}`;
 
@@ -1770,11 +1770,12 @@ const GrupoDetalhe = ({ jogador, licao, group: initialGroup, onChanged, onBack }
 
   useEffect(() => {
     if (!group?.memberIds?.length || !licao?.semana) return;
-    Promise.all(group.memberIds.map((uid: string) => getProgress(uid, licao.semana).then((p: any) => [uid, p?.done || []])))
+    const track = jogador?.track || 'teen';
+    Promise.all(group.memberIds.map((uid: string) => getProgress(uid, licao.semana, track).then((p: any) => [uid, p?.done || []])))
       .then(pairs => setMembersProgress(Object.fromEntries(pairs)))
       .catch(() => {});
     getGroupHighlights(group.id, licao.semana).then(setHighlights).catch(() => {});
-  }, [group?.id, group?.memberIds?.join(','), licao?.semana]);
+  }, [group?.id, group?.memberIds?.join(','), licao?.semana, jogador?.track]);
 
   const shareUrl = (id: string) => `${window.location.origin}${window.location.pathname}?grupo=${id}`;
 
@@ -2022,10 +2023,10 @@ const AmigoLinha = ({ jogador, streak, licao, onEnded }: any) => {
 
   useEffect(() => {
     if (!friendId) return;
-    Promise.all([getUserAllDone(jogador.id), getUserAllDone(friendId)])
+    Promise.all([getUserAllDone(jogador.id, streak.track), getUserAllDone(friendId, streak.track)])
       .then(([mine, theirs]) => setMutual(computeMutualStreak(mine, theirs, getTrackLessons(streak.track))))
       .catch(() => setMutual(0));
-  }, [friendId, jogador.id]);
+  }, [friendId, jogador.id, streak.track]);
 
   const handleEncerrar = async () => {
     if (!window.confirm(`Encerrar a ofensiva com ${friendName || 'essa pessoa'}?`)) return;
@@ -2678,7 +2679,7 @@ export const Admin = ({ licao, jogador, onBack, onSorteador }: any) => {
 // (ver comentário lá) para exigir de novo no servidor, não só na UI.
 const REQUIRE_INVITE_CODE_FOR_STUDENTS = false;
 
-export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange }: any) => {
+export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme, onThemeChange }: any) => {
   const [nome, setNome] = useState(jogador.nome || '');
   const [avatar, setAvatar] = useState(jogador.avatar || '🦁');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -2698,6 +2699,20 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
   const [track, setTrack] = useState<Track>(jogador.track || 'teen');
   const [savingSetup, setSavingSetup] = useState(false);
   const currentLocationName = locations.find(l => l.id === jogador.locationId)?.name;
+
+  // Admin/professor: alternar a própria trilha livremente, uso próprio
+  // (testar/acompanhar outras trilhas), sem precisar de outro admin.
+  const [switchingTrack, setSwitchingTrack] = useState(false);
+  const handleSwitchTrackClick = async (t: Track) => {
+    if (t === 'youngAdult' || t === jogador.track || switchingTrack) return;
+    setSwitchingTrack(true);
+    try {
+      await onSwitchTrack?.(t);
+    } catch (e) {
+      alert('Erro ao trocar de trilha. Verifique sua conexão e tente novamente.');
+    }
+    setSwitchingTrack(false);
+  };
 
   // Resgate de código de convite (autopreenche local + trilha)
   const [inviteInput, setInviteInput] = useState('');
@@ -2790,7 +2805,34 @@ export const Config = ({ jogador, onSave, onBack, onLogout, theme, onThemeChange
 
         <div style={{background:'var(--panel-bg)', padding: '20px 16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
           <div style={{fontWeight:800, marginBottom:16, color:'var(--txt2)'}}>🏠 Local de Estudo e Trilha</div>
-          {locationLocked ? (
+          {locationLocked && canManageLocations ? (
+            /* Admin/professor: local trava normal, mas a trilha fica livre pra
+               alternar sempre (uso próprio: testar/acompanhar outras trilhas). */
+            <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.6}}>
+              Local: <strong>{currentLocationName || '...'}</strong>
+              <div style={{fontSize:11, color:'var(--mut)', margin:'10px 0 8px'}}>Sua trilha (admin/professor pode alternar a qualquer momento):</div>
+              <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                {(['teen', 'youngAdult', 'adult'] as Track[]).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={t === 'youngAdult' || switchingTrack}
+                    onClick={() => handleSwitchTrackClick(t)}
+                    style={{
+                      flex: '1 1 30%', padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 800,
+                      border: jogador.track === t ? '2px solid var(--gold)' : '1px solid var(--input-border)',
+                      background: jogador.track === t ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
+                      color: t === 'youngAdult' ? 'var(--mut)' : 'var(--txt)',
+                      opacity: t === 'youngAdult' || switchingTrack ? 0.6 : 1,
+                      cursor: t === 'youngAdult' ? 'not-allowed' : (switchingTrack ? 'wait' : 'pointer')
+                    }}
+                  >
+                    {TRACK_LABELS[t]}{t === 'youngAdult' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : locationLocked ? (
             <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.6}}>
               Local: <strong>{currentLocationName || '...'}</strong><br/>
               Trilha: <strong>{TRACK_LABELS[(jogador.track as Track) || 'teen']}</strong>
