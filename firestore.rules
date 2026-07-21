@@ -63,12 +63,15 @@ service cloud.firestore {
         && (!data.keys().hasAny(['inviteCode']) || (data.inviteCode is string && data.inviteCode.size() <= 40));
     }
 
-    // Uma vez definidos pelo próprio usuário no cadastro, track/locationId só
-    // podem ser trocados por admin (ver bloco de update abaixo) — impede que o
-    // usuário se mova de local/trilha sozinho depois de escolher.
+    // Uma vez definidos pelo próprio usuário no cadastro, locationId só pode
+    // ser trocado por admin (ver bloco de update abaixo) — impede que o
+    // usuário se mova de local sozinho depois de escolher. A trilha segue a
+    // mesma trava para alunos comuns, mas admin/professor podem alternar a
+    // própria trilha livremente (uso próprio: testar/acompanhar outras
+    // trilhas sem precisar de outro admin para liberar).
     function ownerLocationTrackUnchanged() {
       return (!existing().keys().hasAny(['locationId']) || incoming().locationId == existing().locationId)
-        && (!existing().keys().hasAny(['track']) || incoming().track == existing().track);
+        && (canManage() || !existing().keys().hasAny(['track']) || incoming().track == existing().track);
     }
 
     // Convite por código (ferramenta pronta, mas não obrigatória agora — ver
@@ -543,9 +546,10 @@ service cloud.firestore {
     }
 
     function isValidProgress(data) {
-      return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
+      return data.keys().hasAll(['userId', 'week', 'track', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string
         && data.week is string && data.week.size() > 0 && data.week.size() <= 20
+        && data.track in ['teen', 'youngAdult', 'adult']
         && (!data.keys().hasAny(['trimestre']) || data.trimestre is string)
         && data.xp is number
         && data.streak is number
@@ -564,9 +568,9 @@ service cloud.firestore {
       allow get, list: if isAuthenticated();
 
       allow create: if isAuthenticated()
-        && progressId == incoming().userId + '_' + incoming().week
+        && progressId == incoming().userId + '_' + incoming().track + '_' + incoming().week
         && isOwner(incoming().userId)
-        && incoming().keys().hasOnly(['userId', 'week', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
+        && incoming().keys().hasOnly(['userId', 'week', 'track', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));
 
@@ -574,6 +578,7 @@ service cloud.firestore {
         && isOwner(existing().userId)
         && incoming().userId == existing().userId
         && incoming().week == existing().week
+        && incoming().track == existing().track
         && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
         && isValidProgress(incoming());
 
@@ -588,9 +593,10 @@ service cloud.firestore {
       allow get, list: if isAuthenticated() && docId.split('_')[0] == request.auth.uid;
       allow create, update: if isAuthenticated()
         && incoming().userId == request.auth.uid
-        && docId == incoming().userId + '_' + incoming().week
-        && incoming().keys().hasOnly(['userId', 'week', 'notes', 'updatedAt'])
+        && docId == incoming().userId + '_' + incoming().track + '_' + incoming().week
+        && incoming().keys().hasOnly(['userId', 'week', 'track', 'notes', 'updatedAt'])
         && incoming().week is string && incoming().week.size() <= 20
+        && incoming().track in ['teen', 'youngAdult', 'adult']
         && incoming().notes is map
         && incoming().updatedAt == request.time;
       allow delete: if isAuthenticated() && docId.split('_')[0] == request.auth.uid;

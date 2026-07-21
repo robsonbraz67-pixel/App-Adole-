@@ -268,12 +268,13 @@ const stripPrivateNotes = (history: any): any => {
   return clean;
 };
 
-export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean) => {
-  const progId = `${userId}_${week}`;
+export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, track: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean) => {
+  const progId = `${userId}_${track}_${week}`;
   const progRef = doc(db, 'progress', progId);
   await setDoc(progRef, {
     userId,
     week,
+    track,
     trimestre,
     xp: prog.xp,
     streak: prog.streak,
@@ -290,8 +291,8 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
   }, { merge: true });
 };
 
-export const getProgress = async (userId: string, week: string) => {
-  const progId = `${userId}_${week}`;
+export const getProgress = async (userId: string, week: string, track: string) => {
+  const progId = `${userId}_${track}_${week}`;
   const progRef = doc(db, 'progress', progId);
   const snap = await getDoc(progRef);
   return snap.exists() ? snap.data() : null;
@@ -300,26 +301,27 @@ export const getProgress = async (userId: string, week: string) => {
 // ===== Anotações privadas (Etapa 8) =====
 // nota/destaque do usuário ficam aqui, legíveis SÓ pelo dono — nunca no
 // progress (que é público para o ranking).
-export const saveStudyNote = async (userId: string, week: string, dayId: number, nota: string, hl: any) => {
-  const ref = doc(db, 'studyNotes', `${userId}_${week}`);
+export const saveStudyNote = async (userId: string, week: string, track: string, dayId: number, nota: string, hl: any) => {
+  const ref = doc(db, 'studyNotes', `${userId}_${track}_${week}`);
   await setDoc(ref, {
     userId,
     week,
+    track,
     notes: { [String(dayId)]: { nota: nota || '', hl: hl || {} } },
     updatedAt: serverTimestamp(),
   }, { merge: true });
 };
 
-export const getStudyNotes = async (userId: string, week: string): Promise<Record<string, { nota: string; hl: any }>> => {
-  const ref = doc(db, 'studyNotes', `${userId}_${week}`);
+export const getStudyNotes = async (userId: string, week: string, track: string): Promise<Record<string, { nota: string; hl: any }>> => {
+  const ref = doc(db, 'studyNotes', `${userId}_${track}_${week}`);
   const snap = await getDoc(ref);
   return snap.exists() ? (snap.data().notes || {}) : {};
 };
 
-// Mapa { semana: [diaIds concluídos] } de todas as semanas do usuário —
-// usado para marcar dias já feitos em semanas anteriores na trilha
-export const getUserAllDone = async (userId: string): Promise<Record<string, number[]>> => {
-  const snap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId)));
+// Mapa { semana: [diaIds concluídos] } das semanas do usuário NA TRILHA
+// informada — usado para marcar dias já feitos em semanas anteriores.
+export const getUserAllDone = async (userId: string, track: string): Promise<Record<string, number[]>> => {
+  const snap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId), where('track', '==', track)));
   const map: Record<string, number[]> = {};
   snap.forEach(doc => {
     const data = doc.data();
@@ -667,14 +669,25 @@ export const getWeeklyRanking = async (week: string) => {
     getDocs(query(collection(db, 'progress'), where('week', '==', week))),
     getAdminIds(),
   ]);
-  const results: any[] = [];
+  // Um usuário pode ter mais de um doc na mesma semana (uma por trilha, caso
+  // de admin/professor com acesso a mais de uma trilha) — soma num único
+  // lugar no ranking em vez de duplicar a linha.
+  const byUser: Record<string, any> = {};
   snap.forEach(doc => {
     const data = doc.data();
     if (isRankingHidden(data.nome)) return;
     if (data.isGuest) return;
-    results.push({ id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId), isProfessor: !!data.isProfessor });
+    const dias = data.done?.length || 0;
+    const existing = byUser[data.userId];
+    if (existing) {
+      existing.xp += (data.xp || 0);
+      existing.dias += dias;
+    } else {
+      byUser[data.userId] = { id: data.userId, ...data, dias, isAdmin: data.isAdmin || adminIds.has(data.userId), isProfessor: !!data.isProfessor };
+    }
   });
-  return results.sort((a, b) => b.xp - a.xp);
+  const results = Object.values(byUser);
+  return results.sort((a: any, b: any) => b.xp - a.xp);
 };
 
 export const getSeasonRanking = async (trimestre: string) => {
