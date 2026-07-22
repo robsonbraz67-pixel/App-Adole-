@@ -268,8 +268,17 @@ const stripPrivateNotes = (history: any): any => {
   return clean;
 };
 
+// Chave do doc de progresso/nota. IMPORTANTE p/ compatibilidade: todo o
+// histórico (antes da trilha adulto, quando todos eram 'teen') vive na chave
+// LEGADA `${userId}_${week}`. Por isso 'teen' (e ausência de trilha) continua
+// usando a chave legada — sem migração, sem perder dados. As trilhas novas
+// (adult/youngAdult) usam chave própria, mantendo o progresso separado por
+// trilha para quem tem acesso a mais de uma (admin/professor).
+const trackKey = (userId: string, week: string, track?: string) =>
+  (!track || track === 'teen') ? `${userId}_${week}` : `${userId}_${track}_${week}`;
+
 export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, track: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean) => {
-  const progId = `${userId}_${track}_${week}`;
+  const progId = trackKey(userId, week, track);
   const progRef = doc(db, 'progress', progId);
   await setDoc(progRef, {
     userId,
@@ -291,18 +300,47 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
   }, { merge: true });
 };
 
+// Mescla dois docs de progresso SEM perder nada: une os dias concluídos,
+// junta o history por dia (fica com a entrada de maior XP), e recalcula o XP
+// total a partir do history (com piso no maior XP dos dois, por segurança).
+const mergeProgress = (a: any, b: any) => {
+  if (!a) return b;
+  if (!b) return a;
+  const done = Array.from(new Set([...(a.done || []), ...(b.done || [])])).sort((x: any, y: any) => x - y);
+  const history: any = { ...(a.history || {}) };
+  for (const [dia, entry] of Object.entries(b.history || {})) {
+    const cur = history[dia];
+    if (!cur || ((entry as any)?.xp || 0) > (cur?.xp || 0)) history[dia] = entry;
+  }
+  let xp = 0;
+  for (const e of Object.values(history)) xp += ((e as any)?.xp || 0);
+  xp = Math.max(xp, a.xp || 0, b.xp || 0);
+  const base = (a.done?.length || 0) >= (b.done?.length || 0) ? a : b; // nome/avatar/etc.
+  return { ...base, done, history, xp, streak: Math.max(a.streak || 0, b.streak || 0) };
+};
+
 export const getProgress = async (userId: string, week: string, track: string) => {
-  const progId = `${userId}_${track}_${week}`;
-  const progRef = doc(db, 'progress', progId);
-  const snap = await getDoc(progRef);
-  return snap.exists() ? snap.data() : null;
+  const snap = await getDoc(doc(db, 'progress', trackKey(userId, week, track)));
+  const main = snap.exists() ? snap.data() : null;
+  // Recuperação: durante a janela do bug de chave (deploy que gravava sempre
+  // `${userId}_${track}_${week}`, inclusive teen), o progresso teen pode ter
+  // ido parar em `${userId}_teen_${week}`. Se existir, MESCLA (une os dias),
+  // para ninguém perder o que fez naquele intervalo. O próximo save do usuário
+  // grava o resultado mesclado na chave legada, então isso se auto-corrige.
+  if (!track || track === 'teen') {
+    try {
+      const janelaSnap = await getDoc(doc(db, 'progress', `${userId}_teen_${week}`));
+      if (janelaSnap.exists()) return mergeProgress(main, janelaSnap.data());
+    } catch { /* ignora — a recuperação é best-effort */ }
+  }
+  return main;
 };
 
 // ===== Anotações privadas (Etapa 8) =====
 // nota/destaque do usuário ficam aqui, legíveis SÓ pelo dono — nunca no
 // progress (que é público para o ranking).
 export const saveStudyNote = async (userId: string, week: string, track: string, dayId: number, nota: string, hl: any) => {
-  const ref = doc(db, 'studyNotes', `${userId}_${track}_${week}`);
+  const ref = doc(db, 'studyNotes', trackKey(userId, week, track));
   await setDoc(ref, {
     userId,
     week,
@@ -313,19 +351,24 @@ export const saveStudyNote = async (userId: string, week: string, track: string,
 };
 
 export const getStudyNotes = async (userId: string, week: string, track: string): Promise<Record<string, { nota: string; hl: any }>> => {
-  const ref = doc(db, 'studyNotes', `${userId}_${track}_${week}`);
+  const ref = doc(db, 'studyNotes', trackKey(userId, week, track));
   const snap = await getDoc(ref);
   return snap.exists() ? (snap.data().notes || {}) : {};
 };
 
-// Mapa { semana: [diaIds concluídos] } das semanas do usuário NA TRILHA
-// informada — usado para marcar dias já feitos em semanas anteriores.
-export const getUserAllDone = async (userId: string, track: string): Promise<Record<string, number[]>> => {
-  const snap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId), where('track', '==', track)));
+// Mapa { semana: [diaIds concluídos] } das semanas do usuário — usado para
+// marcar dias já feitos em semanas anteriores. Consulta só por userId: os
+// docs legados (histórico) não têm campo `track`, então filtrar por trilha
+// no servidor excluiria justamente o histórico.
+export const getUserAllDone = async (userId: string, _track?: string): Promise<Record<string, number[]>> => {
+  const snap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId)));
   const map: Record<string, number[]> = {};
   snap.forEach(doc => {
     const data = doc.data();
-    map[data.week] = data.done || [];
+    // Se houver mais de um doc para a mesma semana (ex.: legado + janela do
+    // bug), fica com o mais completo para não "desmarcar" dias já feitos.
+    const done = data.done || [];
+    if (!map[data.week] || done.length > map[data.week].length) map[data.week] = done;
   });
   return map;
 };
@@ -669,25 +712,22 @@ export const getWeeklyRanking = async (week: string) => {
     getDocs(query(collection(db, 'progress'), where('week', '==', week))),
     getAdminIds(),
   ]);
-  // Um usuário pode ter mais de um doc na mesma semana (uma por trilha, caso
-  // de admin/professor com acesso a mais de uma trilha) — soma num único
-  // lugar no ranking em vez de duplicar a linha.
+  // Um usuário pode ter mais de um doc na mesma semana (chave legada + chave
+  // por trilha da janela do bug, ou trilhas diferentes para admin/professor).
+  // Fica com o doc MAIS COMPLETO por usuário — nunca duplica a linha nem
+  // soma duas trilhas (o que seria injusto no ranking).
   const byUser: Record<string, any> = {};
   snap.forEach(doc => {
     const data = doc.data();
     if (isRankingHidden(data.nome)) return;
     if (data.isGuest) return;
-    const dias = data.done?.length || 0;
-    const existing = byUser[data.userId];
-    if (existing) {
-      existing.xp += (data.xp || 0);
-      existing.dias += dias;
-    } else {
-      byUser[data.userId] = { id: data.userId, ...data, dias, isAdmin: data.isAdmin || adminIds.has(data.userId), isProfessor: !!data.isProfessor };
+    const row: any = { id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId), isProfessor: !!data.isProfessor };
+    const cur = byUser[data.userId];
+    if (!cur || row.dias > cur.dias || (row.dias === cur.dias && (row.xp || 0) > (cur.xp || 0))) {
+      byUser[data.userId] = row;
     }
   });
-  const results = Object.values(byUser);
-  return results.sort((a: any, b: any) => b.xp - a.xp);
+  return Object.values(byUser).sort((a: any, b: any) => b.xp - a.xp);
 };
 
 export const getSeasonRanking = async (trimestre: string) => {
@@ -695,12 +735,24 @@ export const getSeasonRanking = async (trimestre: string) => {
     getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre))),
     getAdminIds(),
   ]);
-  const userTotals: Record<string, any> = {};
+  // Primeiro colapsa por (usuário, semana) pegando o doc mais completo — evita
+  // contar duas vezes a mesma semana quando há doc legado + doc da janela do
+  // bug. Só depois soma as semanas de cada usuário.
+  const porUserSemana: Record<string, any> = {};
   snap.forEach(doc => {
     const data = doc.data();
-    const uid = data.userId;
     if (isRankingHidden(data.nome)) return;
     if (data.isGuest) return;
+    const k = `${data.userId}__${data.week}`;
+    const cur = porUserSemana[k];
+    const dias = data.done?.length || 0;
+    if (!cur || dias > (cur.done?.length || 0) || (dias === (cur.done?.length || 0) && (data.xp || 0) > (cur.xp || 0))) {
+      porUserSemana[k] = data;
+    }
+  });
+  const userTotals: Record<string, any> = {};
+  Object.values(porUserSemana).forEach((data: any) => {
+    const uid = data.userId;
     if (!userTotals[uid]) {
       userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: data.isAdmin || adminIds.has(uid), isProfessor: !!data.isProfessor };
     }

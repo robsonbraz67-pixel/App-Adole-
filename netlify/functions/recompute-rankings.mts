@@ -46,17 +46,23 @@ export default async (): Promise<Response> => {
   const users: Record<string, any> = {};
   usersSnap.forEach(d => { users[d.id] = d.data(); });
 
-  // 2) Acumula por bucket = `${locationId}__${track|general}__${trimestreSlug}`
-  const buckets: Record<string, Record<string, Entry>> = {};
+  // 2) Acumula por bucket = `${locationId}__${track|general}__${trimestreSlug}`.
+  // Guarda por (usuário, semana) pegando o doc MAIS COMPLETO — um mesmo usuário
+  // pode ter mais de um doc na mesma semana (chave legada + chave por trilha
+  // criada na janela do bug de chave), e somar os dois inflaria o ranking.
+  type Acc = { u: any; weeks: Record<string, { dias: number; xp: number }> };
+  const buckets: Record<string, Record<string, Acc>> = {};
   const meta: Record<string, { locationId: string; track: string; trimestre: string }> = {};
 
-  const add = (locationId: string, track: string, trimestre: string, uid: string, u: any, dias: number, xp: number) => {
+  const add = (locationId: string, track: string, trimestre: string, uid: string, u: any, week: string, dias: number, xp: number) => {
     const key = `${locationId}__${track}__${slug(trimestre)}`;
     if (!buckets[key]) { buckets[key] = {}; meta[key] = { locationId, track, trimestre }; }
     const b = buckets[key];
-    if (!b[uid]) b[uid] = { id: uid, nome: u.nome || '', avatar: u.avatar || '🦁', dias: 0, xp: 0, isAdmin: !!u.isAdmin, isProfessor: !!u.isProfessor };
-    b[uid].dias += dias;
-    b[uid].xp += xp;
+    if (!b[uid]) b[uid] = { u, weeks: {} };
+    const cur = b[uid].weeks[week];
+    if (!cur || dias > cur.dias || (dias === cur.dias && xp > cur.xp)) {
+      b[uid].weeks[week] = { dias, xp };
+    }
   };
 
   const progSnap = await db.collection('progress').get();
@@ -91,8 +97,9 @@ export default async (): Promise<Response> => {
     const dias = Array.isArray(p.done) ? p.done.length : 0;
     const xp = typeof p.xp === 'number' ? p.xp : 0;
     const trimestre = p.trimestre || 'sem-temporada';
-    add(u.locationId, u.track, trimestre, p.userId, u, dias, xp);   // ranking por trilha
-    add(u.locationId, 'general', trimestre, p.userId, u, dias, xp); // ranking geral do local
+    const week = typeof p.week === 'string' ? p.week : (d.id || '');
+    add(u.locationId, u.track, trimestre, p.userId, u, week, dias, xp);   // ranking por trilha
+    add(u.locationId, 'general', trimestre, p.userId, u, week, dias, xp); // ranking geral do local
   });
   if (scrubs.length) { await Promise.all(scrubs); console.log(`Notas legadas removidas de ${scrubs.length} docs de progresso.`); }
 
@@ -101,7 +108,11 @@ export default async (): Promise<Response> => {
   let written = 0;
   const batchWrites: Promise<any>[] = [];
   for (const key of Object.keys(buckets)) {
-    const entries = Object.values(buckets[key]).sort((a, b) => (b.dias - a.dias) || (b.xp - a.xp));
+    const entries: Entry[] = Object.entries(buckets[key]).map(([uid, rec]) => {
+      let dias = 0, xp = 0;
+      for (const w of Object.values(rec.weeks)) { dias += w.dias; xp += w.xp; }
+      return { id: uid, nome: rec.u.nome || '', avatar: rec.u.avatar || '🦁', dias, xp, isAdmin: !!rec.u.isAdmin, isProfessor: !!rec.u.isProfessor };
+    }).sort((a, b) => (b.dias - a.dias) || (b.xp - a.xp));
     const m = meta[key];
     batchWrites.push(
       db.collection('rankings').doc(key).set({
