@@ -546,10 +546,10 @@ service cloud.firestore {
     }
 
     function isValidProgress(data) {
-      return data.keys().hasAll(['userId', 'week', 'track', 'xp', 'streak', 'nome', 'avatar'])
+      return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string
         && data.week is string && data.week.size() > 0 && data.week.size() <= 20
-        && data.track in ['teen', 'youngAdult', 'adult']
+        && (!data.keys().hasAny(['track']) || data.track in ['teen', 'youngAdult', 'adult'])
         && (!data.keys().hasAny(['trimestre']) || data.trimestre is string)
         && data.xp is number
         && data.streak is number
@@ -567,19 +567,23 @@ service cloud.firestore {
       // Anyone authenticated can read for ranking
       allow get, list: if isAuthenticated();
 
+      // Doc id pode ser a chave legada `${uid}_${week}` (histórico, trilha teen)
+      // ou `${uid}_${track}_${week}` (trilhas novas). Como UIDs do Firebase Auth
+      // não contêm '_', split('_')[0] isola o dono e cobre os dois formatos.
       allow create: if isAuthenticated()
-        && progressId == incoming().userId + '_' + incoming().track + '_' + incoming().week
+        && progressId.split('_')[0] == incoming().userId
         && isOwner(incoming().userId)
         && incoming().keys().hasOnly(['userId', 'week', 'track', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));
 
+      // 'track' entra em affectedKeys: docs legados não tinham esse campo e o
+      // primeiro save depois desta mudança o adiciona — precisa ser permitido.
       allow update: if isAuthenticated()
         && isOwner(existing().userId)
         && incoming().userId == existing().userId
         && incoming().week == existing().week
-        && incoming().track == existing().track
-        && incoming().diff(existing()).affectedKeys().hasOnly(['trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['track', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
         && isValidProgress(incoming());
 
       allow delete: if false;
@@ -593,10 +597,10 @@ service cloud.firestore {
       allow get, list: if isAuthenticated() && docId.split('_')[0] == request.auth.uid;
       allow create, update: if isAuthenticated()
         && incoming().userId == request.auth.uid
-        && docId == incoming().userId + '_' + incoming().track + '_' + incoming().week
+        && docId.split('_')[0] == incoming().userId
         && incoming().keys().hasOnly(['userId', 'week', 'track', 'notes', 'updatedAt'])
         && incoming().week is string && incoming().week.size() <= 20
-        && incoming().track in ['teen', 'youngAdult', 'adult']
+        && (!incoming().keys().hasAny(['track']) || incoming().track in ['teen', 'youngAdult', 'adult'])
         && incoming().notes is map
         && incoming().updatedAt == request.time;
       allow delete: if isAuthenticated() && docId.split('_')[0] == request.auth.uid;

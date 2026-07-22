@@ -148,7 +148,9 @@ export default function App() {
     }
   }, [theme]);
 
-  const semKey = (l: any, track?: string) => 'prog_' + (track || 'teen') + '_' + (l?.semana || 'w');
+  // Compatível com o cache antigo: teen (histórico de todos) mantém a chave
+  // legada `prog_${semana}`; trilhas novas ganham a trilha na chave.
+  const semKey = (l: any, track?: string) => 'prog_' + (track && track !== 'teen' ? track + '_' : '') + (l?.semana || 'w');
 
   useEffect(() => {
     if (!jogador?.id) return;
