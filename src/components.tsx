@@ -1145,6 +1145,98 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     setSharing(false);
   };
 
+  // Expansão inline (accordion) da pontuação diária: só o próprio usuário
+  // pode abrir a própria linha; admin abre qualquer aluno; professor só
+  // abre alunos do local atribuído a ele em teacherAssignments.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [otherHistory, setOtherHistory] = useState<Record<string, any>>({});
+  const [allowedForProf, setAllowedForProf] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (jogador.isAdmin || !jogador.isProfessor) { setAllowedForProf(new Set()); return; }
+    let cancelled = false;
+    (async () => {
+      const assignment = await getTeacherAssignment(jogador.id).catch(() => null);
+      const locId = (assignment as any)?.locationId;
+      if (!locId) { if (!cancelled) setAllowedForProf(new Set()); return; }
+      const ids = Array.from(new Set([...regular, ...staff].map((r: any) => r.id))).filter((id: string) => id !== jogador.id);
+      const users = await Promise.all(ids.map((id: string) => getUser(id).catch(() => null)));
+      if (cancelled) return;
+      const allowed = new Set<string>();
+      ids.forEach((id: string, idx: number) => { if ((users[idx] as any)?.locationId === locId) allowed.add(id); });
+      setAllowedForProf(allowed);
+    })();
+    return () => { cancelled = true; };
+  }, [jogador.id, jogador.isAdmin, jogador.isProfessor, regular, staff]);
+
+  const canExpand = (r: any) => r.id === jogador.id || !!jogador.isAdmin || allowedForProf.has(r.id);
+
+  const toggleExpand = async (r: any) => {
+    if (expandedId === r.id) { setExpandedId(null); return; }
+    setExpandedId(r.id);
+    if (r.id === jogador.id || r.history || otherHistory[r.id]) return;
+    setOtherHistory(prev => ({ ...prev, [r.id]: 'loading' }));
+    try {
+      const track = r.track || jogador?.track || 'teen';
+      const data = await getProgress(r.id, licao.semana, track);
+      setOtherHistory(prev => ({ ...prev, [r.id]: data || 'empty' }));
+    } catch {
+      setOtherHistory(prev => ({ ...prev, [r.id]: 'error' }));
+    }
+  };
+
+  // Fonte dos dados diários: mesmo documento `progress` que já alimenta o
+  // total do ranking — só que aqui detalhado por dia (history[diaId].xp)
+  // em vez de somado. Para o próprio usuário usa `prog` (estado mais fresco);
+  // para quem já vem com `history` embutido (aba Semana) reaproveita direto;
+  // senão busca sob demanda ao expandir (abas Trilha/Local).
+  const getRowDetail = (r: any) => {
+    let history: any;
+    if (r.id === jogador.id) {
+      history = prog.history || {};
+    } else if (r.history) {
+      history = r.history;
+    } else {
+      const cached = otherHistory[r.id];
+      if (cached === 'loading') return { days: null, loading: true, error: false };
+      if (cached === 'error') return { days: null, loading: false, error: true };
+      history = cached && cached !== 'empty' ? (cached.history || {}) : {};
+    }
+    const days = (licao?.dias || []).map((d: any) => ({ id: d.id, label: d.diaSemana, xp: history?.[d.id]?.xp || 0 }));
+    return { days, loading: false, error: false };
+  };
+
+  const Chevron = ({ open }: { open: boolean }) => (
+    <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,color:'var(--mut)',transform:open?'rotate(180deg)':'none',transition:'transform .2s'}}>
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  );
+
+  const renderDayDetail = (r: any) => {
+    const { days, loading, error } = getRowDetail(r);
+    const maxXp = days ? Math.max(1, ...days.map((d: any) => d.xp)) : 1;
+    return (
+      <div style={{padding:'0 16px 14px',borderTop:'1px solid var(--b2)'}}>
+        <div style={{fontSize:11,color:'var(--mut)',margin:'12px 0 8px',letterSpacing:'.04em'}}>PONTUAÇÃO POR DIA · ESTA SEMANA</div>
+        {loading && <div style={{fontSize:13,color:'var(--mut)',padding:'4px 0 8px'}}>Carregando...</div>}
+        {error && <div style={{fontSize:13,color:'var(--mut)',padding:'4px 0 8px'}}>Não foi possível carregar a pontuação diária.</div>}
+        {days && !loading && !error && (
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {days.map((d: any) => (
+              <div key={d.id} style={{display:'flex',alignItems:'center',gap:10,fontSize:13}}>
+                <span style={{width:34,color:'var(--mut)',fontWeight:600,flexShrink:0}}>{d.label}</span>
+                <span style={{flex:1,height:8,background:'var(--g3)',borderRadius:5,overflow:'hidden'}}>
+                  <span style={{display:'block',height:'100%',borderRadius:5,width:`${(d.xp/maxXp)*100}%`,background:d.xp>0?'var(--teal)':'var(--b2)'}}/>
+                </span>
+                <span style={{width:44,textAlign:'right',color:'var(--mut)',fontSize:12,flexShrink:0}}>{d.xp} XP</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderRow = (r: any, zone: 'promo' | 'down' | '') => {
     const eu = r.id === jogador.id;
     const i = regular.indexOf(r);
@@ -1154,23 +1246,29 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       : zone === 'down' ? 'linear-gradient(135deg,rgba(229,0,109,.08),rgba(229,0,109,.02))'
       : 'var(--g2)';
     const bd = eu ? 'rgba(247,198,0,.4)' : zone === 'promo' ? 'rgba(30,158,134,.4)' : zone === 'down' ? 'rgba(229,0,109,.3)' : 'var(--b2)';
+    const expandable = canExpand(r);
+    const isOpen = expandedId === r.id;
     return (
-      <div key={r.id} style={{background:bg,border:`2px solid ${bd}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
-        <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
-        <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
-          {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
-        </div>
-        <div style={{flex:1, minWidth:0}}>
-          <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--txt)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
-          <div style={{fontSize:12,color:zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)',marginTop:2,fontWeight:zone?700:400}}>
-            {zone === 'promo'
-              ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · {type === 'week' ? '🎰 no sorteio' : '✅ em dia'}</>
-              : zone === 'down'
-                ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · ⚠️ {atraso} dia{atraso!==1?'s':''} atrasado{atraso!==1?'s':''}</>
-                : <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</>}
+      <div key={r.id} style={{background:bg,border:`2px solid ${bd}`,borderRadius:14,overflow:'hidden',animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+        <div onClick={expandable ? () => toggleExpand(r) : undefined} style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:12,cursor:expandable?'pointer':'default'}}>
+          <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
+          <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
+            {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
           </div>
+          <div style={{flex:1, minWidth:0}}>
+            <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--txt)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
+            <div style={{fontSize:12,color:zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)',marginTop:2,fontWeight:zone?700:400}}>
+              {zone === 'promo'
+                ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · {type === 'week' ? '🎰 no sorteio' : '✅ em dia'}</>
+                : zone === 'down'
+                  ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · ⚠️ {atraso} dia{atraso!==1?'s':''} atrasado{atraso!==1?'s':''}</>
+                  : <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</>}
+            </div>
+          </div>
+          <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
+          {expandable && <Chevron open={isOpen} />}
         </div>
-        <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
+        {isOpen && expandable && renderDayDetail(r)}
       </div>
     );
   };
@@ -1289,17 +1387,23 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
                 const cor = r.isAdmin ? 'var(--admin)' : 'var(--blu)';
                 const rgb = r.isAdmin ? '155,109,255' : '74,144,217';
                 const ic = r.isAdmin ? '🛡️' : '🎓';
+                const expandable = canExpand(r);
+                const isOpen = expandedId === r.id;
                 return (
-                  <div key={r.id} style={{background:eu?`linear-gradient(135deg,rgba(${rgb},.16),rgba(${rgb},.06))`:`rgba(${rgb},.08)`,border:`2px solid ${eu?`rgba(${rgb},.55)`:`rgba(${rgb},.25)`}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
-                    <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:cor}}>{ic}</div>
-                    <div style={{width: 40, height: 40, borderRadius: '50%', background:`rgba(${rgb},.18)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:`1.5px solid rgba(${rgb},.35)`}}>
-                      {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
+                  <div key={r.id} style={{background:eu?`linear-gradient(135deg,rgba(${rgb},.16),rgba(${rgb},.06))`:`rgba(${rgb},.08)`,border:`2px solid ${eu?`rgba(${rgb},.55)`:`rgba(${rgb},.25)`}`,borderRadius:14,overflow:'hidden',animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+                    <div onClick={expandable ? () => toggleExpand(r) : undefined} style={{padding:'12px 16px',display:'flex',alignItems:'center',gap:12,cursor:expandable?'pointer':'default'}}>
+                      <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:cor}}>{ic}</div>
+                      <div style={{width: 40, height: 40, borderRadius: '50%', background:`rgba(${rgb},.18)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:`1.5px solid rgba(${rgb},.35)`}}>
+                        {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
+                      </div>
+                      <div style={{flex:1, minWidth:0}}>
+                        <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:cor}}>{r.nome}{eu ? ' 👈' : ''}</div>
+                        <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
+                      </div>
+                      <div style={{fontWeight:900,color:cor,fontSize:15,flexShrink:0,opacity:.85}}>{r.xp || 0} XP</div>
+                      {expandable && <Chevron open={isOpen} />}
                     </div>
-                    <div style={{flex:1, minWidth:0}}>
-                      <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:cor}}>{r.nome}{eu ? ' 👈' : ''}</div>
-                      <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
-                    </div>
-                    <div style={{fontWeight:900,color:cor,fontSize:15,flexShrink:0,opacity:.85}}>{r.xp || 0} XP</div>
+                    {isOpen && expandable && renderDayDetail(r)}
                   </div>
                 );
               })}
