@@ -1,8 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { isRankingHidden, computeRealStreak } from './utils';
-import { LICOES } from './data';
+import { isRankingHidden, computeRealStreak, aggregateWeekRanking } from './utils';
+
 const firebaseConfig = {
   projectId:         import.meta.env.VITE_FB_PROJECT_ID,
   appId:             import.meta.env.VITE_FB_APP_ID,
@@ -16,7 +16,7 @@ const firestoreDatabaseId = import.meta.env.VITE_FB_FIRESTORE_DB;
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firestoreDatabaseId);
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+const googleProvider = new GoogleAuthProvider();
 
 let authInitialized = false;
 let authPromise: Promise<User | null> | null = null;
@@ -235,26 +235,6 @@ export const getAdminIds = async (): Promise<Set<string>> => {
   }
 };
 
-export const sendManualNotification = async (userIds: string[], title: string, body: string) => {
-  const now = new Date().getTime();
-  for (const uid of userIds) {
-    const userRef = doc(db, 'users', uid);
-    await setDoc(userRef, { manualNotification: { title, body, timestamp: now } }, { merge: true });
-  }
-};
-
-export const listenToUserNotifications = (userId: string, callback: (notification: any) => void) => {
-  const userRef = doc(db, 'users', userId);
-  return onSnapshot(userRef, (docSnap) => {
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      if (data.manualNotification) {
-        callback(data.manualNotification);
-      }
-    }
-  });
-};
-
 // Remove nota/hl (conteúdo privado) do history antes de mandar pro Firestore:
 // o doc de progresso é legível por qualquer autenticado (ranking), então nota
 // e destaque NUNCA podem morar nele (Etapa 8). Eles vão para studyNotes (privado).
@@ -277,7 +257,7 @@ const stripPrivateNotes = (history: any): any => {
 const trackKey = (userId: string, week: string, track?: string) =>
   (!track || track === 'teen') ? `${userId}_${week}` : `${userId}_${track}_${week}`;
 
-export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, track: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean) => {
+export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, track: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean, locationId?: string) => {
   const progId = trackKey(userId, week, track);
   const progRef = doc(db, 'progress', progId);
   await setDoc(progRef, {
@@ -285,6 +265,10 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     week,
     track,
     trimestre,
+    // Carimba o local para o ranking por local ser calculável ao vivo pelo
+    // cliente (a regra confere que é mesmo o local do dono). Só quando existe:
+    // usuário ainda não matriculado não tem local para gravar.
+    ...(locationId ? { locationId } : {}),
     xp: prog.xp,
     streak: prog.streak,
     done: prog.done,
@@ -471,6 +455,22 @@ export const acceptPairInvite = async (inviteId: string, jogador: any): Promise<
       sharesA: {},
       sharesB: {},
     });
+    // Espelho público da escalação, no MESMO batch — é o que permite montar o
+    // ranking de duplas ao vivo sem expor as anotações que ficam em pairs/.
+    batch.set(doc(db, 'pairsPublic', inviteId), {
+      pairId: inviteId,
+      members: [inv.createdBy, jogador.id],
+      aId: inv.createdBy,
+      aNome: inv.createdByName || '',
+      aAvatar: inv.createdByAvatar || '🦁',
+      bId: jogador.id,
+      bNome: jogador.nome || '',
+      bAvatar: jogador.avatar || '🦁',
+      locationId: inv.locationId,
+      track: inv.track,
+      active: true,
+      createdAt: serverTimestamp(),
+    });
     batch.update(doc(db, 'pairInvites', inviteId), { status: 'accepted' });
     await batch.commit();
     return { ok: true, pairId: inviteId };
@@ -480,8 +480,18 @@ export const acceptPairInvite = async (inviteId: string, jogador: any): Promise<
   }
 };
 
+// Desfaz nos dois lugares atomicamente: se só um caísse, a dupla sumiria do
+// feed mas continuaria no ranking (ou o contrário).
 export const unpair = async (pairId: string) => {
-  await setDoc(doc(db, 'pairs', pairId), { active: false }, { merge: true });
+  const pubRef = doc(db, 'pairsPublic', pairId);
+  // Duplas anteriores a pairsPublic ainda não têm espelho; o backfill cria com
+  // o active certo. Um `set` com merge viraria create e a regra (com razão)
+  // recusaria um doc só com `active`, derrubando o batch inteiro.
+  const pub = await getDoc(pubRef).catch(() => null);
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'pairs', pairId), { active: false }, { merge: true });
+  if (pub?.exists()) batch.update(pubRef, { active: false });
+  await batch.commit();
 };
 
 // Escuta a dupla em tempo real (feed). Retorna unsubscribe.
@@ -505,206 +515,67 @@ export const setPairShare = async (
   }, { merge: true });
 };
 
-// ===== Grupo de Estudo (Etapa 5) =====
-// Reaproveita boa parte da estrutura da dupla, mas: N membros, convite
-// reutilizável (não uso único), e não expõe anotação individual — só
-// progresso (quem completou o dia) + destaques compartilhados (opt-in).
+// ===== Rankings ao vivo =====
+// Tudo é derivado da coleção progress, que já é pública para o ranking. Nada
+// de doc pré-calculado no meio do caminho: a escala aqui (uma escola sabatina,
+// ~100 pessoas) torna o cálculo no cliente mais barato E instantâneo.
+//
+// Um usuário pode ter mais de um doc na mesma semana (chave legada + chave por
+// trilha da janela do bug, ou trilhas diferentes para admin/professor). Todo
+// agregador colapsa por (usuário, semana) ficando com o doc MAIS COMPLETO —
+// nunca duplica a linha nem soma duas trilhas, o que seria injusto no ranking.
 
-export const createGroup = async (jogador: any, name: string, maxMembers: number): Promise<string> => {
-  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro (local e trilha) antes de criar um grupo.');
-  const ref = doc(collection(db, 'groups'));
-  await setDoc(ref, {
-    name: name.trim(),
-    leaderId: jogador.id,
-    locationId: jogador.locationId,
-    track: jogador.track,
-    memberIds: [jogador.id],
-    maxMembers,
-    active: true,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
+// Linha crua de progresso, já filtrada (convidado e nomes ocultos ficam fora)
+export type ProgressRow = {
+  id: string; userId: string; week: string; trimestre?: string; track?: string;
+  locationId?: string; nome: string; avatar: string; done: number[]; dias: number;
+  xp: number; isAdmin: boolean; isProfessor: boolean;
 };
 
-export const getGroup = async (groupId: string): Promise<any | null> => {
-  const snap = await getDoc(doc(db, 'groups', groupId));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-};
-
-export const listenToGroup = (groupId: string, cb: (group: any | null) => void) => {
-  return onSnapshot(doc(db, 'groups', groupId), snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null));
-};
-
-// Grupos ativos dos quais o usuário faz parte (array-contains puro, sem índice composto)
-export const getMyGroups = async (userId: string): Promise<any[]> => {
-  const snap = await getDocs(query(collection(db, 'groups'), where('memberIds', 'array-contains', userId)));
-  const list: any[] = [];
-  snap.forEach(d => { const data = d.data(); if (data.active) list.push({ id: d.id, ...data }); });
-  return list;
-};
-
-// Convite reutilizável: só o líder do grupo cria. Continua válido até o
-// líder desativar (active=false) ou encerrar o grupo inteiro.
-export const createGroupInvite = async (jogador: any, groupId: string): Promise<string> => {
-  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro antes de convidar.');
-  const ref = doc(collection(db, 'groupInvites'));
-  await setDoc(ref, {
-    groupId,
-    createdBy: jogador.id,
-    locationId: jogador.locationId,
-    track: jogador.track,
-    active: true,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
-};
-
-export const getGroupInvite = async (inviteId: string): Promise<any | null> => {
-  const snap = await getDoc(doc(db, 'groupInvites', inviteId));
-  return snap.exists() ? { id: inviteId, ...snap.data() } : null;
-};
-
-export type JoinGroupResult =
-  | { ok: true; groupId: string }
-  | { ok: false; reason: 'not_found' | 'mismatch' | 'rejected' | 'error' };
-
-export const joinGroupByInvite = async (inviteId: string, jogador: any): Promise<JoinGroupResult> => {
-  try {
-    const inv = await getGroupInvite(inviteId);
-    if (!inv || !inv.active) return { ok: false, reason: 'not_found' };
-    if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
-    // Não dá pra ler o grupo (groups/{id}) antes de já ser membro — a regra de
-    // leitura exige membership, e é exatamente isso que ainda não temos aqui.
-    // Então entra direto: a regra do servidor (isSelfJoiningGroup) garante
-    // grupo ativo, limite de membros e local+trilha batendo. Se falhar, não dá
-    // pra distinguir "cheio" de "encerrado" no cliente — mensagem genérica.
-    try {
-      await setDoc(doc(db, 'groups', inv.groupId), {
-        memberIds: arrayUnion(jogador.id),
-      }, { merge: true });
-    } catch (writeErr) {
-      console.error('joinGroupByInvite write', writeErr);
-      return { ok: false, reason: 'rejected' };
-    }
-    return { ok: true, groupId: inv.groupId };
-  } catch (e) {
-    console.error('joinGroupByInvite', e);
-    return { ok: false, reason: 'error' };
-  }
-};
-
-export const leaveGroup = async (groupId: string, userId: string) => {
-  await setDoc(doc(db, 'groups', groupId), { memberIds: arrayRemove(userId) }, { merge: true });
-};
-
-// Líder remove um membro (não a si mesmo — use closeGroup para encerrar)
-export const removeGroupMember = async (groupId: string, memberId: string) => {
-  await setDoc(doc(db, 'groups', groupId), { memberIds: arrayRemove(memberId) }, { merge: true });
-};
-
-export const closeGroup = async (groupId: string) => {
-  await setDoc(doc(db, 'groups', groupId), { active: false }, { merge: true });
-};
-
-// Destaques compartilhados do grupo: subcoleção (1 doc por membro/dia) em vez
-// de um mapa único no doc do grupo — evita contenção de escrita quando vários
-// membros do grupo salvam ao mesmo tempo, e permite paginar por semana depois.
-export const setGroupHighlightShare = async (groupId: string, jogador: any, week: string, dayId: number, texts: string[] | null) => {
-  const entryId = `${jogador.id}_${week}_${dayId}`;
-  const ref = doc(db, 'groups', groupId, 'highlights', entryId);
-  if (!texts || texts.length === 0) {
-    await deleteDoc(ref);
-    return;
-  }
-  await setDoc(ref, { userId: jogador.id, week, dayId, texts, updatedAt: serverTimestamp() });
-};
-
-export const getGroupHighlights = async (groupId: string, week: string): Promise<any[]> => {
-  const snap = await getDocs(query(collection(db, 'groups', groupId, 'highlights'), where('week', '==', week)));
-  const list: any[] = [];
-  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-  return list;
-};
-
-// ===== Ofensiva com Amigos (Etapa 7) =====
-// Mesmo mecanismo de convite por link da dupla (7 dias, uso único), mas
-// permite várias ativas ao mesmo tempo (teto de 10). Não expõe conteúdo —
-// só o vínculo; a contagem de dias é calculada ao vivo (computeMutualStreak
-// em utils.ts), sem contador salvo nem job agendado para "quebrar".
-export const FRIEND_STREAK_MAX = 10;
-
-export const createFriendStreakInvite = async (jogador: any): Promise<string> => {
-  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro (local e trilha) antes de convidar.');
-  const inviteId = randomId();
-  await setDoc(doc(db, 'friendStreakInvites', inviteId), {
-    createdBy: jogador.id,
-    createdByName: jogador.nome || '',
-    createdByAvatar: jogador.avatar || '',
-    locationId: jogador.locationId,
-    track: jogador.track,
-    status: 'pending',
-    createdAt: serverTimestamp(),
-    expiresAt: Timestamp.fromMillis(Date.now() + PAIR_INVITE_TTL_MS),
-  });
-  return inviteId;
-};
-
-export const getFriendStreakInvite = async (inviteId: string): Promise<any | null> => {
-  const snap = await getDoc(doc(db, 'friendStreakInvites', inviteId));
-  return snap.exists() ? { id: inviteId, ...snap.data() } : null;
-};
-
-// Streaks ativas de um usuário (array-contains puro, sem índice composto)
-export const getMyFriendStreaks = async (userId: string): Promise<any[]> => {
-  const snap = await getDocs(query(collection(db, 'friendStreaks'), where('members', 'array-contains', userId)));
-  const list: any[] = [];
-  snap.forEach(d => { const data = d.data(); if (data.active) list.push({ id: d.id, ...data }); });
-  return list;
-};
-
-export type AcceptFriendStreakResult =
-  | { ok: true; streakId: string }
-  | { ok: false; reason: 'not_found' | 'expired' | 'self' | 'mismatch' | 'limit_reached' | 'error' };
-
-export const acceptFriendStreakInvite = async (inviteId: string, jogador: any): Promise<AcceptFriendStreakResult> => {
-  try {
-    const inv = await getFriendStreakInvite(inviteId);
-    if (!inv || inv.status !== 'pending') return { ok: false, reason: 'not_found' };
-    const expMs = inv.expiresAt?.toMillis ? inv.expiresAt.toMillis() : 0;
-    if (expMs && expMs < Date.now()) return { ok: false, reason: 'expired' };
-    if (inv.createdBy === jogador.id) return { ok: false, reason: 'self' };
-    if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
-    // Só dá pra checar o PRÓPRIO teto aqui — a regra do Firestore não deixa
-    // consultar as ofensivas de outro usuário (mesma razão do getActivePair).
-    const mine = await getMyFriendStreaks(jogador.id);
-    if (mine.length >= FRIEND_STREAK_MAX) return { ok: false, reason: 'limit_reached' };
-
-    const batch = writeBatch(db);
-    batch.set(doc(db, 'friendStreaks', inviteId), {
-      inviteId,
-      members: [inv.createdBy, jogador.id],
-      userA: inv.createdBy,
-      userB: jogador.id,
-      userAName: inv.createdByName || '',
-      userAAvatar: inv.createdByAvatar || '',
-      userBName: jogador.nome || '',
-      userBAvatar: jogador.avatar || '',
-      locationId: inv.locationId,
-      track: inv.track,
-      active: true,
-      createdAt: serverTimestamp(),
+const rowsFromSnap = (snap: any, adminIds: Set<string>): ProgressRow[] => {
+  const rows: ProgressRow[] = [];
+  snap.forEach((d: any) => {
+    const data = d.data();
+    if (isRankingHidden(data.nome)) return;
+    if (data.isGuest) return;
+    rows.push({
+      ...data,
+      id: data.userId,
+      done: data.done || [],
+      dias: data.done?.length || 0,
+      xp: data.xp || 0,
+      isAdmin: data.isAdmin || adminIds.has(data.userId),
+      isProfessor: !!data.isProfessor,
     });
-    batch.update(doc(db, 'friendStreakInvites', inviteId), { status: 'accepted' });
-    await batch.commit();
-    return { ok: true, streakId: inviteId };
-  } catch (e) {
-    console.error('acceptFriendStreakInvite', e);
-    return { ok: false, reason: 'error' };
-  }
+  });
+  return rows;
 };
 
-export const endFriendStreak = async (streakId: string) => {
-  await setDoc(doc(db, 'friendStreaks', streakId), { active: false }, { merge: true });
+// Assina o progresso de uma semana. É a base ao vivo do ranking da semana e do
+// de duplas — ~1 doc por aluno, o caminho quente e mais barato do app.
+export const listenToWeekProgress = (week: string, cb: (rows: ProgressRow[]) => void) => {
+  let stop = false;
+  let unsub: (() => void) | null = null;
+  getAdminIds().then(adminIds => {
+    if (stop) return;
+    unsub = onSnapshot(
+      query(collection(db, 'progress'), where('week', '==', week)),
+      snap => cb(rowsFromSnap(snap, adminIds)),
+      err => console.error('listenToWeekProgress', err),
+    );
+  });
+  return () => { stop = true; unsub?.(); };
+};
+
+// Progresso da campanha inteira (13 semanas). Leitura pontual, não assinatura:
+// é ~13× mais docs que a semana e muda devagar. A semana corrente é sobreposta
+// ao vivo por cima disto (ver mergeLiveWeek), então o total nunca fica atrasado.
+export const getSeasonProgress = async (trimestre: string): Promise<ProgressRow[]> => {
+  const [snap, adminIds] = await Promise.all([
+    getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre))),
+    getAdminIds(),
+  ]);
+  return rowsFromSnap(snap, adminIds);
 };
 
 export const getWeeklyRanking = async (week: string) => {
@@ -712,84 +583,52 @@ export const getWeeklyRanking = async (week: string) => {
     getDocs(query(collection(db, 'progress'), where('week', '==', week))),
     getAdminIds(),
   ]);
-  // Um usuário pode ter mais de um doc na mesma semana (chave legada + chave
-  // por trilha da janela do bug, ou trilhas diferentes para admin/professor).
-  // Fica com o doc MAIS COMPLETO por usuário — nunca duplica a linha nem
-  // soma duas trilhas (o que seria injusto no ranking).
-  const byUser: Record<string, any> = {};
-  snap.forEach(doc => {
-    const data = doc.data();
-    if (isRankingHidden(data.nome)) return;
-    if (data.isGuest) return;
-    const row: any = { id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId), isProfessor: !!data.isProfessor };
-    const cur = byUser[data.userId];
-    if (!cur || row.dias > cur.dias || (row.dias === cur.dias && (row.xp || 0) > (cur.xp || 0))) {
-      byUser[data.userId] = row;
-    }
-  });
-  return Object.values(byUser).sort((a: any, b: any) => b.xp - a.xp);
+  return aggregateWeekRanking(rowsFromSnap(snap, adminIds));
 };
 
-export const getSeasonRanking = async (trimestre: string) => {
-  const [snap, adminIds] = await Promise.all([
-    getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre))),
-    getAdminIds(),
-  ]);
-  // Primeiro colapsa por (usuário, semana) pegando o doc mais completo — evita
-  // contar duas vezes a mesma semana quando há doc legado + doc da janela do
-  // bug. Só depois soma as semanas de cada usuário.
-  const porUserSemana: Record<string, any> = {};
-  snap.forEach(doc => {
-    const data = doc.data();
-    if (isRankingHidden(data.nome)) return;
-    if (data.isGuest) return;
-    const k = `${data.userId}__${data.week}`;
-    const cur = porUserSemana[k];
-    const dias = data.done?.length || 0;
-    if (!cur || dias > (cur.done?.length || 0) || (dias === (cur.done?.length || 0) && (data.xp || 0) > (cur.xp || 0))) {
-      porUserSemana[k] = data;
-    }
-  });
-  const userTotals: Record<string, any> = {};
-  Object.values(porUserSemana).forEach((data: any) => {
-    const uid = data.userId;
-    if (!userTotals[uid]) {
-      userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: data.isAdmin || adminIds.has(uid), isProfessor: !!data.isProfessor };
-    }
-    userTotals[uid].xp += (data.xp || 0);
-    userTotals[uid].dias += (data.done?.length || 0);
-  });
-  return Object.values(userTotals).sort((a, b) => b.xp - a.xp);
+
+// ===== Escalação pública das duplas (ao vivo) =====
+// pairs/ só pode ser lido pelos dois membros — guarda as anotações
+// compartilhadas. pairsPublic/ é o espelho enxuto (quem forma cada dupla, sem
+// anotações e sem o tipo do vínculo) que deixa o ranking de duplas ser montado
+// ao vivo no cliente. Escrito no mesmo batch de pairs/, nunca diverge.
+export type PairRosterEntry = {
+  id: string;
+  aId: string; aNome: string; aAvatar: string;
+  bId: string; bNome: string; bAvatar: string;
+  locationId: string; track: string;
 };
 
-// ===== Ranking por local, pré-calculado (Etapa 6) =====
-// Lê os docs prontos escritos pela Netlify function recompute-rankings.
-// PRECISA bater EXATAMENTE com o slug() da função (mesma regra de caracteres).
-const rankingSlug = (s: string) => (s || 'sem-temporada').replace(/[^A-Za-z0-9]+/g, '_');
+const rosterFromSnap = (snap: any, track: string): PairRosterEntry[] => {
+  const out: PairRosterEntry[] = [];
+  snap.forEach((d: any) => {
+    const p = d.data();
+    // active/track filtrados aqui: a query usa só locationId (índice
+    // automático de campo único), evitando exigir índice composto.
+    if (!p.active || p.track !== track) return;
+    out.push({
+      id: d.id,
+      aId: p.aId, aNome: p.aNome || '', aAvatar: p.aAvatar || '🦁',
+      bId: p.bId, bNome: p.bNome || '', bAvatar: p.bAvatar || '🦁',
+      locationId: p.locationId, track: p.track,
+    });
+  });
+  return out;
+};
 
-export type LocationRankingDoc = {
-  locationId: string;
-  track: string;
-  trimestre: string;
-  entries: any[];
-  count: number;
-  updatedAt?: any;
-} | null;
-
-// track === 'general' → ranking geral do local (todas as trilhas juntas)
-export const getLocationRanking = async (locationId: string, track: string, trimestre: string): Promise<LocationRankingDoc> => {
-  if (!locationId) return null;
-  const id = `${locationId}__${track}__${rankingSlug(trimestre)}`;
-  try {
-    const snap = await getDoc(doc(db, 'rankings', id));
-    return snap.exists() ? (snap.data() as any) : null;
-  } catch {
-    return null;
-  }
+export const listenToPairRoster = (locationId: string, track: string, cb: (roster: PairRosterEntry[]) => void) => {
+  if (!locationId) { cb([]); return () => {}; }
+  return onSnapshot(
+    query(collection(db, 'pairsPublic'), where('locationId', '==', locationId)),
+    snap => cb(rosterFromSnap(snap, track)),
+    err => { console.error('listenToPairRoster', err); cb([]); },
+  );
 };
 
 // Ofensiva real de todos os usuários da temporada (para o painel Admin/Professor)
-export const getAllUsersStreaks = async (trimestre: string): Promise<Record<string, { nome: string; avatar: string; streak: number; isAdmin: boolean; isProfessor: boolean }>> => {
+// `licoes` vem de fora: o conteúdo é carregado sob demanda por trilha, então
+// firebase.ts não pode mais importá-lo estaticamente (e nem deveria).
+export const getAllUsersStreaks = async (trimestre: string, licoes: any[]): Promise<Record<string, { nome: string; avatar: string; streak: number; isAdmin: boolean; isProfessor: boolean }>> => {
   const snap = await getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre)));
   const porUsuario: Record<string, { nome: string; avatar: string; done: Record<string, number[]>; isAdmin?: boolean; isProfessor?: boolean }> = {};
   snap.forEach(doc => {
@@ -800,7 +639,7 @@ export const getAllUsersStreaks = async (trimestre: string): Promise<Record<stri
   const resultado: Record<string, any> = {};
   for (const uid of Object.keys(porUsuario)) {
     const u = porUsuario[uid];
-    resultado[uid] = { nome: u.nome, avatar: u.avatar, isAdmin: !!u.isAdmin, isProfessor: !!u.isProfessor, streak: computeRealStreak(u.done, LICOES) };
+    resultado[uid] = { nome: u.nome, avatar: u.avatar, isAdmin: !!u.isAdmin, isProfessor: !!u.isProfessor, streak: computeRealStreak(u.done, licoes) };
   }
   return resultado;
 };

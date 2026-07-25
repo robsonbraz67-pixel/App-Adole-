@@ -87,9 +87,8 @@ const diaAnteriorISO = (iso: string): string => {
   return d.toISOString().split('T')[0];
 };
 
-// Converte { semana: diaIds[] } (getUserAllDone) num Set de datas reais (YYYY-MM-DD),
-// usando LICOES para mapear diaId -> data. Base tanto da ofensiva pessoal quanto da
-// ofensiva com amigos (interseção de dois desses sets).
+// Converte { semana: diaIds[] } (getUserAllDone) num Set de datas reais
+// (YYYY-MM-DD), usando LICOES para mapear diaId -> data. Base da ofensiva.
 const doneDatesSet = (allDone: Record<string, number[]>, licoes: any[]): Set<string> => {
   const datas = new Set<string>();
   for (const semana of Object.keys(allDone)) {
@@ -117,20 +116,147 @@ export const computeRealStreak = (allDone: Record<string, number[]>, licoes: any
   return streak;
 };
 
-// Ofensiva com amigos (Etapa 7): dias em que os DOIS completaram — calculada ao
-// vivo a partir do histórico real de progresso (sem contador salvo/cron para
-// "quebrar" a sequência; se um dos dois perde um dia, a interseção já reflete
-// isso automaticamente na próxima leitura, sem precisar de job agendado).
-export const computeMutualStreak = (allDoneA: Record<string, number[]>, allDoneB: Record<string, number[]>, licoes: any[], hojeISO: string = hojeLocalISO()): number => {
-  const datasA = doneDatesSet(allDoneA, licoes);
-  const datasB = doneDatesSet(allDoneB, licoes);
-  let cursor = (datasA.has(hojeISO) && datasB.has(hojeISO)) ? hojeISO : diaAnteriorISO(hojeISO);
-  let streak = 0;
-  while (datasA.has(cursor) && datasB.has(cursor)) {
-    streak++;
-    cursor = diaAnteriorISO(cursor);
+// ===== Métrica da dupla =====
+// Um dia vale 1 ponto quando os DOIS completaram e 0,5 quando só um completou.
+// É a regra que faz o "preenchimento" de um dia ficar pela metade enquanto a
+// outra pessoa não estudar — o ranking de duplas premia caminhar junto, não a
+// soma bruta de dois esforços separados.
+export const pairDias = (diasA: number, diasB: number) => (diasA + diasB) / 2;
+
+// Dias em que exatamente UM dos dois estudou (o "meio preenchido")
+export const pairSolo = (diasA: number, diasB: number, juntos: number) => diasA + diasB - 2 * juntos;
+
+// Sincronia: quanto do esforço da dupla foi feito lado a lado (0–100)
+export const pairSincronia = (diasA: number, diasB: number, juntos: number) => {
+  const total = diasA + diasB;
+  return total === 0 ? 0 : Math.round((2 * juntos * 100) / total);
+};
+
+// 3,5 em vez de 3.5 (pt-BR); inteiro fica sem casa decimal
+export const fmtDias = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','));
+
+export const firstName = (n: string) => (n || '').trim().split(/\s+/)[0] || '—';
+
+export const pairNome = (a: string, b: string) => `${firstName(a)} & ${firstName(b)}`;
+
+// ===== Agregadores dos rankings (puros, calculados no cliente) =====
+// Com ~100 pessoas sai mais barato — e instantâneo — montar os rankings aqui a
+// partir de progress/ do que manter docs pré-calculados por um job agendado.
+//
+// Um usuário pode ter mais de um doc na mesma semana (chave legada + chave por
+// trilha da janela do bug, ou trilhas diferentes para admin/professor). Tudo
+// aqui colapsa por (usuário, semana) ficando com o doc MAIS COMPLETO — nunca
+// duplica a linha nem soma duas trilhas, o que seria injusto no ranking.
+export const collapseByUserWeek = (rows: any[]): any[] => {
+  const best: Record<string, any> = {};
+  for (const r of rows) {
+    const k = `${r.userId}__${r.week}`;
+    const cur = best[k];
+    const dias = r.dias ?? (r.done?.length || 0);
+    const curDias = cur ? (cur.dias ?? (cur.done?.length || 0)) : -1;
+    if (!cur || dias > curDias || (dias === curDias && (r.xp || 0) > (cur.xp || 0))) best[k] = r;
   }
-  return streak;
+  return Object.values(best);
+};
+
+export const aggregateWeekRanking = (rows: any[]) =>
+  collapseByUserWeek(rows).sort((a: any, b: any) => (b.xp || 0) - (a.xp || 0));
+
+// Acumulado da campanha; `filtro` recorta por local e/ou trilha
+export const aggregateSeasonRanking = (rows: any[], filtro?: { locationId?: string; track?: string }) => {
+  const totals: Record<string, any> = {};
+  for (const r of collapseByUserWeek(rows)) {
+    if (filtro?.locationId && r.locationId !== filtro.locationId) continue;
+    if (filtro?.track && r.track !== filtro.track) continue;
+    if (!totals[r.userId]) {
+      totals[r.userId] = { id: r.userId, nome: r.nome, avatar: r.avatar, xp: 0, dias: 0, isAdmin: false, isProfessor: false };
+    }
+    const t = totals[r.userId];
+    t.xp += (r.xp || 0);
+    t.dias += (r.dias ?? (r.done?.length || 0));
+    t.isAdmin = t.isAdmin || !!r.isAdmin;
+    t.isProfessor = t.isProfessor || !!r.isProfessor;
+  }
+  return Object.values(totals).sort((a: any, b: any) => (b.dias - a.dias) || (b.xp - a.xp));
+};
+
+// A campanha é lida sob demanda (13× mais docs que a semana) enquanto a semana
+// corrente chega por assinatura ao vivo. Sobrepor uma na outra faz o total da
+// campanha refletir na hora o quiz que a pessoa acabou de fazer.
+// ATENÇÃO: trilhas diferentes compartilham a MESMA string de semana
+// ("2026-W26") e só se distinguem pelo trimestre. Como weekRows vem de uma
+// query só por semana, ele traz todas as trilhas — sem recortar pelo trimestre
+// da campanha, o acumulado de "Geral" ganharia a semana atual de gente que nem
+// está nesta campanha.
+export const mergeLiveWeek = (seasonRows: any[], weekRows: any[], semana: string, trimestre?: string) => {
+  if (!semana) return seasonRows;
+  const live = trimestre ? weekRows.filter((r: any) => (r.trimestre || '') === trimestre) : weekRows;
+  return [...seasonRows.filter((r: any) => r.week !== semana), ...live];
+};
+
+// Cruza a escalação das duplas com o progresso: dia cheio quando os dois
+// estudaram, meio dia quando só um estudou. `doneA`/`doneB` só existem na
+// versão semanal — é o que permite desenhar o trilho dia a dia.
+export const buildPairWeekRanking = (roster: any[], weekRows: any[]) => {
+  const byId: Record<string, any> = {};
+  collapseByUserWeek(weekRows).forEach((r: any) => { byId[r.userId] = r; });
+  return roster.map((p: any) => {
+    const A = byId[p.aId], B = byId[p.bId];
+    const doneA: number[] = A?.done || [];
+    const doneB: number[] = B?.done || [];
+    const setB = new Set(doneB);
+    const juntos = doneA.filter(d => setB.has(d)).length;
+    return {
+      ...p,
+      aNome: A?.nome || p.aNome, aAvatar: A?.avatar || p.aAvatar,
+      bNome: B?.nome || p.bNome, bAvatar: B?.avatar || p.bAvatar,
+      doneA, doneB,
+      diasA: doneA.length,
+      diasB: doneB.length,
+      juntos,
+      dias: pairDias(doneA.length, doneB.length),
+      xp: (A?.xp || 0) + (B?.xp || 0),
+      isAdmin: !!(A?.isAdmin || B?.isAdmin),
+      isProfessor: !!(A?.isProfessor || B?.isProfessor),
+    };
+  });
+};
+
+// Mesma métrica somada nas semanas da campanha. Sem doneA/doneB (a UI desenha
+// a barra proporcional a partir de juntos + dias que só um fez).
+export const buildPairSeasonRanking = (roster: any[], seasonRows: any[]) => {
+  const porUser: Record<string, any[]> = {};
+  for (const r of collapseByUserWeek(seasonRows)) {
+    (porUser[r.userId] ||= []).push(r);
+  }
+  return roster.map((p: any) => {
+    const semanasA: Record<string, any> = {};
+    const semanasB: Record<string, any> = {};
+    (porUser[p.aId] || []).forEach(r => { semanasA[r.week] = r; });
+    (porUser[p.bId] || []).forEach(r => { semanasB[r.week] = r; });
+    let diasA = 0, diasB = 0, juntos = 0, xp = 0;
+    let nomeA = p.aNome, avatarA = p.aAvatar, nomeB = p.bNome, avatarB = p.bAvatar;
+    let isAdmin = false, isProfessor = false;
+    for (const week of new Set([...Object.keys(semanasA), ...Object.keys(semanasB)])) {
+      const wa = semanasA[week], wb = semanasB[week];
+      const doneA: number[] = wa?.done || [];
+      const doneB: number[] = wb?.done || [];
+      const setB = new Set(doneB);
+      diasA += doneA.length;
+      diasB += doneB.length;
+      juntos += doneA.filter(d => setB.has(d)).length;
+      xp += (wa?.xp || 0) + (wb?.xp || 0);
+      if (wa) { nomeA = wa.nome || nomeA; avatarA = wa.avatar || avatarA; }
+      if (wb) { nomeB = wb.nome || nomeB; avatarB = wb.avatar || avatarB; }
+      isAdmin = isAdmin || !!wa?.isAdmin || !!wb?.isAdmin;
+      isProfessor = isProfessor || !!wa?.isProfessor || !!wb?.isProfessor;
+    }
+    return {
+      ...p,
+      aNome: nomeA, aAvatar: avatarA, bNome: nomeB, bAvatar: avatarB,
+      diasA, diasB, juntos, xp, dias: pairDias(diasA, diasB), isAdmin, isProfessor,
+    };
+  });
 };
 
 export const getMsgRes = (a: number, t: number) => {
@@ -140,13 +266,6 @@ export const getMsgRes = (a: number, t: number) => {
   if (r >= .5) return { ic: '💪', mg: 'Bom esforço! Continue assim!' };
   return { ic: '📖', mg: 'Leia novamente amanhã, você vai melhorar!' };
 };
-
-export const rankDemo = () => [
-  { id: 'd1', nome: 'Maria', avatar: '🦁', xp: 890, dias: 5 },
-  { id: 'd2', nome: 'Pedro', avatar: '🔥', xp: 720, dias: 4 },
-  { id: 'd3', nome: 'Ana', avatar: '⚡', xp: 540, dias: 3 },
-  { id: 'd4', nome: 'Lucas', avatar: '🌟', xp: 320, dias: 2 }
-];
 
 export const calcPos = (r: any[], id: string, xp: number) => {
   const s = [...r].sort((a, b) => b.xp - a.xp);
@@ -240,41 +359,4 @@ export const formatDiaSemana = (dia: string): string => {
   return dia;
 };
 
-export const scheduleStudyReminder = async (userName: string, lessonTitle: string) => {
-  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
-  
-  try {
-    let perm = Notification.permission;
-    if (perm !== 'granted') {
-       perm = await Notification.requestPermission();
-    }
-    
-    if (perm === 'granted') {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg) {
-        const title = `Olá, ${userName}! 🌟`;
-        const options: any = {
-           body: `Hora do estudo: ${lessonTitle} - continue com sua sequência no SabatinaQuest!`,
-           icon: '/icon-192.png',
-           badge: '/icon-192.png',
-        };
-        
-        const targetTime = new Date().getTime() + 24 * 60 * 60 * 1000;
-        
-        if ('showTrigger' in Notification.prototype) {
-           options.showTrigger = new (window as any).TimestampTrigger(targetTime);
-           await reg.showNotification(title, options);
-        } else {
-           console.log("Notification Triggers not supported. You will receive notifications only when the app is open.");
-           // Optional: simple timeout if they keep it open for 24h
-           setTimeout(() => {
-             reg.showNotification(title, options);
-           }, 24 * 60 * 60 * 1000);
-        }
-      }
-    }
-  } catch (e) {
-    console.error("Error scheduling reminder", e);
-  }
-};
 
