@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { getTrackLessons } from './data';
-import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking } from './utils';
-import { listenToUserNotifications, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, logout, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getFriendStreakInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
-import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, Grupo, Amigos } from './components';
+import { getTrackLessons, loadTrackLessons } from './data';
+import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking } from './utils';
+import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
+import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla } from './components';
 
 const CACHE_VERSION = '3T2026';
 
@@ -50,30 +50,21 @@ export default function App() {
   const [logoTaps, setLogoTaps] = useState(0);
   const [inAppNotif, setInAppNotif] = useState<{title: string, body: string, id: number} | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => (localStorage.getItem('theme') as 'light' | 'dark' | 'auto') || 'auto');
-  const [showNotifPrompt, setShowNotifPrompt] = useState(false);
   const [activePair, setActivePair] = useState<any>(null);
   const [pendingInvite, setPendingInvite] = useState<any>(null);
-  const [myGroups, setMyGroups] = useState<any[]>([]);
-  const [pendingGroupInvite, setPendingGroupInvite] = useState<any>(null);
-  const [pendingFriendInvite, setPendingFriendInvite] = useState<any>(null);
 
-  // Deep links ?dupla=<id> / ?grupo=<id> / ?amigo=<id>: guarda e limpa da URL (sobrevive ao login)
+  // Deep link ?dupla=<id>: guarda e limpa da URL (sobrevive ao login)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const pairParam = params.get('dupla');
-    const groupParam = params.get('grupo');
-    const friendParam = params.get('amigo');
     if (pairParam) localStorage.setItem('pendingPairInvite', pairParam);
-    if (groupParam) localStorage.setItem('pendingGroupInvite', groupParam);
-    if (friendParam) localStorage.setItem('pendingFriendInvite', friendParam);
-    if (pairParam || groupParam || friendParam) window.history.replaceState({}, '', window.location.pathname);
+    if (pairParam) window.history.replaceState({}, '', window.location.pathname);
   }, []);
 
-  // Carrega a dupla ativa e os grupos quando há usuário matriculado
+  // Carrega a dupla ativa quando há usuário matriculado
   useEffect(() => {
-    if (!jogador?.id || !jogador?.locationId) { setActivePair(null); setMyGroups([]); return; }
+    if (!jogador?.id || !jogador?.locationId) { setActivePair(null); return; }
     getActivePair(jogador.id).then(setActivePair).catch(() => {});
-    getMyGroups(jogador.id).then(setMyGroups).catch(() => {});
   }, [jogador?.id, jogador?.locationId]);
 
   // ===== Assinatura ao vivo do progresso da semana =====
@@ -124,37 +115,17 @@ export default function App() {
     }).catch(() => {});
   }, [jogador?.id, jogador?.locationId]);
 
-  // Resgata convite de grupo pendente (chegou por link) após login + matrícula
-  useEffect(() => {
-    const gid = localStorage.getItem('pendingGroupInvite');
-    if (!gid || !jogador?.id || !jogador?.locationId) return;
-    getGroupInvite(gid).then(inv => {
-      if (inv && inv.active) { setPendingGroupInvite(inv); setTela('grupo'); }
-      else localStorage.removeItem('pendingGroupInvite');
-    }).catch(() => {});
-  }, [jogador?.id, jogador?.locationId]);
-
-  // Resgata convite de ofensiva com amigos pendente (chegou por link) após login + matrícula
-  useEffect(() => {
-    const fid = localStorage.getItem('pendingFriendInvite');
-    if (!fid || !jogador?.id || !jogador?.locationId) return;
-    getFriendStreakInvite(fid).then(inv => {
-      if (inv && inv.status === 'pending') { setPendingFriendInvite(inv); setTela('amigos'); }
-      else localStorage.removeItem('pendingFriendInvite');
-    }).catch(() => {});
-  }, [jogador?.id, jogador?.locationId]);
-
   const clearPendingInvite = () => { localStorage.removeItem('pendingPairInvite'); setPendingInvite(null); };
-  const clearPendingGroupInvite = () => { localStorage.removeItem('pendingGroupInvite'); setPendingGroupInvite(null); };
-  const clearPendingFriendInvite = () => { localStorage.removeItem('pendingFriendInvite'); setPendingFriendInvite(null); };
 
   // PWA fica dias em memória sem recarregar: quando uma nova semana começa,
   // avança a lição automaticamente para não salvar progresso na semana errada
-  const activeSemanaRef = useRef<string>(getActiveLicao().semana);
+  const activeSemanaRef = useRef<string>('');
   useEffect(() => {
     const check = () => {
       if (document.visibilityState === 'hidden') return;
       const active = getActiveLicao(jogador?.track);
+      if (active.isComingSoon) return;                       // trilha ainda carregando
+      if (!activeSemanaRef.current) { activeSemanaRef.current = active.semana; return; }
       if (active.semana === activeSemanaRef.current) return; // semana não virou
       activeSemanaRef.current = active.semana;
       if (jogador && licao && licao.semana < active.semana) handleChangeLicao(active);
@@ -164,24 +135,6 @@ export default function App() {
     const iv = setInterval(check, 60 * 60 * 1000);
     return () => { document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check); clearInterval(iv); };
   }, [licao, jogador]);
-
-  const shouldAskNotif = () => {
-    if (!('Notification' in window)) return false;
-    if (Notification.permission !== 'default') return false;
-    const last = parseInt(localStorage.getItem('notifAskedAt') || '0', 10);
-    return Date.now() - last > 7 * 24 * 60 * 60 * 1000;
-  };
-
-  const handleNotifAccept = async () => {
-    localStorage.setItem('notifAskedAt', Date.now().toString());
-    setShowNotifPrompt(false);
-    await Notification.requestPermission();
-  };
-
-  const handleNotifDismiss = () => {
-    localStorage.setItem('notifAskedAt', Date.now().toString());
-    setShowNotifPrompt(false);
-  };
 
   useEffect(() => {
     if (theme === 'auto') {
@@ -198,31 +151,6 @@ export default function App() {
   const semKey = (l: any, track?: string) => 'prog_' + (track && track !== 'teen' ? track + '_' : '') + (l?.semana || 'w');
 
   useEffect(() => {
-    if (!jogador?.id) return;
-
-    let lastNotifTime = parseInt(localStorage.getItem('lastNotifTime_' + jogador.id) || '0', 10);
-
-    const unsub = listenToUserNotifications(jogador.id, (notification) => {
-       if (notification && notification.timestamp > lastNotifTime) {
-          setInAppNotif({ title: notification.title, body: notification.body, id: Date.now() });
-          if ('Notification' in window && Notification.permission === 'granted') {
-             navigator.serviceWorker.ready.then(reg => {
-                reg.showNotification(notification.title || 'Nova Notificação', {
-                   body: notification.body || '',
-                   icon: '/icon-192.png',
-                   badge: '/icon-192.png'
-                });
-             }).catch(e => console.log('SW Notification failed:', e));
-          }
-          lastNotifTime = notification.timestamp;
-          localStorage.setItem('lastNotifTime_' + jogador.id, lastNotifTime.toString());
-       }
-    });
-
-    return () => unsub();
-  }, [jogador?.id]);
-
-  useEffect(() => {
     if (inAppNotif) {
       const timer = setTimeout(() => setInAppNotif(null), 8000);
       return () => clearTimeout(timer);
@@ -234,6 +162,10 @@ export default function App() {
     const initApp = async () => {
       clearStaleCache();
       const j = gs('jogador');
+      // O conteúdo da trilha é carregado sob demanda: sem esperar por ele aqui,
+      // getActiveLicao veria uma lista vazia e cairia no placeholder "Em breve".
+      await loadTrackLessons(j?.track);
+      if (unmounted) return;
       const activeLicao = getActiveLicao(j?.track);
       const savedLicao = gs('licao_atual', null);
       // Auto-switch to current week's lesson; keep saved only if it's the same week or a future week
@@ -317,7 +249,6 @@ export default function App() {
 
       if (!unmounted) {
         setTela(j ? (hasLocation ? 'home' : 'config') : 'login');
-        if (j && shouldAskNotif()) setShowNotifPrompt(true);
       }
     };
 
@@ -326,6 +257,7 @@ export default function App() {
   }, []);
 
   const handleLogin = async (j: any) => {
+    await loadTrackLessons(j?.track);
     const activeLicao = getActiveLicao(j?.track);
     const savedLicao = gs('licao_atual', null);
     const l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
@@ -366,7 +298,6 @@ export default function App() {
     if (j.isNew) delete j.isNew;
     ss('jogador', j);
     setTela(j.locationId ? 'home' : 'config');
-    if (shouldAskNotif()) setShowNotifPrompt(true);
   };
 
   const handleDoneQuiz = async (res: any) => {
@@ -421,11 +352,6 @@ export default function App() {
       } catch(e) {
          console.error("Error updating online progress:", e);
          setInAppNotif({ title: '⚠️ Progresso não sincronizado', body: 'Seu progresso foi salvo localmente, mas não chegou à nuvem. Verifique sua conexão.', id: Date.now() });
-      }
-      try {
-        await scheduleStudyReminder(jogador.nome, l.titulo || 'Estudo Diário');
-      } catch(e) {
-        console.error(e);
       }
     })();
   };
@@ -496,6 +422,7 @@ export default function App() {
     switch (rankingType) {
       case 'trilha': return aggregateSeasonRanking(campanha, { locationId: meuLocal, track: minhaTrilha });
       case 'geral': return aggregateSeasonRanking(campanha, { locationId: meuLocal });
+      // 'season' cai no default: sem recorte (um local, uma trilha)
       case 'duplasCampanha': return buildPairSeasonRanking(rosterComMinha, campanha);
       default: return aggregateSeasonRanking(campanha);
     }
@@ -543,6 +470,7 @@ export default function App() {
     }
     setJogador(novoJ);
     ss('jogador', novoJ);
+    await loadTrackLessons(newTrack);
     await handleChangeLicao(getActiveLicao(newTrack), newTrack);
   };
 
@@ -597,6 +525,7 @@ export default function App() {
         // Recalcula a lição ativa se a trilha mudou nesse save (ex: 1º cadastro
         // escolhendo a trilha) — senão `licao` ficaria com a trilha antiga/placeholder.
         const trackChanged = (jogador?.track || 'teen') !== (novoJ.track || 'teen');
+        if (trackChanged) await loadTrackLessons(novoJ.track);
         const l = (!trackChanged && licao) || getActiveLicao(novoJ.track);
         await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, novoJ.track || 'teen', !!novoJ.isAdmin, !!novoJ.isGuest, !!novoJ.isProfessor, novoJ.locationId);
       }
@@ -611,17 +540,15 @@ export default function App() {
 
   return (
     <>
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(jogador?.track || 'teen', licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onChangeLicao={handleChangeLicao} />}
-      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} myGroups={myGroups} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(jogador?.track || 'teen', licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
+      {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading} onRefresh={() => loadSeason(licao.trimestre, true)} />}
-      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onSorteador={() => setTela('sorteador')} />}
+      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onSwitchTrack={handleSwitchTrack} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
-      {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} prog={prog} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onSwitchToGroup={() => setTela('grupo')} onSwitchToFriends={() => setTela('amigos')} onRankingDuplas={() => loadLatestRanking('duplasSemana')} />}
-      {tela === 'grupo' && <Grupo jogador={jogador} licao={licao} pendingGroupInvite={pendingGroupInvite} onClearPendingGroupInvite={clearPendingGroupInvite} onBack={() => setTela('home')} onSwitchToPair={() => setTela('dupla')} onSwitchToFriends={() => setTela('amigos')} />}
-      {tela === 'amigos' && <Amigos jogador={jogador} licao={licao} pendingFriendInvite={pendingFriendInvite} onClearPendingFriendInvite={clearPendingFriendInvite} onBack={() => setTela('home')} onSwitchToPair={() => setTela('dupla')} onSwitchToGroup={() => setTela('grupo')} />}
+      {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} prog={prog} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onRankingDuplas={() => loadLatestRanking('duplasSemana')} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
 
       {!['splash', 'login', 'quiz'].includes(tela) && !(tela === 'config' && !jogador.locationId) && (
@@ -633,39 +560,9 @@ export default function App() {
           onRanking={() => loadLatestRanking('week')}
           onEstudo={() => setTela('estudo')}
           onConfig={() => setTela('config')}
-          onAdmin={() => setTela('admin')}
           onSorteador={() => setTela('sorteador')}
           onDupla={() => setTela('dupla')}
-          onMais={shareApp}
         />
-      )}
-
-      {showNotifPrompt && (
-        <div style={{
-          position: 'fixed', bottom: 80, left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'var(--card)', border: '1px solid var(--hdr-border)',
-          borderRadius: 16, padding: '16px 20px',
-          zIndex: 9998, boxShadow: '0 8px 30px rgba(0,0,0,0.35)',
-          display: 'flex', flexDirection: 'column', gap: 12,
-          minWidth: 300, maxWidth: '90%',
-          animation: 'fadeInDown 0.4s ease-out forwards'
-        }}>
-          <div style={{fontSize: 14, fontWeight: 800, color: 'var(--gold)', fontFamily:'Poppins,sans-serif'}}>
-            🔔 Ativar notificações?
-          </div>
-          <div style={{fontSize: 13, color: 'var(--txt2)', lineHeight: 1.4}}>
-            Receba lembretes de estudo e avisos importantes da sua turma.
-          </div>
-          <div style={{display: 'flex', gap: 10}}>
-            <button onClick={handleNotifAccept} className="btn btn-primary" style={{flex:1, padding:'10px', fontSize:13}}>
-              Ativar
-            </button>
-            <button onClick={handleNotifDismiss} className="btn btn-ghost" style={{flex:1, padding:'10px', fontSize:13, color:'var(--mut)'}}>
-              Agora não
-            </button>
-          </div>
-        </div>
       )}
 
       {inAppNotif && (

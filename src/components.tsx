@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { DEMO, LICOES, getTrackLessons } from './data';
-import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, computeMutualStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome } from './utils';
+import { getTrackLessons } from './data';
+import { gs, ss, uid, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome } from './utils';
+
+// Desativado em 2026-07-25: a escola opera com UMA trilha e UM local. As duas
+// ferramentas continuam inteiras por baixo (modelo de dados, regras, convites
+// por código, atribuição de professor) — só a UI saiu do caminho. Para
+// reativar, basta voltar estas duas para `true`: o seletor de trilha volta ao
+// Config, o de local volta ao cadastro, o painel de códigos/professores volta
+// ao Admin e o Ranking recupera os escopos Minha Trilha / Meu Local.
+export const MULTI_TRACK_ENABLED = false;
+export const MULTI_LOCATION_ENABLED = false;
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
 export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 1 e 2 Coríntios' };
@@ -70,7 +79,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, sendManualNotification, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType, createGroup, getMyGroups, listenToGroup, createGroupInvite, joinGroupByInvite, leaveGroup, removeGroupMember, closeGroup, setGroupHighlightShare, getGroupHighlights, createFriendStreakInvite, getFriendStreakInvite, getMyFriendStreaks, acceptFriendStreakInvite, endFriendStreak, getStudyNotes } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType, getStudyNotes } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -130,7 +139,7 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 };
 
 /* ===== HOME ===== */
-export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSemana, onConfig, onChangeLicao }: any) => {
+export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSemana, onConfig, onAdmin, onChangeLicao }: any) => {
   const temConteudo = !licao.isComingSoon && licao.dias?.length > 0;
   const diaId = temConteudo ? getDiaId(licao.dias) : null;
   const diaAtual = temConteudo ? licao.dias.find((d: any) => d.id === diaId) : null;
@@ -201,7 +210,12 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
           <span className="stat-name">{jogador.nome?.split(' ')[0]}</span>
         </button>
         <div className="stat-xp" aria-label={`${prog.xp} pontos de experiência`}>⭐ <b>{prog.xp}</b><span className="stat-xp-lbl">XP</span></div>
-        <div className="stat-fire" aria-label={`Ofensiva de ${seasonStreak} dias`}>🔥<b>{seasonStreak}</b></div>
+        <div className="stat-right">
+          <div className="stat-fire" aria-label={`Ofensiva de ${seasonStreak} dias`}>🔥<b>{seasonStreak}</b></div>
+          {(jogador?.isAdmin || jogador?.isProfessor) && (
+            <button className="stat-admin" onClick={onAdmin} aria-label="Admin" title="Painel">🛡️</button>
+          )}
+        </div>
       </div>
 
       <div className="sec" style={{paddingTop:10}}>
@@ -306,8 +320,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
 };
 
 /* ===== NAVBAR FIXA (global, renderizada pelo App em todas as telas exceto Quiz) ===== */
-export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstudo, onConfig, onAdmin, onDupla, onMais }: any) => {
-  const canManage = !!jogador?.isAdmin || !!jogador?.isProfessor;
+export const BottomNav = ({ active, diaAtual, onHome, onRanking, onEstudo, onConfig, onDupla, onSorteador }: any) => {
   return (
     <div className="bot-nav" style={{padding:'6px 8px 14px'}}>
       <div className="nav-row">
@@ -315,17 +328,15 @@ export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstu
         <button className={`nav-it ${active === 'ranking' ? 'active' : ''}`} onClick={onRanking} aria-label="Ranking"><span className="nav-ic">🏆</span>Ranking</button>
         {diaAtual && <button className={`nav-it ${active === 'estudo' ? 'active' : ''}`} onClick={() => onEstudo(diaAtual)} aria-label="Praticar"><span className="nav-ic">📖</span>Praticar</button>}
         <button className={`nav-it ${active === 'dupla' ? 'active' : ''}`} onClick={onDupla} aria-label="Dupla"><span className="nav-ic">👥</span>Dupla</button>
+        <button className={`nav-it ${active === 'sorteador' ? 'active' : ''}`} onClick={onSorteador} aria-label="Sorteio"><span className="nav-ic">🎰</span>Sorteio</button>
         <button className={`nav-it ${active === 'config' ? 'active' : ''}`} onClick={onConfig} aria-label="Perfil"><span className="nav-ic">⚙️</span>Perfil</button>
-        {canManage
-          ? <button className={`nav-it ${active === 'admin' ? 'active' : ''}`} onClick={onAdmin} aria-label="Admin"><span className="nav-ic">🛡️</span>Admin</button>
-          : <button className="nav-it" onClick={onMais} aria-label="Mais"><span className="nav-ic">🔗</span>Mais</button>}
       </div>
     </div>
   );
 };
 
 /* ===== ESTUDO ===== */
-export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSaveStudy, onDayUpdated, onQuiz, onBack }: any) => {
+export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, onDayUpdated, onQuiz, onBack }: any) => {
   const initHistory = prog.history?.[dia.id] || {};
   const [notes, setNotes] = useState(initHistory.nota || '');
   const [hl, setHl] = useState<any>(initHistory.hl || {});
@@ -371,19 +382,6 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSav
 
   // Compartilhamento com grupo(s) (Etapa 5): só destaques, nunca anotação —
   // grupo não expõe anotação individual por padrão.
-  const [shareGroupIds, setShareGroupIds] = useState<string[]>([]);
-  const toggleGroupShare = (groupId: string, checked: boolean) => {
-    const next = checked ? [...shareGroupIds, groupId] : shareGroupIds.filter(id => id !== groupId);
-    setShareGroupIds(next);
-    const texts = allHlTexts(hl);
-    setGroupHighlightShare(groupId, jogador, semana, dia.id, checked && texts.length ? texts : null).catch(e => console.error('setGroupHighlightShare', e));
-  };
-  const applyGroupShares = (curHl: any) => {
-    const texts = allHlTexts(curHl);
-    shareGroupIds.forEach(groupId => {
-      setGroupHighlightShare(groupId, jogador, semana, dia.id, texts.length ? texts : null).catch(e => console.error('setGroupHighlightShare', e));
-    });
-  };
 
   const onScroll = () => {
     const el = ref.current;
@@ -480,7 +478,6 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSav
     onSaveStudy(notes, hl);
     // Se a nota/destaques estão compartilhados, atualiza o conteúdo mais recente
     if (activePair?.id && (shareNote || shareHl)) applyShare(shareNote, shareHl, notes, hl);
-    if (shareGroupIds.length) applyGroupShares(hl);
     fn();
   };
 
@@ -565,20 +562,6 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, myGroups, onSav
               <input type="checkbox" checked={shareHl} disabled={!allHlTexts(hl).length} onChange={e => { const v = e.target.checked; setShareHl(v); applyShare(shareNote, v, notes, hl); }} style={{accentColor:'var(--teal)', width:18, height:18}} />
               <span style={{fontSize:14, color:'var(--txt2)'}}>Compartilhar meus <strong>destaques</strong> deste dia {allHlTexts(hl).length ? `(${allHlTexts(hl).length})` : '(nenhum ainda)'}</span>
             </label>
-          </div>
-        )}
-
-        {/* Compartilhar destaques com grupo(s) — nunca a anotação */}
-        {myGroups?.length > 0 && (
-          <div style={{marginBottom:24, background:'rgba(247,198,0,.06)', border:'1px solid rgba(247,198,0,.22)', padding:'14px 16px', borderRadius:16}}>
-            <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', marginBottom:10}}>🧑‍🤝‍🧑 Compartilhar destaques com o grupo</div>
-            <div style={{fontSize:11, color:'var(--mut)', marginBottom:10}}>A anotação nunca é compartilhada no grupo — só os destaques que você escolher.</div>
-            {myGroups.map((g: any) => (
-              <label key={g.id} style={{display:'flex', alignItems:'center', gap:10, marginBottom:6, cursor:'pointer', opacity: allHlTexts(hl).length ? 1 : 0.5}}>
-                <input type="checkbox" checked={shareGroupIds.includes(g.id)} disabled={!allHlTexts(hl).length} onChange={e => toggleGroupShare(g.id, e.target.checked)} style={{accentColor:'var(--gold)', width:18, height:18}} />
-                <span style={{fontSize:14, color:'var(--txt2)'}}>{g.name}</span>
-              </label>
-            ))}
           </div>
         )}
 
@@ -1138,10 +1121,13 @@ const RANK_TABS = [
   { k: 'campanha', label: '👑 Campanha' },
   { k: 'duplas', label: '👥 Duplas' },
 ];
+// Com uma trilha e um local só, "Minha Trilha", "Meu Local" e "Geral" dariam
+// exatamente a mesma lista — a Campanha fica sem escopos até religar as
+// ferramentas (MULTI_TRACK_ENABLED / MULTI_LOCATION_ENABLED).
 const CAMPANHA_SCOPES = [
-  { k: 'trilha', label: 'Minha Trilha' },
-  { k: 'geral', label: 'Meu Local' },
-  { k: 'season', label: 'Geral' },
+  ...(MULTI_TRACK_ENABLED ? [{ k: 'trilha', label: 'Minha Trilha' }] : []),
+  ...(MULTI_LOCATION_ENABLED ? [{ k: 'geral', label: 'Meu Local' }] : []),
+  { k: 'season', label: MULTI_TRACK_ENABLED || MULTI_LOCATION_ENABLED ? 'Geral' : 'Campanha' },
 ];
 const DUPLA_SCOPES = [
   { k: 'duplasSemana', label: 'Semana' },
@@ -1203,7 +1189,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     if (isSemanal) {
       meta = (licao?.dias || []).filter((d: any) => d.data && d.data <= hojeISO).length;
     } else {
-      meta = LICOES
+      meta = getTrackLessons(jogador?.track)
         .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre)
         .reduce((acc: number, l: any) => acc + l.dias.filter((d: any) => d.data && d.data <= hojeISO).length, 0);
     }
@@ -1299,12 +1285,12 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           {RANK_TABS.map(t => (
             <div
               key={t.k}
-              onClick={() => onChangeType(t.k === 'campanha' ? 'trilha' : t.k === 'duplas' ? 'duplasSemana' : 'week')}
+              onClick={() => onChangeType(t.k === 'campanha' ? CAMPANHA_SCOPES[0].k : t.k === 'duplas' ? 'duplasSemana' : 'week')}
               style={{flex:1,textAlign:'center',padding:'8px 4px',borderRadius:8,fontWeight:800,fontSize:13,cursor:'pointer',transition:'background .2s',background:mainTab===t.k?'rgba(247,198,0,.15)':'transparent',color:mainTab===t.k?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}
             >{t.label}</div>
           ))}
         </div>
-        {mainTab !== 'week' && (
+        {mainTab !== 'week' && (mainTab === 'duplas' || CAMPANHA_SCOPES.length > 1) && (
           <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'center',flexWrap:'wrap'}}>
             {(mainTab === 'campanha' ? CAMPANHA_SCOPES : DUPLA_SCOPES).map(s => (
               <div
@@ -1489,61 +1475,6 @@ const SUPER_ADMIN_EMAIL = 'robsonbraz67@gmail.com';
 
 const avt = (avatar: string) => avatar?.startsWith('data:') ? '📸' : (avatar || '👤');
 
-const gerarNarrativa = (ranking: any[], semana: string): string => {
-  const r = ranking.filter(u => !u.isAdmin && !u.isProfessor);
-  if (r.length === 0) return 'Nenhum participante registrado nesta semana ainda.';
-  const top = r.slice(0, Math.min(5, r.length));
-  const lider = top[0];
-  const segundo = top[1];
-  let t = `🏆 CORRIDA DA SEMANA — ${semana}\n\n`;
-  if (lider) {
-    t += `${avt(lider.avatar)} ${lider.nome} chegou à frente com ${lider.xp} XP`;
-    if (lider.streak >= 5) t += ` e uma sequência incrível de ${lider.streak} dias seguidos`;
-    t += `!\n\n`;
-  }
-  if (segundo) {
-    const diff = lider.xp - segundo.xp;
-    if (diff < 100) t += `Foi de tirar o fôlego: ${avt(segundo.avatar)} ${segundo.nome} ficou a apenas ${diff} XP do topo!\n\n`;
-    else t += `Logo atrás, ${avt(segundo.avatar)} ${segundo.nome} com ${segundo.xp} XP deu trabalho!\n\n`;
-  }
-  if (top.length >= 3) {
-    t += `Completando o pódio:\n`;
-    top.slice(2).forEach((u, i) => { t += `${i + 3}º ${avt(u.avatar)} ${u.nome} — ${u.xp} XP\n`; });
-    t += '\n';
-  }
-  const mvpStreak = [...r].sort((a, b) => b.streak - a.streak)[0];
-  if (mvpStreak?.streak >= 5) t += `🔥 Dedicação da semana: ${avt(mvpStreak.avatar)} ${mvpStreak.nome} com ${mvpStreak.streak} dias seguidos!\n\n`;
-  const perfeitos = r.filter(u => u.dias === 7);
-  if (perfeitos.length > 0) t += `⭐ Completaram os 7 dias: ${perfeitos.map(u => u.nome).join(', ')}!\n\n`;
-  t += `Total: ${r.length} participante${r.length !== 1 ? 's' : ''} nesta semana 💪\n`;
-  t += `#SabatinaQuest #EscolaSabatinaTeen`;
-  return t;
-};
-
-const gerarPromptVideo = (ranking: any[], semana: string): string => {
-  const r = ranking.filter(u => !u.isAdmin && !u.isProfessor).slice(0, 5);
-  if (r.length === 0) return 'Nenhum participante para gerar o prompt.';
-  const temFotos = r.some(u => u.avatar?.startsWith('data:'));
-  let p = `Crie um vídeo curto de 30 segundos estilo premiação esportiva para uma turma de jovens cristãos.\n\n`;
-  p += `ESTILO VISUAL: Placar animado com estrelas e confetes, cores azul escuro e dourado, tipografia bold.\n`;
-  p += `MÚSICA: Trilha épica e motivacional, acelerando na revelação do 1º lugar.\n`;
-  p += `FORMATO: Vertical 9:16 (Stories/Reels).\n\n`;
-  if (temFotos) {
-    p += `FOTOS: Cada participante com foto tem a imagem disponível para download no relatório do app.\n`;
-    p += `Use a foto real de cada participante em um quadro circular com bordas douradas.\n\n`;
-  }
-  p += `SEQUÊNCIA (revelar do último ao 1º com suspense):\n`;
-  [...r].reverse().forEach((u, i) => {
-    const pos = r.length - i;
-    const fotoInfo = u.avatar?.startsWith('data:') ? '📸 foto disponível' : `emoji ${u.avatar}`;
-    p += `— ${pos}º lugar: "${u.nome}"  |  ${fotoInfo}  |  ${u.xp} XP  |  ${u.dias} dia${u.dias !== 1 ? 's' : ''} concluído${u.dias !== 1 ? 's' : ''}\n`;
-  });
-  p += `\nTEXTO DE ABERTURA: "Semana ${semana} — Quem foi o campeão? 🏆"\n`;
-  p += `TEXTO DE FECHAMENTO: "Parabéns a todos! Nos vemos na próxima semana! 💪✨"\n`;
-  p += `CALL TO ACTION: "Baixe o SabatinaQuest e entre para o ranking!"`;
-  return p;
-};
-
 // Hook compartilhado do Sorteador — usado pela tela Sorteador (menu) e, antes,
 // duplicado dentro do Admin/TVMode. Fila sem repetição: sorteia todos os
 // elegíveis antes de repetir alguém.
@@ -1705,7 +1636,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
 /* ===== ESTUDO EM DUPLA (Etapa 4) ===== */
 const PAIR_TYPE_LABELS: Record<PairType, string> = { family: '👨‍👧 Família', couple: '💑 Casal', friend: '🤝 Amigo(a)' };
 
-export const Dupla = ({ jogador, licao, prog, activePair, pendingInvite, onPairChange, onClearPending, onBack, onSwitchToGroup, onSwitchToFriends, onRankingDuplas }: any) => {
+export const Dupla = ({ jogador, licao, prog, activePair, pendingInvite, onPairChange, onClearPending, onBack, onRankingDuplas }: any) => {
   const [pair, setPair] = useState<any>(activePair || null);
   const [tipo, setTipo] = useState<PairType>('friend');
   const [linkGerado, setLinkGerado] = useState('');
@@ -1811,10 +1742,7 @@ export const Dupla = ({ jogador, licao, prog, activePair, pendingInvite, onPairC
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>👥 Estudo em Dupla</div>
-        <div style={{display:'flex', gap:4}}>
-          {onSwitchToGroup && <button className="btn btn-ghost btn-sm" onClick={onSwitchToGroup} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>Grupo</button>}
-          {onSwitchToFriends && <button className="btn btn-ghost btn-sm" onClick={onSwitchToFriends} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>🔥</button>}
-        </div>
+        <div style={{width:52}} />
       </div>
 
       <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:18}}>
@@ -1961,431 +1889,6 @@ export const Dupla = ({ jogador, licao, prog, activePair, pendingInvite, onPairC
   );
 };
 
-/* ===== GRUPO DE ESTUDO (Etapa 5) ===== */
-// Tela de um grupo específico: membros, progresso da semana, destaques
-// compartilhados e (se for o líder) convite/remover/encerrar.
-const GrupoDetalhe = ({ jogador, licao, group: initialGroup, onChanged, onBack }: any) => {
-  const [group, setGroup] = useState<any>(initialGroup);
-  const [membersProgress, setMembersProgress] = useState<Record<string, number[]>>({});
-  const [highlights, setHighlights] = useState<any[]>([]);
-  const [linkGerado, setLinkGerado] = useState('');
-  const [gerando, setGerando] = useState(false);
-
-  const isLeader = group?.leaderId === jogador.id;
-
-  useEffect(() => {
-    if (!group?.id) return;
-    const unsub = listenToGroup(group.id, g => {
-      if (g && g.active) { setGroup(g); onChanged?.(g); }
-      else { setGroup(null); onChanged?.(null); onBack?.(); }
-    });
-    return () => unsub();
-  }, [group?.id]);
-
-  useEffect(() => {
-    if (!group?.memberIds?.length || !licao?.semana) return;
-    const track = jogador?.track || 'teen';
-    Promise.all(group.memberIds.map((uid: string) => getProgress(uid, licao.semana, track).then((p: any) => [uid, p?.done || []])))
-      .then(pairs => setMembersProgress(Object.fromEntries(pairs)))
-      .catch(() => {});
-    getGroupHighlights(group.id, licao.semana).then(setHighlights).catch(() => {});
-  }, [group?.id, group?.memberIds?.join(','), licao?.semana, jogador?.track]);
-
-  const shareUrl = (id: string) => `${window.location.origin}${window.location.pathname}?grupo=${id}`;
-
-  const handleGerarConvite = async () => {
-    setGerando(true);
-    try {
-      const inviteId = await createGroupInvite(jogador, group.id);
-      setLinkGerado(shareUrl(inviteId));
-    } catch (e: any) {
-      alert(e?.message || 'Erro ao gerar convite.');
-    }
-    setGerando(false);
-  };
-
-  const compartilharLink = async () => {
-    const texto = `Vem estudar a lição com o grupo "${group.name}" no SabatinaQuest? 📖🔥\n${linkGerado}`;
-    try {
-      if (navigator.share) await navigator.share({ title: `Convite de grupo — ${group.name}`, text: texto, url: linkGerado });
-      else { await navigator.clipboard.writeText(linkGerado); alert('Link copiado! Cole no WhatsApp para convidar.'); }
-    } catch (e) { /* cancelado */ }
-  };
-
-  const handleRemover = async (memberId: string, nome: string) => {
-    if (!window.confirm(`Remover ${nome} do grupo?`)) return;
-    try { await removeGroupMember(group.id, memberId); } catch (e) { alert('Erro ao remover membro.'); }
-  };
-
-  const handleSair = async () => {
-    if (!window.confirm('Sair deste grupo?')) return;
-    try { await leaveGroup(group.id, jogador.id); onBack?.(); } catch (e) { alert('Erro ao sair do grupo.'); }
-  };
-
-  const handleEncerrar = async () => {
-    if (!window.confirm(`Encerrar o grupo "${group.name}"? Isso remove o grupo para todos os membros.`)) return;
-    try { await closeGroup(group.id); } catch (e) { alert('Erro ao encerrar o grupo.'); }
-  };
-
-  if (!group) return null;
-  const dias = licao?.dias || [];
-  const hlByMember = (uid: string, dayId: number) => highlights.filter(h => h.userId === uid && h.dayId === dayId);
-
-  return (
-    <div>
-      <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18, marginBottom:16}}>
-        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10}}>
-          <div>
-            <div style={{fontSize:12, color:'var(--mut)', fontWeight:700}}>Grupo</div>
-            <div style={{fontSize:19, fontWeight:900, color:'var(--txt2)'}}>{group.name}</div>
-          </div>
-          {isLeader ? (
-            <button onClick={handleEncerrar} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>Encerrar</button>
-          ) : (
-            <button onClick={handleSair} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>Sair</button>
-          )}
-        </div>
-        <div style={{fontSize:12, color:'var(--mut)'}}>{group.memberIds.length}/{group.maxMembers} membros</div>
-      </div>
-
-      {isLeader && (
-        <div style={{background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)', borderRadius:16, padding:16, marginBottom:16}}>
-          <div style={{fontSize:12, fontWeight:800, color:'var(--teal)', marginBottom:10}}>🎟️ Convidar para o grupo</div>
-          {!linkGerado ? (
-            <button onClick={handleGerarConvite} disabled={gerando} className={`btn btn-gold ${gerando ? 'btn-dis':''}`} style={{fontSize:14}}>{gerando ? 'Gerando...' : '🔗 Gerar link de convite'}</button>
-          ) : (
-            <div>
-              <div style={{fontSize:11, color:'var(--mut)', marginBottom:8}}>Link reutilizável — vale até o grupo lotar ou você encerrá-lo.</div>
-              <div style={{display:'flex', gap:8, marginBottom:10}}>
-                <input readOnly value={linkGerado} style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt2)', border:'1px solid var(--input-border)', fontSize:12, outline:'none'}} />
-                <button onClick={() => navigator.clipboard.writeText(linkGerado).then(() => alert('Link copiado!'))} className="btn btn-ghost btn-sm" style={{width:'auto', fontSize:12}}>Copiar</button>
-              </div>
-              <button onClick={compartilharLink} className="btn btn-gold" style={{fontSize:14}}>📲 Compartilhar convite</button>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="sec-title" style={{marginBottom:8}}>Membros</div>
-      <div style={{display:'flex', flexDirection:'column', gap:8, marginBottom:20}}>
-        {group.memberIds.map((uid: string) => (
-          <div key={uid} style={{display:'flex', alignItems:'center', justifyContent:'space-between', background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'10px 14px'}}>
-            <div style={{fontSize:13, fontWeight:700, color:'var(--txt2)'}}>
-              {uid === jogador.id ? 'Você' : uid.slice(0, 8)} {uid === group.leaderId && <span style={{color:'var(--gold)', fontSize:11}}>👑 líder</span>}
-            </div>
-            <div style={{fontSize:12, color:'var(--mut)'}}>{(membersProgress[uid] || []).length}/{dias.length} dias</div>
-            {isLeader && uid !== jogador.id && (
-              <button onClick={() => handleRemover(uid, uid.slice(0,8))} style={{background:'none', border:'none', color:'#FF6B6B', fontSize:11, cursor:'pointer'}}>Remover</button>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="sec-title" style={{marginBottom:8}}>Progresso da semana — {licao?.semana}</div>
-      <div style={{fontSize:11, color:'var(--mut)', marginBottom:10, lineHeight:1.5}}>
-        Por padrão, o grupo não mostra a anotação de ninguém — só quem completou o dia e os destaques que cada um decidiu compartilhar.
-      </div>
-      <div style={{display:'flex', flexDirection:'column', gap:8}}>
-        {dias.map((d: any) => {
-          const feitos = group.memberIds.filter((uid: string) => (membersProgress[uid] || []).includes(d.id));
-          const hlDoDia = highlights.filter(h => h.dayId === d.id);
-          return (
-            <div key={d.id} style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'12px 14px'}}>
-              <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)', marginBottom:4}}>{formatDiaSemana(d.diaSemana)} — {d.titulo || `Dia ${d.id}`}</div>
-              <div style={{fontSize:11, color:'var(--mut)'}}>✅ {feitos.length}/{group.memberIds.length} concluíram</div>
-              {hlDoDia.length > 0 && (
-                <div style={{marginTop:8, display:'flex', flexDirection:'column', gap:4}}>
-                  {hlDoDia.map((h: any) => h.texts.map((t: string, i: number) => (
-                    <div key={`${h.id}-${i}`} style={{fontSize:12, color:'var(--txt2)', fontStyle:'italic', paddingLeft:8, borderLeft:'2px solid var(--gold)'}}>
-                      "{t}" <span style={{color:'var(--mut)', fontStyle:'normal'}}>— {h.userId === jogador.id ? 'você' : h.userId.slice(0,6)}</span>
-                    </div>
-                  )))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-export const Grupo = ({ jogador, licao, pendingGroupInvite, onClearPendingGroupInvite, onBack, onSwitchToPair, onSwitchToFriends }: any) => {
-  const [groups, setGroups] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<any>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newMax, setNewMax] = useState(15);
-  const [creating, setCreating] = useState(false);
-  const [aceitando, setAceitando] = useState(false);
-
-  const carregarGrupos = () => {
-    setLoading(true);
-    getMyGroups(jogador.id).then(setGroups).catch(() => {}).finally(() => setLoading(false));
-  };
-  useEffect(() => { carregarGrupos(); }, [jogador.id]);
-
-  const handleCriar = async () => {
-    if (!newName.trim()) return alert('Digite o nome do grupo.');
-    if (newMax < 2 || newMax > 50) return alert('O limite de membros deve ser entre 2 e 50.');
-    setCreating(true);
-    try {
-      const id = await createGroup(jogador, newName.trim(), newMax);
-      setShowCreate(false);
-      setNewName('');
-      carregarGrupos();
-      setSelected({ id });
-    } catch (e: any) {
-      alert(e?.message || 'Erro ao criar o grupo.');
-    }
-    setCreating(false);
-  };
-
-  const handleAceitar = async () => {
-    if (!pendingGroupInvite) return;
-    setAceitando(true);
-    const res = await joinGroupByInvite(pendingGroupInvite.id, jogador);
-    setAceitando(false);
-    if (res.ok) {
-      onClearPendingGroupInvite?.();
-      carregarGrupos();
-      setSelected({ id: res.groupId });
-    } else {
-      const msgs: Record<string, string> = {
-        not_found: 'Convite não encontrado ou desativado.',
-        mismatch: 'Este convite é de outro local ou trilha. Vocês precisam estar no mesmo grupo de estudo.',
-        rejected: 'Não foi possível entrar. O grupo pode estar cheio, encerrado, ou você já é membro.',
-        error: 'Não foi possível entrar no grupo. Tente novamente.',
-      };
-      alert(msgs[(res as any).reason] || 'Não foi possível entrar no grupo.');
-      onClearPendingGroupInvite?.();
-    }
-  };
-
-  return (
-    <div className="scr" style={{paddingBottom:100}}>
-      <div className="hdr">
-        <button className="btn btn-ghost btn-sm" onClick={() => selected ? setSelected(null) : onBack()} style={{width:'auto'}}>← Voltar</button>
-        <div style={{fontWeight:900,fontSize:17}}>🧑‍🤝‍🧑 Grupo de Estudo</div>
-        <div style={{display:'flex', gap:4}}>
-          {!selected && onSwitchToPair && <button className="btn btn-ghost btn-sm" onClick={onSwitchToPair} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>Dupla</button>}
-          {!selected && onSwitchToFriends && <button className="btn btn-ghost btn-sm" onClick={onSwitchToFriends} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>🔥</button>}
-        </div>
-      </div>
-
-      <div style={{padding:'20px 16px'}}>
-        {pendingGroupInvite && (
-          <div style={{background:'rgba(247,198,0,.1)', border:'1px solid rgba(247,198,0,.35)', borderRadius:16, padding:18, marginBottom:18}}>
-            <div style={{fontSize:15, fontWeight:800, color:'var(--gold)', marginBottom:8}}>🎟️ Você recebeu um convite de grupo!</div>
-            <div style={{fontSize:13, color:'var(--mut)', marginBottom:14}}>Entrar num grupo de estudo do seu local e trilha.</div>
-            <div style={{display:'flex', gap:10}}>
-              <button onClick={handleAceitar} disabled={aceitando} className={`btn btn-gold ${aceitando ? 'btn-dis' : ''}`} style={{flex:1, fontSize:14}}>{aceitando ? 'Entrando...' : '✅ Entrar no grupo'}</button>
-              <button onClick={() => onClearPendingGroupInvite?.()} className="btn btn-ghost" style={{flex:1, fontSize:14, color:'var(--mut)'}}>Agora não</button>
-            </div>
-          </div>
-        )}
-
-        {selected ? (
-          <GrupoDetalhe jogador={jogador} licao={licao} group={groups.find(g => g.id === selected.id) || selected} onChanged={() => carregarGrupos()} onBack={() => { setSelected(null); carregarGrupos(); }} />
-        ) : (
-          <>
-            {loading ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : groups.length === 0 ? (
-              <div style={{textAlign:'center', padding:'40px 20px', color:'var(--mut)'}}>
-                <div style={{fontSize:44, marginBottom:12}}>🧑‍🤝‍🧑</div>
-                <div style={{fontSize:14, lineHeight:1.5}}>Você ainda não faz parte de nenhum grupo. Crie um ou peça um link de convite.</div>
-              </div>
-            ) : (
-              <div style={{display:'flex', flexDirection:'column', gap:10, marginBottom:20}}>
-                {groups.map(g => (
-                  <button key={g.id} onClick={() => setSelected(g)} style={{textAlign:'left', background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:14, padding:'14px 16px', cursor:'pointer'}}>
-                    <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)'}}>{g.name} {g.leaderId === jogador.id && <span style={{color:'var(--gold)', fontSize:11}}>👑</span>}</div>
-                    <div style={{fontSize:12, color:'var(--mut)'}}>{g.memberIds.length}/{g.maxMembers} membros</div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {!showCreate ? (
-              <button onClick={() => setShowCreate(true)} className="btn btn-gold" style={{fontSize:15}}>➕ Criar novo grupo</button>
-            ) : (
-              <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18}}>
-                <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Nome do grupo</div>
-                <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Ex: Turma dos Guerreiros" maxLength={60} style={{width:'100%', padding:'12px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, marginBottom:14, outline:'none'}} />
-                <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Limite de membros</div>
-                <input type="number" min={2} max={50} value={newMax} onChange={e => setNewMax(parseInt(e.target.value, 10) || 2)} style={{width:'100%', padding:'12px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, marginBottom:14, outline:'none'}} />
-                <div style={{display:'flex', gap:10}}>
-                  <button onClick={handleCriar} disabled={creating} className={`btn btn-gold ${creating ? 'btn-dis':''}`} style={{flex:1, fontSize:14}}>{creating ? 'Criando...' : 'Criar'}</button>
-                  <button onClick={() => setShowCreate(false)} className="btn btn-ghost" style={{flex:1, fontSize:14, color:'var(--mut)'}}>Cancelar</button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
-/* ===== OFENSIVA COM AMIGOS (Etapa 7) ===== */
-const AmigoLinha = ({ jogador, streak, licao, onEnded }: any) => {
-  const isUserA = streak.userA === jogador.id;
-  const friendId = isUserA ? streak.userB : streak.userA;
-  const friendName = isUserA ? streak.userBName : streak.userAName;
-  const friendAvatar = isUserA ? streak.userBAvatar : streak.userAAvatar;
-  const [mutual, setMutual] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!friendId) return;
-    Promise.all([getUserAllDone(jogador.id, streak.track), getUserAllDone(friendId, streak.track)])
-      .then(([mine, theirs]) => setMutual(computeMutualStreak(mine, theirs, getTrackLessons(streak.track))))
-      .catch(() => setMutual(0));
-  }, [friendId, jogador.id, streak.track]);
-
-  const handleEncerrar = async () => {
-    if (!window.confirm(`Encerrar a ofensiva com ${friendName || 'essa pessoa'}?`)) return;
-    try { await endFriendStreak(streak.id); onEnded?.(streak.id); } catch (e) { alert('Erro ao encerrar.'); }
-  };
-
-  return (
-    <div style={{display:'flex', alignItems:'center', gap:12, background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:14, padding:'12px 14px'}}>
-      <div style={{width:44, height:44, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, background:'rgba(0,0,0,.2)', flexShrink:0}}>
-        {friendAvatar?.startsWith('data:') ? <img src={friendAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/> : <span>{friendAvatar || '👤'}</span>}
-      </div>
-      <div style={{flex:1, minWidth:0}}>
-        <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{friendName || 'Amigo(a)'}</div>
-        <div style={{fontSize:11, color:'var(--mut)'}}>Estudem no mesmo dia para manter a chama acesa</div>
-      </div>
-      <div style={{display:'flex', alignItems:'center', gap:6, fontSize:20, fontWeight:900, color:'#FF9600', flexShrink:0}}>
-        🔥 {mutual === null ? '...' : mutual}
-      </div>
-      <button onClick={handleEncerrar} style={{background:'none', border:'none', color:'var(--mut)', fontSize:16, cursor:'pointer', padding:'4px'}} title="Encerrar">✕</button>
-    </div>
-  );
-};
-
-export const Amigos = ({ jogador, licao, pendingFriendInvite, onClearPendingFriendInvite, onBack, onSwitchToPair, onSwitchToGroup }: any) => {
-  const [streaks, setStreaks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [linkGerado, setLinkGerado] = useState('');
-  const [gerando, setGerando] = useState(false);
-  const [aceitando, setAceitando] = useState(false);
-
-  const carregar = () => {
-    setLoading(true);
-    getMyFriendStreaks(jogador.id).then(setStreaks).catch(() => {}).finally(() => setLoading(false));
-  };
-  useEffect(() => { carregar(); }, [jogador.id]);
-
-  const atLimit = streaks.length >= 10;
-
-  const shareUrl = (id: string) => `${window.location.origin}${window.location.pathname}?amigo=${id}`;
-
-  const handleGerar = async () => {
-    setGerando(true);
-    try {
-      const inviteId = await createFriendStreakInvite(jogador);
-      setLinkGerado(shareUrl(inviteId));
-    } catch (e: any) {
-      alert(e?.message || 'Erro ao gerar o convite.');
-    }
-    setGerando(false);
-  };
-
-  const compartilharLink = async () => {
-    const texto = `Bora manter a ofensiva de estudo juntos no SabatinaQuest? 🔥📖\n${linkGerado}`;
-    try {
-      if (navigator.share) await navigator.share({ title: 'Ofensiva com amigos — SabatinaQuest', text: texto, url: linkGerado });
-      else { await navigator.clipboard.writeText(linkGerado); alert('Link copiado! Cole no WhatsApp para convidar.'); }
-    } catch (e) { /* cancelado */ }
-  };
-
-  const handleAceitar = async () => {
-    if (!pendingFriendInvite) return;
-    setAceitando(true);
-    const res = await acceptFriendStreakInvite(pendingFriendInvite.id, jogador);
-    setAceitando(false);
-    if (res.ok) {
-      onClearPendingFriendInvite?.();
-      carregar();
-    } else {
-      const msgs: Record<string, string> = {
-        not_found: 'Convite não encontrado ou já usado.',
-        expired: 'Este convite expirou (validade de 7 dias).',
-        self: 'Você não pode convidar a si mesmo.',
-        mismatch: 'Este convite é de outro local ou trilha. Vocês precisam estar no mesmo grupo.',
-        limit_reached: 'Você já atingiu o limite de 10 ofensivas ativas.',
-        error: 'Não foi possível aceitar o convite. Tente novamente.',
-      };
-      alert(msgs[(res as any).reason] || 'Não foi possível aceitar o convite.');
-      onClearPendingFriendInvite?.();
-    }
-  };
-
-  return (
-    <div className="scr" style={{paddingBottom:100}}>
-      <div className="hdr">
-        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
-        <div style={{fontWeight:900,fontSize:17}}>🔥 Ofensiva com Amigos</div>
-        <div style={{display:'flex', gap:4}}>
-          {onSwitchToPair && <button className="btn btn-ghost btn-sm" onClick={onSwitchToPair} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>Dupla</button>}
-          {onSwitchToGroup && <button className="btn btn-ghost btn-sm" onClick={onSwitchToGroup} style={{width:'auto', fontSize:11, padding:'6px 8px'}}>Grupo</button>}
-        </div>
-      </div>
-
-      <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:18}}>
-        {pendingFriendInvite && (
-          <div style={{background:'rgba(247,198,0,.1)', border:'1px solid rgba(247,198,0,.35)', borderRadius:16, padding:18}}>
-            <div style={{fontSize:15, fontWeight:800, color:'var(--gold)', marginBottom:8}}>🔥 Convite de ofensiva com amigos!</div>
-            <div style={{fontSize:14, color:'var(--txt2)', marginBottom:14}}>
-              {pendingFriendInvite.createdByName ? <><strong>{pendingFriendInvite.createdByName}</strong> quer manter uma ofensiva de estudo com você.</> : 'Alguém quer manter uma ofensiva de estudo com você.'}
-            </div>
-            <div style={{display:'flex', gap:10}}>
-              <button onClick={handleAceitar} disabled={aceitando} className={`btn btn-gold ${aceitando ? 'btn-dis' : ''}`} style={{flex:1, fontSize:15}}>{aceitando ? 'Aceitando...' : '✅ Aceitar'}</button>
-              <button onClick={() => onClearPendingFriendInvite?.()} className="btn btn-ghost" style={{flex:1, fontSize:15, color:'var(--mut)'}}>Agora não</button>
-            </div>
-          </div>
-        )}
-
-        <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18}}>
-          <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>Convide um amigo</div>
-          <div style={{fontSize:13, color:'var(--mut)', marginBottom:16, lineHeight:1.5}}>
-            Estudem no mesmo dia para manter o 🔥 aceso. Sem exposição de conteúdo — só o contador. Até {10} ofensivas ativas por vez.
-          </div>
-          {atLimit ? (
-            <div style={{fontSize:13, color:'var(--mut)', textAlign:'center'}}>Você atingiu o limite de 10 ofensivas ativas.</div>
-          ) : !linkGerado ? (
-            <button onClick={handleGerar} disabled={gerando} className={`btn btn-gold ${gerando ? 'btn-dis':''}`} style={{fontSize:15}}>{gerando ? 'Gerando...' : '🔗 Gerar link de convite'}</button>
-          ) : (
-            <div>
-              <div style={{fontSize:12, color:'var(--mut)', marginBottom:8}}>Convite válido por 7 dias e de uso único.</div>
-              <div style={{display:'flex', gap:8, marginBottom:10}}>
-                <input readOnly value={linkGerado} style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt2)', border:'1px solid var(--input-border)', fontSize:12, outline:'none'}} />
-                <button onClick={() => navigator.clipboard.writeText(linkGerado).then(() => alert('Link copiado!'))} className="btn btn-ghost btn-sm" style={{width:'auto', fontSize:12}}>Copiar</button>
-              </div>
-              <button onClick={compartilharLink} className="btn btn-gold" style={{fontSize:15}}>📲 Compartilhar convite</button>
-              <button onClick={() => setLinkGerado('')} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12, marginTop:8, color:'var(--mut)'}}>Gerar outro</button>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <div className="sec-title" style={{marginBottom:8}}>Suas ofensivas ({streaks.length})</div>
-          {loading ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : streaks.length === 0 ? (
-            <div style={{textAlign:'center', padding:'20px', color:'var(--mut)', fontSize:13}}>Nenhuma ofensiva ativa ainda.</div>
-          ) : (
-            <div style={{display:'flex', flexDirection:'column', gap:10}}>
-              {streaks.map(s => (
-                <AmigoLinha key={s.id} jogador={jogador} streak={s} licao={licao} onEnded={(id: string) => setStreaks(prev => prev.filter(x => x.id !== id))} />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 /* ===== CÓDIGOS DE CONVITE (Etapa 3) ===== */
 const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { id: string; name: string }[] }) => {
   const isAdmin = !!jogador?.isAdmin;
@@ -2519,20 +2022,10 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
   );
 };
 
-export const Admin = ({ licao, jogador, onBack, onSorteador }: any) => {
+export const Admin = ({ licao, jogador, onBack }: any) => {
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
-
-  // Notification States
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
-  const [notifTitle, setNotifTitle] = useState('Você tem uma nova mensagem! 📬');
-  const [notifBody, setNotifBody] = useState('Continue seu estudo diário e ganhe mais XP!');
-  const [sendingNotif, setSendingNotif] = useState(false);
-
-  // Relatório da semana
-  const [relatorio, setRelatorio] = useState<{ narrativa: string; promptVideo: string; ranking: any[] } | null>(null);
-  const [loadingRelatorio, setLoadingRelatorio] = useState(false);
 
   // Locais de estudo + atribuição de professor por local
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
@@ -2607,7 +2100,7 @@ export const Admin = ({ licao, jogador, onBack, onSorteador }: any) => {
   const [streaks, setStreaks] = useState<Record<string, { streak: number }>>({});
   useEffect(() => {
     if (!licao?.trimestre) return;
-    getAllUsersStreaks(licao.trimestre).then(setStreaks).catch(() => {});
+    getAllUsersStreaks(licao.trimestre, getTrackLessons(jogador?.track)).then(setStreaks).catch(() => {});
   }, [licao?.trimestre]);
 
   const handleToggleGuest = async (userId: string, currentStatus: boolean) => {
@@ -2638,53 +2131,12 @@ export const Admin = ({ licao, jogador, onBack, onSorteador }: any) => {
      }
   };
 
-  const handleGerarRelatorio = async () => {
-    setLoadingRelatorio(true);
-    try {
-      const rank = await getWeeklyRanking(licao.semana);
-      setRelatorio({
-        narrativa: gerarNarrativa(rank, licao.semana),
-        promptVideo: gerarPromptVideo(rank, licao.semana),
-        ranking: rank.filter((u: any) => !u.isAdmin && !u.isProfessor).slice(0, 5),
-      });
-    } catch(e) {
-      alert('Erro ao carregar ranking para o relatório.');
-    }
-    setLoadingRelatorio(false);
-  };
-
-  const handleSendNotif = async () => {
-    if (selectedUsers.length === 0) return alert('Selecione pelo menos um usuário.');
-    if (!notifTitle || !notifBody) return alert('Preencha o título e o corpo da notificação.');
-    setSendingNotif(true);
-    try {
-      await sendManualNotification(selectedUsers, notifTitle, notifBody);
-      alert('Notificação enviada com sucesso!');
-      setSelectedUsers([]);
-    } catch(e) {
-      alert('Erro ao enviar notificação.');
-    }
-    setSendingNotif(false);
-  };
-  
-  const toggleSelectUser = (id: string) => {
-     setSelectedUsers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
-  
-  const toggleSelectAll = () => {
-     if (selectedUsers.length === users.length) {
-         setSelectedUsers([]);
-     } else {
-         setSelectedUsers(users.map(u => u.id));
-     }
-  };
-  
   return (
     <div className="scr" style={{paddingBottom:100}}>
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>⚙️ Painel Admin</div>
-        {onSorteador ? <button className="btn btn-ghost btn-sm" onClick={onSorteador} style={{width:'auto'}} title="Sorteador">🎰</button> : <div/>}
+        <div/>
       </div>
       <div style={{padding:'20px 16px'}}>
         <div className="sec-title" style={{marginBottom:8}}>Gerenciar Usuários (Admins)</div>
@@ -2707,6 +2159,7 @@ export const Admin = ({ licao, jogador, onBack, onSorteador }: any) => {
                      </div>
                      {isSuperAdmin && u.email?.toLowerCase() !== SUPER_ADMIN_EMAIL && (
                        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap: 6}}>
+                       {MULTI_LOCATION_ENABLED && (
                        <div style={{display:'flex', alignItems:'center', gap:6}}>
                          <select
                            value={u.locationId || ''}
@@ -2728,6 +2181,7 @@ export const Admin = ({ licao, jogador, onBack, onSorteador }: any) => {
                            </select>
                          )}
                        </div>
+                       )}
                        <div style={{display:'flex', flexWrap:'wrap', gap: 6, justifyContent:'flex-end'}}>
                          {u.isAdmin ? (
                            <button onClick={() => handleToggleAdmin(u.id, true)} style={{background:'rgba(227,28,61,.2)', color:'#FF6B6B', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
@@ -2756,122 +2210,16 @@ export const Admin = ({ licao, jogador, onBack, onSorteador }: any) => {
            )}
         </div>
 
-        <div className="sec-title" style={{marginBottom:8}}>Códigos de Convite 🎟️</div>
-        <div style={{fontSize:12, color:'var(--mut)', marginBottom:8, lineHeight:1.5}}>
-          Gere um código por local + trilha e compartilhe (ex: WhatsApp). Quem entra com o código já fica vinculado ao local e à trilha certos.
-        </div>
-        <InviteCodesPanel jogador={jogador} locations={locations} />
+        {(MULTI_LOCATION_ENABLED || MULTI_TRACK_ENABLED) && (
+          <>
+            <div className="sec-title" style={{marginBottom:8}}>Códigos de Convite 🎟️</div>
+            <div style={{fontSize:12, color:'var(--mut)', marginBottom:8, lineHeight:1.5}}>
+              Gere um código por local + trilha e compartilhe (ex: WhatsApp). Quem entra com o código já fica vinculado ao local e à trilha certos.
+            </div>
+            <InviteCodesPanel jogador={jogador} locations={locations} />
+          </>
+        )}
 
-        <div className="sec-title" style={{marginBottom:8}}>Notificações Manuais</div>
-        <div style={{background:'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24}}>
-           {loadingUsers ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : (
-             <>
-               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
-                  <div style={{fontSize:13, color:'var(--mut)', fontWeight:800}}>Selecione os Destinatários:</div>
-                  <button onClick={toggleSelectAll} className="btn btn-ghost btn-sm" style={{width:'auto', padding:'4px 8px', fontSize:12, margin:0, minHeight:0}}>{selectedUsers.length === users.length && users.length > 0 ? 'Desmarcar Todos' : 'Selecionar Todos'}</button>
-               </div>
-               <div style={{display:'flex', flexDirection:'column', gap: 6, maxHeight: 150, overflowY:'auto', marginBottom:16, border:'1px solid rgba(255,255,255,.05)', borderRadius:8, padding:4}}>
-                 {users.map((u: any) => (
-                   <label key={u.id} style={{display:'flex', alignItems:'center', gap:10, padding:'6px 8px', background:'rgba(0,0,0,.2)', borderRadius:6, cursor:'pointer'}}>
-                     <input type="checkbox" checked={selectedUsers.includes(u.id)} onChange={() => toggleSelectUser(u.id)} style={{accentColor:'var(--gold)', width:16, height:16}} />
-                     <div style={{fontSize:16, width:22, height:22, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
-                        {u.avatar?.length > 10 ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{u.avatar}</span>}
-                     </div>
-                     <div style={{fontSize:14, color:'var(--txt2)', fontWeight:600}}>{u.nome}</div>
-                   </label>
-                 ))}
-               </div>
-               
-               <div style={{fontSize:13, color:'var(--mut)', fontWeight:800, marginBottom:8}}>Título da Notificação:</div>
-               <input type="text" value={notifTitle} onChange={e => setNotifTitle(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:14, marginBottom:12, transition:'background .3s'}} placeholder="Ex: Hora do estudo!" />
-               
-               <div style={{fontSize:13, color:'var(--mut)', fontWeight:800, marginBottom:8}}>Mensagem:</div>
-               <textarea value={notifBody} onChange={e => setNotifBody(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:14, marginBottom:16, minHeight:60, resize:'vertical', transition:'background .3s'}} placeholder="Ex: Venha completar sua lição..." />
-               
-               <button onClick={handleSendNotif} disabled={sendingNotif} className={`btn btn-gold ${sendingNotif ? 'btn-dis' : ''}`} style={{fontSize:15, padding:'10px'}}>
-                  {sendingNotif ? 'Enviando...' : `🚀 Enviar para ${selectedUsers.length} usuário(s)`}
-               </button>
-             </>
-           )}
-        </div>
-
-        <div className="sec-title" style={{marginBottom:8}}>Corrida da Semana 📊</div>
-        <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:24}}>
-          <div style={{fontSize:13, color:'var(--mut)', marginBottom:12}}>
-            Gera uma narrativa e um prompt de vídeo com base no ranking atual de <strong style={{color:'var(--txt2)'}}>{licao.semana}</strong>.
-          </div>
-          <button onClick={handleGerarRelatorio} disabled={loadingRelatorio} className={`btn btn-gold ${loadingRelatorio ? 'btn-dis' : ''}`} style={{fontSize:14, padding:'10px', marginBottom: relatorio ? 16 : 0}}>
-            {loadingRelatorio ? 'Gerando...' : '🎬 Gerar Relatório + Prompt de Vídeo'}
-          </button>
-
-          {relatorio && (
-            <>
-              {/* Visual ranking with photos */}
-              <div style={{fontSize:12, fontWeight:800, color:'var(--txt2)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>
-                Pódio — Fotos para o vídeo
-              </div>
-              <div style={{display:'flex', flexWrap:'wrap', gap:10, marginBottom:20}}>
-                {relatorio.ranking.map((u: any, i: number) => (
-                  <div key={u.id} style={{display:'flex', flexDirection:'column', alignItems:'center', gap:4, background:'rgba(0,0,0,.25)', borderRadius:10, padding:'10px 8px', minWidth:72}}>
-                    <div style={{fontSize:11, fontWeight:900, color: i === 0 ? 'var(--gold)' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : 'var(--mut)'}}>
-                      {i + 1}º
-                    </div>
-                    <div style={{width:52, height:52, borderRadius:'50%', overflow:'hidden', border: i === 0 ? '2px solid var(--gold)' : '2px solid rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, background:'rgba(0,0,0,.3)'}}>
-                      {u.avatar?.startsWith('data:')
-                        ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt={u.nome} />
-                        : <span>{u.avatar}</span>}
-                    </div>
-                    <div style={{fontSize:11, fontWeight:700, color:'var(--txt2)', textAlign:'center', maxWidth:68, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{u.nome.split(' ')[0]}</div>
-                    <div style={{fontSize:10, color:'var(--gold)', fontWeight:800}}>{u.xp} XP</div>
-                    {u.avatar?.startsWith('data:') && (
-                      <a
-                        href={u.avatar}
-                        download={`${u.nome.replace(/\s+/g,'_')}.jpg`}
-                        style={{fontSize:10, color:'var(--teal)', textDecoration:'none', fontWeight:700, marginTop:2}}
-                      >
-                        ⬇️ salvar
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', marginBottom:6, textTransform:'uppercase', letterSpacing:1}}>
-                Narrativa da Semana
-              </div>
-              <div style={{position:'relative', marginBottom:16}}>
-                <textarea
-                  readOnly
-                  value={relatorio.narrativa}
-                  style={{width:'100%', minHeight:160, padding:'10px', borderRadius:8, background:'rgba(0,0,0,.3)', border:'1px solid rgba(255,255,255,.08)', color:'var(--txt2)', fontSize:13, fontFamily:'monospace', resize:'vertical'}}
-                />
-                <button
-                  onClick={() => navigator.clipboard.writeText(relatorio.narrativa).then(() => alert('Copiado!'))}
-                  style={{position:'absolute', top:6, right:6, background:'rgba(247,198,0,.2)', color:'var(--gold)', border:'none', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}
-                >
-                  Copiar
-                </button>
-              </div>
-
-              <div style={{fontSize:12, fontWeight:800, color:'var(--teal)', marginBottom:6, textTransform:'uppercase', letterSpacing:1}}>
-                Prompt para IA de Vídeo (Runway / CapCut / Pika)
-              </div>
-              <div style={{position:'relative'}}>
-                <textarea
-                  readOnly
-                  value={relatorio.promptVideo}
-                  style={{width:'100%', minHeight:200, padding:'10px', borderRadius:8, background:'rgba(0,0,0,.3)', border:'1px solid rgba(255,255,255,.08)', color:'var(--txt2)', fontSize:13, fontFamily:'monospace', resize:'vertical'}}
-                />
-                <button
-                  onClick={() => navigator.clipboard.writeText(relatorio.promptVideo).then(() => alert('Copiado!'))}
-                  style={{position:'absolute', top:6, right:6, background:'rgba(30,158,134,.25)', color:'var(--teal)', border:'none', borderRadius:6, padding:'4px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}
-                >
-                  Copiar
-                </button>
-              </div>
-            </>
-          )}
-        </div>
 
         <div style={{marginTop:8,padding:16,background:'rgba(255,255,255,.03)',borderRadius:12}}>
           <div style={{fontWeight:800,color:'var(--mut)',fontSize:11,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Lição Atual</div>
@@ -3017,9 +2365,10 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
       )}
       <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:20, flex: 1}}>
 
+        {(MULTI_TRACK_ENABLED || MULTI_LOCATION_ENABLED || !locationLocked) && (
         <div style={{background:'var(--panel-bg)', padding: '20px 16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
           <div style={{fontWeight:800, marginBottom:16, color:'var(--txt2)'}}>🏠 Local de Estudo e Trilha</div>
-          {locationLocked && canManageLocations ? (
+          {locationLocked && canManageLocations && MULTI_TRACK_ENABLED ? (
             /* Admin/professor: local trava normal, mas a trilha fica livre pra
                alternar sempre (uso próprio: testar/acompanhar outras trilhas). */
             <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.6}}>
@@ -3211,6 +2560,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
             </>
           )}
         </div>
+        )}
 
         <div style={{background:'var(--panel-bg)', padding: '20px 16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
           <div style={{fontWeight:800, marginBottom:20, color:'var(--txt2)'}}>Seu Perfil</div>
@@ -3337,7 +2687,9 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
           className={`btn btn-gold${savingSetup ? ' btn-dis' : ''}`}
           disabled={savingSetup}
           onClick={async () => {
-            let finalLocationId = jogador.locationId || '';
+            // Ferramentas desligadas: assume a trilha padrão e o único local
+            // cadastrado, em vez de pedir uma escolha que não existe.
+            let finalLocationId = jogador.locationId || (!MULTI_LOCATION_ENABLED ? (locations[0]?.id || '') : '');
             let finalTrack: Track = jogador.track || track;
             let finalInviteCode: string | undefined = jogador.inviteCode;
             if (!locationLocked) {
@@ -3354,8 +2706,9 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                     return;
                   }
                 } else {
-                  if (!locationId) { alert('Selecione seu local de estudo.'); return; }
-                  finalLocationId = locationId;
+                  const escolhido = locationId || (!MULTI_LOCATION_ENABLED ? locations[0]?.id : '');
+                  if (!escolhido) { alert('Selecione seu local de estudo.'); return; }
+                  finalLocationId = escolhido;
                 }
                 finalTrack = track;
               } else if (REQUIRE_INVITE_CODE_FOR_STUDENTS) {
@@ -3370,10 +2723,12 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                 finalTrack = redeemed.track;
                 finalInviteCode = redeemed.code;
               } else {
-                // Aluno escolheu manualmente da lista
-                if (!locationId) { alert('Selecione seu local de estudo.'); return; }
-                finalLocationId = locationId;
-                finalTrack = track;
+                // Aluno escolheu da lista — ou, com a ferramenta desligada,
+                // entra direto no único local cadastrado
+                const escolhido = locationId || (!MULTI_LOCATION_ENABLED ? locations[0]?.id : '');
+                if (!escolhido) { alert('Selecione seu local de estudo.'); return; }
+                finalLocationId = escolhido;
+                finalTrack = MULTI_TRACK_ENABLED ? track : (jogador.track || 'teen');
               }
             }
             const payload: any = { ...jogador, nome, avatar, telefone: telefoneE164, whatsappOptIn, track: finalTrack, locationId: finalLocationId };

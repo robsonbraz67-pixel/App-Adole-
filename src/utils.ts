@@ -87,9 +87,8 @@ const diaAnteriorISO = (iso: string): string => {
   return d.toISOString().split('T')[0];
 };
 
-// Converte { semana: diaIds[] } (getUserAllDone) num Set de datas reais (YYYY-MM-DD),
-// usando LICOES para mapear diaId -> data. Base tanto da ofensiva pessoal quanto da
-// ofensiva com amigos (interseção de dois desses sets).
+// Converte { semana: diaIds[] } (getUserAllDone) num Set de datas reais
+// (YYYY-MM-DD), usando LICOES para mapear diaId -> data. Base da ofensiva.
 const doneDatesSet = (allDone: Record<string, number[]>, licoes: any[]): Set<string> => {
   const datas = new Set<string>();
   for (const semana of Object.keys(allDone)) {
@@ -111,22 +110,6 @@ export const computeRealStreak = (allDone: Record<string, number[]>, licoes: any
   let cursor = datas.has(hojeISO) ? hojeISO : diaAnteriorISO(hojeISO);
   let streak = 0;
   while (datas.has(cursor)) {
-    streak++;
-    cursor = diaAnteriorISO(cursor);
-  }
-  return streak;
-};
-
-// Ofensiva com amigos (Etapa 7): dias em que os DOIS completaram — calculada ao
-// vivo a partir do histórico real de progresso (sem contador salvo/cron para
-// "quebrar" a sequência; se um dos dois perde um dia, a interseção já reflete
-// isso automaticamente na próxima leitura, sem precisar de job agendado).
-export const computeMutualStreak = (allDoneA: Record<string, number[]>, allDoneB: Record<string, number[]>, licoes: any[], hojeISO: string = hojeLocalISO()): number => {
-  const datasA = doneDatesSet(allDoneA, licoes);
-  const datasB = doneDatesSet(allDoneB, licoes);
-  let cursor = (datasA.has(hojeISO) && datasB.has(hojeISO)) ? hojeISO : diaAnteriorISO(hojeISO);
-  let streak = 0;
-  while (datasA.has(cursor) && datasB.has(cursor)) {
     streak++;
     cursor = diaAnteriorISO(cursor);
   }
@@ -284,13 +267,6 @@ export const getMsgRes = (a: number, t: number) => {
   return { ic: '📖', mg: 'Leia novamente amanhã, você vai melhorar!' };
 };
 
-export const rankDemo = () => [
-  { id: 'd1', nome: 'Maria', avatar: '🦁', xp: 890, dias: 5 },
-  { id: 'd2', nome: 'Pedro', avatar: '🔥', xp: 720, dias: 4 },
-  { id: 'd3', nome: 'Ana', avatar: '⚡', xp: 540, dias: 3 },
-  { id: 'd4', nome: 'Lucas', avatar: '🌟', xp: 320, dias: 2 }
-];
-
 export const calcPos = (r: any[], id: string, xp: number) => {
   const s = [...r].sort((a, b) => b.xp - a.xp);
   const i = s.findIndex((x: any) => x.id === id);
@@ -383,41 +359,4 @@ export const formatDiaSemana = (dia: string): string => {
   return dia;
 };
 
-export const scheduleStudyReminder = async (userName: string, lessonTitle: string) => {
-  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
-  
-  try {
-    let perm = Notification.permission;
-    if (perm !== 'granted') {
-       perm = await Notification.requestPermission();
-    }
-    
-    if (perm === 'granted') {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg) {
-        const title = `Olá, ${userName}! 🌟`;
-        const options: any = {
-           body: `Hora do estudo: ${lessonTitle} - continue com sua sequência no SabatinaQuest!`,
-           icon: '/icon-192.png',
-           badge: '/icon-192.png',
-        };
-        
-        const targetTime = new Date().getTime() + 24 * 60 * 60 * 1000;
-        
-        if ('showTrigger' in Notification.prototype) {
-           options.showTrigger = new (window as any).TimestampTrigger(targetTime);
-           await reg.showNotification(title, options);
-        } else {
-           console.log("Notification Triggers not supported. You will receive notifications only when the app is open.");
-           // Optional: simple timeout if they keep it open for 24h
-           setTimeout(() => {
-             reg.showNotification(title, options);
-           }, 24 * 60 * 60 * 1000);
-        }
-      }
-    }
-  } catch (e) {
-    console.error("Error scheduling reminder", e);
-  }
-};
 

@@ -1,8 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { isRankingHidden, computeRealStreak, aggregateWeekRanking, aggregateSeasonRanking } from './utils';
-import { LICOES } from './data';
+import { isRankingHidden, computeRealStreak, aggregateWeekRanking } from './utils';
+
 const firebaseConfig = {
   projectId:         import.meta.env.VITE_FB_PROJECT_ID,
   appId:             import.meta.env.VITE_FB_APP_ID,
@@ -16,7 +16,7 @@ const firestoreDatabaseId = import.meta.env.VITE_FB_FIRESTORE_DB;
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firestoreDatabaseId);
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
+const googleProvider = new GoogleAuthProvider();
 
 let authInitialized = false;
 let authPromise: Promise<User | null> | null = null;
@@ -233,26 +233,6 @@ export const getAdminIds = async (): Promise<Set<string>> => {
   } catch {
     return new Set<string>();
   }
-};
-
-export const sendManualNotification = async (userIds: string[], title: string, body: string) => {
-  const now = new Date().getTime();
-  for (const uid of userIds) {
-    const userRef = doc(db, 'users', uid);
-    await setDoc(userRef, { manualNotification: { title, body, timestamp: now } }, { merge: true });
-  }
-};
-
-export const listenToUserNotifications = (userId: string, callback: (notification: any) => void) => {
-  const userRef = doc(db, 'users', userId);
-  return onSnapshot(userRef, (docSnap) => {
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      if (data.manualNotification) {
-        callback(data.manualNotification);
-      }
-    }
-  });
 };
 
 // Remove nota/hl (conteúdo privado) do history antes de mandar pro Firestore:
@@ -535,208 +515,6 @@ export const setPairShare = async (
   }, { merge: true });
 };
 
-// ===== Grupo de Estudo (Etapa 5) =====
-// Reaproveita boa parte da estrutura da dupla, mas: N membros, convite
-// reutilizável (não uso único), e não expõe anotação individual — só
-// progresso (quem completou o dia) + destaques compartilhados (opt-in).
-
-export const createGroup = async (jogador: any, name: string, maxMembers: number): Promise<string> => {
-  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro (local e trilha) antes de criar um grupo.');
-  const ref = doc(collection(db, 'groups'));
-  await setDoc(ref, {
-    name: name.trim(),
-    leaderId: jogador.id,
-    locationId: jogador.locationId,
-    track: jogador.track,
-    memberIds: [jogador.id],
-    maxMembers,
-    active: true,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
-};
-
-export const getGroup = async (groupId: string): Promise<any | null> => {
-  const snap = await getDoc(doc(db, 'groups', groupId));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-};
-
-export const listenToGroup = (groupId: string, cb: (group: any | null) => void) => {
-  return onSnapshot(doc(db, 'groups', groupId), snap => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null));
-};
-
-// Grupos ativos dos quais o usuário faz parte (array-contains puro, sem índice composto)
-export const getMyGroups = async (userId: string): Promise<any[]> => {
-  const snap = await getDocs(query(collection(db, 'groups'), where('memberIds', 'array-contains', userId)));
-  const list: any[] = [];
-  snap.forEach(d => { const data = d.data(); if (data.active) list.push({ id: d.id, ...data }); });
-  return list;
-};
-
-// Convite reutilizável: só o líder do grupo cria. Continua válido até o
-// líder desativar (active=false) ou encerrar o grupo inteiro.
-export const createGroupInvite = async (jogador: any, groupId: string): Promise<string> => {
-  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro antes de convidar.');
-  const ref = doc(collection(db, 'groupInvites'));
-  await setDoc(ref, {
-    groupId,
-    createdBy: jogador.id,
-    locationId: jogador.locationId,
-    track: jogador.track,
-    active: true,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
-};
-
-export const getGroupInvite = async (inviteId: string): Promise<any | null> => {
-  const snap = await getDoc(doc(db, 'groupInvites', inviteId));
-  return snap.exists() ? { id: inviteId, ...snap.data() } : null;
-};
-
-export type JoinGroupResult =
-  | { ok: true; groupId: string }
-  | { ok: false; reason: 'not_found' | 'mismatch' | 'rejected' | 'error' };
-
-export const joinGroupByInvite = async (inviteId: string, jogador: any): Promise<JoinGroupResult> => {
-  try {
-    const inv = await getGroupInvite(inviteId);
-    if (!inv || !inv.active) return { ok: false, reason: 'not_found' };
-    if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
-    // Não dá pra ler o grupo (groups/{id}) antes de já ser membro — a regra de
-    // leitura exige membership, e é exatamente isso que ainda não temos aqui.
-    // Então entra direto: a regra do servidor (isSelfJoiningGroup) garante
-    // grupo ativo, limite de membros e local+trilha batendo. Se falhar, não dá
-    // pra distinguir "cheio" de "encerrado" no cliente — mensagem genérica.
-    try {
-      await setDoc(doc(db, 'groups', inv.groupId), {
-        memberIds: arrayUnion(jogador.id),
-      }, { merge: true });
-    } catch (writeErr) {
-      console.error('joinGroupByInvite write', writeErr);
-      return { ok: false, reason: 'rejected' };
-    }
-    return { ok: true, groupId: inv.groupId };
-  } catch (e) {
-    console.error('joinGroupByInvite', e);
-    return { ok: false, reason: 'error' };
-  }
-};
-
-export const leaveGroup = async (groupId: string, userId: string) => {
-  await setDoc(doc(db, 'groups', groupId), { memberIds: arrayRemove(userId) }, { merge: true });
-};
-
-// Líder remove um membro (não a si mesmo — use closeGroup para encerrar)
-export const removeGroupMember = async (groupId: string, memberId: string) => {
-  await setDoc(doc(db, 'groups', groupId), { memberIds: arrayRemove(memberId) }, { merge: true });
-};
-
-export const closeGroup = async (groupId: string) => {
-  await setDoc(doc(db, 'groups', groupId), { active: false }, { merge: true });
-};
-
-// Destaques compartilhados do grupo: subcoleção (1 doc por membro/dia) em vez
-// de um mapa único no doc do grupo — evita contenção de escrita quando vários
-// membros do grupo salvam ao mesmo tempo, e permite paginar por semana depois.
-export const setGroupHighlightShare = async (groupId: string, jogador: any, week: string, dayId: number, texts: string[] | null) => {
-  const entryId = `${jogador.id}_${week}_${dayId}`;
-  const ref = doc(db, 'groups', groupId, 'highlights', entryId);
-  if (!texts || texts.length === 0) {
-    await deleteDoc(ref);
-    return;
-  }
-  await setDoc(ref, { userId: jogador.id, week, dayId, texts, updatedAt: serverTimestamp() });
-};
-
-export const getGroupHighlights = async (groupId: string, week: string): Promise<any[]> => {
-  const snap = await getDocs(query(collection(db, 'groups', groupId, 'highlights'), where('week', '==', week)));
-  const list: any[] = [];
-  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
-  return list;
-};
-
-// ===== Ofensiva com Amigos (Etapa 7) =====
-// Mesmo mecanismo de convite por link da dupla (7 dias, uso único), mas
-// permite várias ativas ao mesmo tempo (teto de 10). Não expõe conteúdo —
-// só o vínculo; a contagem de dias é calculada ao vivo (computeMutualStreak
-// em utils.ts), sem contador salvo nem job agendado para "quebrar".
-export const FRIEND_STREAK_MAX = 10;
-
-export const createFriendStreakInvite = async (jogador: any): Promise<string> => {
-  if (!jogador.locationId || !jogador.track) throw new Error('Complete seu cadastro (local e trilha) antes de convidar.');
-  const inviteId = randomId();
-  await setDoc(doc(db, 'friendStreakInvites', inviteId), {
-    createdBy: jogador.id,
-    createdByName: jogador.nome || '',
-    createdByAvatar: jogador.avatar || '',
-    locationId: jogador.locationId,
-    track: jogador.track,
-    status: 'pending',
-    createdAt: serverTimestamp(),
-    expiresAt: Timestamp.fromMillis(Date.now() + PAIR_INVITE_TTL_MS),
-  });
-  return inviteId;
-};
-
-export const getFriendStreakInvite = async (inviteId: string): Promise<any | null> => {
-  const snap = await getDoc(doc(db, 'friendStreakInvites', inviteId));
-  return snap.exists() ? { id: inviteId, ...snap.data() } : null;
-};
-
-// Streaks ativas de um usuário (array-contains puro, sem índice composto)
-export const getMyFriendStreaks = async (userId: string): Promise<any[]> => {
-  const snap = await getDocs(query(collection(db, 'friendStreaks'), where('members', 'array-contains', userId)));
-  const list: any[] = [];
-  snap.forEach(d => { const data = d.data(); if (data.active) list.push({ id: d.id, ...data }); });
-  return list;
-};
-
-export type AcceptFriendStreakResult =
-  | { ok: true; streakId: string }
-  | { ok: false; reason: 'not_found' | 'expired' | 'self' | 'mismatch' | 'limit_reached' | 'error' };
-
-export const acceptFriendStreakInvite = async (inviteId: string, jogador: any): Promise<AcceptFriendStreakResult> => {
-  try {
-    const inv = await getFriendStreakInvite(inviteId);
-    if (!inv || inv.status !== 'pending') return { ok: false, reason: 'not_found' };
-    const expMs = inv.expiresAt?.toMillis ? inv.expiresAt.toMillis() : 0;
-    if (expMs && expMs < Date.now()) return { ok: false, reason: 'expired' };
-    if (inv.createdBy === jogador.id) return { ok: false, reason: 'self' };
-    if (inv.locationId !== jogador.locationId || inv.track !== jogador.track) return { ok: false, reason: 'mismatch' };
-    // Só dá pra checar o PRÓPRIO teto aqui — a regra do Firestore não deixa
-    // consultar as ofensivas de outro usuário (mesma razão do getActivePair).
-    const mine = await getMyFriendStreaks(jogador.id);
-    if (mine.length >= FRIEND_STREAK_MAX) return { ok: false, reason: 'limit_reached' };
-
-    const batch = writeBatch(db);
-    batch.set(doc(db, 'friendStreaks', inviteId), {
-      inviteId,
-      members: [inv.createdBy, jogador.id],
-      userA: inv.createdBy,
-      userB: jogador.id,
-      userAName: inv.createdByName || '',
-      userAAvatar: inv.createdByAvatar || '',
-      userBName: jogador.nome || '',
-      userBAvatar: jogador.avatar || '',
-      locationId: inv.locationId,
-      track: inv.track,
-      active: true,
-      createdAt: serverTimestamp(),
-    });
-    batch.update(doc(db, 'friendStreakInvites', inviteId), { status: 'accepted' });
-    await batch.commit();
-    return { ok: true, streakId: inviteId };
-  } catch (e) {
-    console.error('acceptFriendStreakInvite', e);
-    return { ok: false, reason: 'error' };
-  }
-};
-
-export const endFriendStreak = async (streakId: string) => {
-  await setDoc(doc(db, 'friendStreaks', streakId), { active: false }, { merge: true });
-};
-
 // ===== Rankings ao vivo =====
 // Tudo é derivado da coleção progress, que já é pública para o ranking. Nada
 // de doc pré-calculado no meio do caminho: a escala aqui (uma escola sabatina,
@@ -808,8 +586,6 @@ export const getWeeklyRanking = async (week: string) => {
   return aggregateWeekRanking(rowsFromSnap(snap, adminIds));
 };
 
-export const getSeasonRanking = async (trimestre: string) =>
-  aggregateSeasonRanking(await getSeasonProgress(trimestre));
 
 // ===== Escalação pública das duplas (ao vivo) =====
 // pairs/ só pode ser lido pelos dois membros — guarda as anotações
@@ -849,19 +625,10 @@ export const listenToPairRoster = (locationId: string, track: string, cb: (roste
   );
 };
 
-export const getPairRoster = async (locationId: string, track: string): Promise<PairRosterEntry[]> => {
-  if (!locationId) return [];
-  try {
-    const snap = await getDocs(query(collection(db, 'pairsPublic'), where('locationId', '==', locationId)));
-    return rosterFromSnap(snap, track);
-  } catch (e) {
-    console.error('getPairRoster', e);
-    return [];
-  }
-};
-
 // Ofensiva real de todos os usuários da temporada (para o painel Admin/Professor)
-export const getAllUsersStreaks = async (trimestre: string): Promise<Record<string, { nome: string; avatar: string; streak: number; isAdmin: boolean; isProfessor: boolean }>> => {
+// `licoes` vem de fora: o conteúdo é carregado sob demanda por trilha, então
+// firebase.ts não pode mais importá-lo estaticamente (e nem deveria).
+export const getAllUsersStreaks = async (trimestre: string, licoes: any[]): Promise<Record<string, { nome: string; avatar: string; streak: number; isAdmin: boolean; isProfessor: boolean }>> => {
   const snap = await getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre)));
   const porUsuario: Record<string, { nome: string; avatar: string; done: Record<string, number[]>; isAdmin?: boolean; isProfessor?: boolean }> = {};
   snap.forEach(doc => {
@@ -872,7 +639,7 @@ export const getAllUsersStreaks = async (trimestre: string): Promise<Record<stri
   const resultado: Record<string, any> = {};
   for (const uid of Object.keys(porUsuario)) {
     const u = porUsuario[uid];
-    resultado[uid] = { nome: u.nome, avatar: u.avatar, isAdmin: !!u.isAdmin, isProfessor: !!u.isProfessor, streak: computeRealStreak(u.done, LICOES) };
+    resultado[uid] = { nome: u.nome, avatar: u.avatar, isAdmin: !!u.isAdmin, isProfessor: !!u.isProfessor, streak: computeRealStreak(u.done, licoes) };
   }
   return resultado;
 };

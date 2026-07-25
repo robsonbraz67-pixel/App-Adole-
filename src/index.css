@@ -372,7 +372,9 @@ body{font-family:'Lora','Georgia',serif;background:linear-gradient(160deg,var(--
 .stat-name{font-family:'Poppins',sans-serif;font-size:13px;font-weight:800;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:84px}
 .stat-xp{justify-self:center;display:inline-flex;align-items:baseline;gap:6px;font-family:'Poppins',sans-serif;font-size:26px;font-weight:900;color:var(--gold);white-space:nowrap;line-height:1}
 .stat-xp-lbl{font-size:12px;font-weight:800;letter-spacing:1px;color:var(--gold);opacity:.8;align-self:center}
-.stat-fire{justify-self:end;display:inline-flex;align-items:center;gap:5px;font-size:26px;line-height:1;font-weight:900;color:#FF9600;white-space:nowrap}
+.stat-right{justify-self:end;display:flex;align-items:center;gap:10px}
+.stat-admin{background:rgba(155,109,255,.14);border:1.5px solid rgba(155,109,255,.4);border-radius:10px;padding:4px 9px;font-size:18px;line-height:1;cursor:pointer}
+.stat-fire{display:inline-flex;align-items:center;gap:5px;font-size:26px;line-height:1;font-weight:900;color:#FF9600;white-space:nowrap}
 .stat-fire b{font-family:'Poppins',sans-serif;font-size:19px;font-weight:900;color:#FF9600}
 
 /* ===== CARD DA UNIDADE (amarelo, estilo Duolingo) ===== */
