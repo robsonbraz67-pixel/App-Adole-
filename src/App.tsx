@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getTrackLessons } from './data';
-import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp, buildPairWeekRanking } from './utils';
-import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getLocationRanking, getPairRanking, getFriendStreakInvite } from './firebase';
+import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking } from './utils';
+import { listenToUserNotifications, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, logout, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getFriendStreakInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, Grupo, Amigos } from './components';
 
 const CACHE_VERSION = '3T2026';
@@ -9,7 +9,7 @@ const CACHE_VERSION = '3T2026';
 const clearStaleCache = () => {
   if (localStorage.getItem('cacheVersion') === CACHE_VERSION) return;
   Object.keys(localStorage)
-    .filter(k => k.startsWith('prog_') || k.startsWith('ranking_'))
+    .filter(k => k.startsWith('prog_') || k.startsWith('ranking_') || k.startsWith('rankrows_'))
     .forEach(k => localStorage.removeItem(k));
   localStorage.removeItem('licao_atual');
   localStorage.setItem('cacheVersion', CACHE_VERSION);
@@ -37,7 +37,14 @@ export default function App() {
   const [jogador, setJogador] = useState<any>(null);
   const [licao, setLicao] = useState<any>(null);
   const [prog, setProg] = useState<any>(PROG0);
-  const [ranking, setRanking] = useState<any[]>([]);
+  // Rankings ao vivo: weekRows chega por assinatura do Firestore e pairRoster
+  // idem; seasonRows é lido sob demanda ao abrir a Campanha (13× mais docs).
+  // A lista exibida é DERIVADA disso — não há estado de ranking para desatualizar.
+  const [weekRows, setWeekRows] = useState<any[]>([]);
+  const [pairRoster, setPairRoster] = useState<any[]>([]);
+  const [seasonRows, setSeasonRows] = useState<any[]>([]);
+  const [seasonTrimestre, setSeasonTrimestre] = useState('');
+  const [seasonLoading, setSeasonLoading] = useState(false);
   const [diaAtual, setDiaAtual] = useState<any>(null);
   const [resultado, setResultado] = useState<any>(null);
   const [logoTaps, setLogoTaps] = useState(0);
@@ -68,6 +75,44 @@ export default function App() {
     getActivePair(jogador.id).then(setActivePair).catch(() => {});
     getMyGroups(jogador.id).then(setMyGroups).catch(() => {});
   }, [jogador?.id, jogador?.locationId]);
+
+  // ===== Assinatura ao vivo do progresso da semana =====
+  // Base do ranking da semana e do de duplas. Enquanto a tela estiver aberta,
+  // qualquer quiz concluído por qualquer pessoa aparece sem precisar recarregar.
+  useEffect(() => {
+    if (!jogador?.id || !licao?.semana || licao.isComingSoon) return;
+    setWeekRows(gs('rankrows_' + licao.semana, []));
+    let cancelado = false;
+    let unsub: (() => void) | null = null;
+    waitForAuthInit().then(user => {
+      if (!user || cancelado) return;
+      unsub = listenToWeekProgress(licao.semana, rows => {
+        const linhas = aggregateWeekRanking(rows);
+        setWeekRows(linhas);
+        ss('rankrows_' + licao.semana, linhas);
+      });
+    }).catch(e => console.error('assinatura da semana', e));
+    return () => { cancelado = true; unsub?.(); };
+  }, [jogador?.id, licao?.semana]);
+
+  // Escalação das duplas do meu local, também ao vivo: dupla formada agora
+  // entra no ranking na mesma hora (pairsPublic é escrito junto com pairs).
+  useEffect(() => {
+    if (!jogador?.id || !jogador?.locationId) { setPairRoster([]); return; }
+    let cancelado = false;
+    let unsub: (() => void) | null = null;
+    waitForAuthInit().then(user => {
+      if (!user || cancelado) return;
+      unsub = listenToPairRoster(jogador.locationId, jogador.track || 'teen', setPairRoster);
+    }).catch(e => console.error('assinatura das duplas', e));
+    return () => { cancelado = true; unsub?.(); };
+  }, [jogador?.id, jogador?.locationId, jogador?.track]);
+
+  // Minha posição na semana acompanha a assinatura
+  useEffect(() => {
+    if (!jogador?.id) return;
+    setProg((prev: any) => ({ ...prev, pos: calcPos(weekRows, jogador.id, prev.xp || 0) }));
+  }, [weekRows, jogador?.id]);
 
   // Resgata convite de dupla pendente (chegou por link) após login + matrícula
   useEffect(() => {
@@ -196,19 +241,7 @@ export default function App() {
       ss('licao_atual', l);
       setLicao(l);
 
-      let r = gs('ranking_' + l.semana, []);
-      try {
-        const user = await waitForAuthInit();
-        if (user) {
-          const dbRanking = await getWeeklyRanking(l.semana);
-          r = dbRanking;
-        }
-      } catch(e) {
-        console.error("Error loading ranking:", e);
-      }
-      ss('ranking_' + l.semana, r);
       if (unmounted) return;
-      setRanking(r);
 
       let hasLocation = !!j?.locationId;
 
@@ -251,7 +284,7 @@ export default function App() {
               p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
               ss(semKey(l, track), p);
             } else if ((p.xp > 0 || (p.done?.length ?? 0) > 0) && dbUser) {
-              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor).catch(console.error);
+              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor, dbUser.locationId).catch(console.error);
             }
 
             // Also sync previous lesson's local progress if it never reached Firestore
@@ -263,7 +296,7 @@ export default function App() {
                 const prevLocal = gs(semKey(prevL, track), null);
                 if (prevLocal && (prevLocal.xp > 0 || (prevLocal.done?.length ?? 0) > 0)) {
                   getProgress(j.id, prevL.semana, track).then(prevDb => {
-                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor).catch(console.error);
+                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor, dbUser.locationId).catch(console.error);
                   }).catch(console.error);
                 }
               }
@@ -278,7 +311,8 @@ export default function App() {
         }
 
         if (unmounted) return;
-        setProg({ ...p, pos: calcPos(r, j.id, p.xp || 0) });
+        // pos é recalculada pela assinatura da semana assim que ela chega
+        setProg({ ...p, pos: calcPos(weekRows, j.id, p.xp || 0) });
       }
 
       if (!unmounted) {
@@ -299,7 +333,6 @@ export default function App() {
     setLicao(l);
 
     let p = gs(semKey(l, j?.track), PROG0);
-    let r = gs('ranking_' + l.semana, []);
 
     try {
       const dbUser = await getUser(j.id);
@@ -329,8 +362,7 @@ export default function App() {
     }
     setJogador(j);
 
-    setRanking(r);
-    setProg({ ...p, pos: calcPos(r, j.id, p.xp || 0) });
+    setProg({ ...p, pos: calcPos(weekRows, j.id, p.xp || 0) });
     if (j.isNew) delete j.isNew;
     ss('jogador', j);
     setTela(j.locationId ? 'home' : 'config');
@@ -372,20 +404,10 @@ export default function App() {
       } }
     };
 
-    let r = [...ranking];
-    const idx = r.findIndex((x: any) => x.id === jogador.id);
-    if (idx !== -1) {
-      r[idx].xp = novoXP;
-      r[idx].dias = novaDone.length;
-    } else {
-      r.push({ id: jogador.id, nome: jogador.nome, avatar: jogador.avatar, xp: novoXP, dias: novaDone.length });
-    }
-    r.sort((a, b) => b.xp - a.xp);
-
-    ss('ranking_' + l.semana, r);
+    // Sem remendo otimista na lista: o save dispara a assinatura e o ranking
+    // de todo mundo (inclusive o meu) chega atualizado em seguida.
     ss(semKey(l, jogador?.track), np);
-    setRanking(r);
-    setProg({ ...np, pos: calcPos(r, jogador.id, novoXP) });
+    setProg({ ...np, pos: calcPos(weekRows, jogador.id, novoXP) });
 
     // Mostra o resultado imediatamente; sync com a nuvem roda em segundo plano
     setTela('resultado');
@@ -394,7 +416,7 @@ export default function App() {
       try {
          const user = await waitForAuthInit();
          if (user) {
-            await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor);
+            await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId);
          }
       } catch(e) {
          console.error("Error updating online progress:", e);
@@ -420,64 +442,64 @@ export default function App() {
   };
 
   const [rankingType, setRankingType] = useState('week');
-  const [rankingPending, setRankingPending] = useState(false);
 
-  const loadLatestRanking = async (type: string = 'week', licaoArg?: any) => {
-    setRankingType(type);
-    const l = licaoArg || licao || getActiveLicao(jogador?.track);
-    // Abre a tela imediatamente com o cache local; atualiza quando o Firestore responder
-    if (type === 'week') setRanking(gs('ranking_' + l.semana, []));
-    else setRanking([]); // rankings de local são pré-calculados; evita mostrar dado da aba anterior
-    setRankingPending(false);
-    playSound('ranking');
-    setTela('ranking');
+  // Campanha: leitura sob demanda, memorizada por temporada. Trocar entre
+  // Minha Trilha / Meu Local / Geral / Duplas não custa leitura nenhuma —
+  // os quatro saem do mesmo conjunto de linhas.
+  const loadSeason = async (trimestre: string, forcar = false) => {
+    if (!trimestre) return;
+    if (!forcar && seasonTrimestre === trimestre) return;
+    setSeasonLoading(true);
     try {
       const user = await waitForAuthInit();
       if (user) {
-        if (type === 'week') {
-          const dbRanking = await getWeeklyRanking(l.semana);
-          setRanking(dbRanking);
-          ss('ranking_' + l.semana, dbRanking);
-          setProg((prev: any) => ({ ...prev, pos: calcPos(dbRanking, jogador?.id, prev.xp || 0) }));
-        } else if (type === 'trilha' || type === 'geral') {
-          // Ranking por local: lê o doc pré-calculado pela Netlify function
-          const track = type === 'trilha' ? (jogador?.track || 'teen') : 'general';
-          const docData = await getLocationRanking(jogador?.locationId, track, l.trimestre);
-          setRanking(docData?.entries || []);
-          setRankingPending(!docData); // doc ainda não existe → "calculando"
-        } else if (type === 'duplasSemana' || type === 'duplasCampanha') {
-          // A escalação das duplas vem do doc pré-calculado (única parte que
-          // exige credencial de servidor). Na aba Semana os números são
-          // recalculados ao vivo em cima do progresso semanal, que é público.
-          const [pairDoc, weekly] = await Promise.all([
-            getPairRanking(jogador?.locationId, jogador?.track || 'teen', l.trimestre),
-            type === 'duplasSemana' ? getWeeklyRanking(l.semana) : Promise.resolve([] as any[]),
-          ]);
-          setRankingPending(!pairDoc);
-          const roster = pairDoc?.entries || [];
-          if (type === 'duplasCampanha') {
-            setRanking(roster);
-          } else {
-            // Dupla recém-formada ainda não está no doc da hora cheia: entra
-            // aqui ao vivo para quem a formou não ficar de fora do ranking.
-            const minha = activePair?.userA && activePair?.userB && !roster.some((p: any) => p.id === activePair.id)
-              ? [{
-                  id: activePair.id,
-                  aId: activePair.userA, aNome: activePair.userAName, aAvatar: activePair.userAAvatar,
-                  bId: activePair.userB, bNome: activePair.userBName, bAvatar: activePair.userBAvatar,
-                }]
-              : [];
-            setRanking(buildPairWeekRanking([...roster, ...minha], weekly));
-          }
-        } else {
-          const dbRanking = await getSeasonRanking(l.trimestre);
-          setRanking(dbRanking);
-        }
+        setSeasonRows(await getSeasonProgress(trimestre));
+        setSeasonTrimestre(trimestre);
       }
-    } catch(e) {
-      console.error(e);
+    } catch (e) {
+      console.error('carregar campanha', e);
     }
+    setSeasonLoading(false);
   };
+
+  const loadLatestRanking = (type: string = 'week', licaoArg?: any) => {
+    setRankingType(type);
+    const l = licaoArg || licao || getActiveLicao(jogador?.track);
+    playSound('ranking');
+    setTela('ranking');
+    // Semana e Duplas/Semana já estão assinadas; só a campanha precisa buscar.
+    if (type !== 'week' && type !== 'duplasSemana') loadSeason(l.trimestre);
+  };
+
+  // Minha dupla entra na escalação mesmo antes do backfill espelhar duplas
+  // antigas em pairsPublic — quem formou a dupla nunca fica de fora.
+  const rosterComMinha = useMemo(() => {
+    if (!activePair?.userA || !activePair?.userB) return pairRoster;
+    if (pairRoster.some((p: any) => p.id === activePair.id)) return pairRoster;
+    return [...pairRoster, {
+      id: activePair.id,
+      aId: activePair.userA, aNome: activePair.userAName, aAvatar: activePair.userAAvatar,
+      bId: activePair.userB, bNome: activePair.userBName, bAvatar: activePair.userBAvatar,
+    }];
+  }, [pairRoster, activePair]);
+
+  // A lista exibida é sempre derivada das linhas ao vivo — nada de estado
+  // paralelo que possa ficar velho. A semana corrente é sobreposta às linhas da
+  // campanha, então o total acumulado também reflete o quiz de agora há pouco.
+  const ranking = useMemo(() => {
+    const semana = licao?.semana;
+    const meuLocal = jogador?.locationId;
+    const minhaTrilha = jogador?.track || 'teen';
+    if (rankingType === 'week') return weekRows;
+    if (rankingType === 'duplasSemana') return buildPairWeekRanking(rosterComMinha, weekRows);
+    const campanha = mergeLiveWeek(seasonRows, weekRows, semana, licao?.trimestre);
+    switch (rankingType) {
+      case 'trilha': return aggregateSeasonRanking(campanha, { locationId: meuLocal, track: minhaTrilha });
+      case 'geral': return aggregateSeasonRanking(campanha, { locationId: meuLocal });
+      case 'duplasCampanha': return buildPairSeasonRanking(rosterComMinha, campanha);
+      default: return aggregateSeasonRanking(campanha);
+    }
+  }, [rankingType, weekRows, seasonRows, rosterComMinha, licao?.semana, licao?.trimestre, jogador?.locationId, jogador?.track]);
 
   const handleChangeLicao = async (newLicao: any, trackOverride?: string) => {
     ss('licao_atual', newLicao);
@@ -485,25 +507,19 @@ export default function App() {
     const track = trackOverride || jogador?.track || 'teen';
 
     let p = gs(semKey(newLicao, track), PROG0);
-    let r = gs('ranking_' + newLicao.semana, []);
 
-    setRanking(r);
-    setProg({ ...p, pos: calcPos(r, jogador.id, p.xp || 0) });
+    setProg({ ...p, pos: calcPos(weekRows, jogador.id, p.xp || 0) });
 
     try {
       const user = await waitForAuthInit();
       if (user) {
-        const dbRanking = await getWeeklyRanking(newLicao.semana);
-        r = dbRanking;
-        setRanking(r);
-
         const dbProg = await getProgress(jogador.id, newLicao.semana, track);
         if (dbProg) {
           p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
           ss(semKey(newLicao, track), p);
         }
 
-        setProg({ ...p, pos: calcPos(r, jogador.id, p.xp || 0) });
+        setProg({ ...p, pos: calcPos(weekRows, jogador.id, p.xp || 0) });
       }
     } catch(e) {
       console.error(e);
@@ -553,7 +569,7 @@ export default function App() {
     try {
       const user = await waitForAuthInit();
       if (user) {
-        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor);
+        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId);
         await saveStudyNote(jogador.id, l.semana, jogador?.track || 'teen', diaAtual.id, nota, hl);
       }
     } catch(e) {
@@ -582,18 +598,10 @@ export default function App() {
         // escolhendo a trilha) — senão `licao` ficaria com a trilha antiga/placeholder.
         const trackChanged = (jogador?.track || 'teen') !== (novoJ.track || 'teen');
         const l = (!trackChanged && licao) || getActiveLicao(novoJ.track);
-        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, novoJ.track || 'teen', !!novoJ.isAdmin, !!novoJ.isGuest, !!novoJ.isProfessor);
+        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, novoJ.track || 'teen', !!novoJ.isAdmin, !!novoJ.isGuest, !!novoJ.isProfessor, novoJ.locationId);
       }
     } catch(e) { console.error(e); }
 
-    let r = [...ranking];
-    const idx = r.findIndex(x => x.id === novoJ.id);
-    if (idx !== -1) {
-      r[idx].nome = novoJ.nome;
-      r[idx].avatar = novoJ.avatar;
-      ss('ranking_' + licao.semana, r);
-      setRanking(r);
-    }
     setTela('home');
   };
 
@@ -607,7 +615,7 @@ export default function App() {
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} myGroups={myGroups} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
-      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingPending={rankingPending} />}
+      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading} onRefresh={() => loadSeason(licao.trimestre, true)} />}
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onSorteador={() => setTela('sorteador')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onSwitchTrack={handleSwitchTrack} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}

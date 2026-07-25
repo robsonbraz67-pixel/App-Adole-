@@ -156,13 +156,67 @@ export const firstName = (n: string) => (n || '').trim().split(/\s+/)[0] || '—
 
 export const pairNome = (a: string, b: string) => `${firstName(a)} & ${firstName(b)}`;
 
-// Ranking de duplas da SEMANA, calculado ao vivo: cruza a escalação das duplas
-// (doc pré-calculado, única parte que exige credencial de servidor) com o
-// progresso semanal, que já é público para o ranking individual. Assim a aba
-// Duplas/Semana é tão em tempo real quanto a aba Semana.
-export const buildPairWeekRanking = (roster: any[], weeklyRows: any[]) => {
+// ===== Agregadores dos rankings (puros, calculados no cliente) =====
+// Com ~100 pessoas sai mais barato — e instantâneo — montar os rankings aqui a
+// partir de progress/ do que manter docs pré-calculados por um job agendado.
+//
+// Um usuário pode ter mais de um doc na mesma semana (chave legada + chave por
+// trilha da janela do bug, ou trilhas diferentes para admin/professor). Tudo
+// aqui colapsa por (usuário, semana) ficando com o doc MAIS COMPLETO — nunca
+// duplica a linha nem soma duas trilhas, o que seria injusto no ranking.
+export const collapseByUserWeek = (rows: any[]): any[] => {
+  const best: Record<string, any> = {};
+  for (const r of rows) {
+    const k = `${r.userId}__${r.week}`;
+    const cur = best[k];
+    const dias = r.dias ?? (r.done?.length || 0);
+    const curDias = cur ? (cur.dias ?? (cur.done?.length || 0)) : -1;
+    if (!cur || dias > curDias || (dias === curDias && (r.xp || 0) > (cur.xp || 0))) best[k] = r;
+  }
+  return Object.values(best);
+};
+
+export const aggregateWeekRanking = (rows: any[]) =>
+  collapseByUserWeek(rows).sort((a: any, b: any) => (b.xp || 0) - (a.xp || 0));
+
+// Acumulado da campanha; `filtro` recorta por local e/ou trilha
+export const aggregateSeasonRanking = (rows: any[], filtro?: { locationId?: string; track?: string }) => {
+  const totals: Record<string, any> = {};
+  for (const r of collapseByUserWeek(rows)) {
+    if (filtro?.locationId && r.locationId !== filtro.locationId) continue;
+    if (filtro?.track && r.track !== filtro.track) continue;
+    if (!totals[r.userId]) {
+      totals[r.userId] = { id: r.userId, nome: r.nome, avatar: r.avatar, xp: 0, dias: 0, isAdmin: false, isProfessor: false };
+    }
+    const t = totals[r.userId];
+    t.xp += (r.xp || 0);
+    t.dias += (r.dias ?? (r.done?.length || 0));
+    t.isAdmin = t.isAdmin || !!r.isAdmin;
+    t.isProfessor = t.isProfessor || !!r.isProfessor;
+  }
+  return Object.values(totals).sort((a: any, b: any) => (b.dias - a.dias) || (b.xp - a.xp));
+};
+
+// A campanha é lida sob demanda (13× mais docs que a semana) enquanto a semana
+// corrente chega por assinatura ao vivo. Sobrepor uma na outra faz o total da
+// campanha refletir na hora o quiz que a pessoa acabou de fazer.
+// ATENÇÃO: trilhas diferentes compartilham a MESMA string de semana
+// ("2026-W26") e só se distinguem pelo trimestre. Como weekRows vem de uma
+// query só por semana, ele traz todas as trilhas — sem recortar pelo trimestre
+// da campanha, o acumulado de "Geral" ganharia a semana atual de gente que nem
+// está nesta campanha.
+export const mergeLiveWeek = (seasonRows: any[], weekRows: any[], semana: string, trimestre?: string) => {
+  if (!semana) return seasonRows;
+  const live = trimestre ? weekRows.filter((r: any) => (r.trimestre || '') === trimestre) : weekRows;
+  return [...seasonRows.filter((r: any) => r.week !== semana), ...live];
+};
+
+// Cruza a escalação das duplas com o progresso: dia cheio quando os dois
+// estudaram, meio dia quando só um estudou. `doneA`/`doneB` só existem na
+// versão semanal — é o que permite desenhar o trilho dia a dia.
+export const buildPairWeekRanking = (roster: any[], weekRows: any[]) => {
   const byId: Record<string, any> = {};
-  weeklyRows.forEach((r: any) => { byId[r.id] = r; });
+  collapseByUserWeek(weekRows).forEach((r: any) => { byId[r.userId] = r; });
   return roster.map((p: any) => {
     const A = byId[p.aId], B = byId[p.bId];
     const doneA: number[] = A?.done || [];
@@ -181,6 +235,43 @@ export const buildPairWeekRanking = (roster: any[], weeklyRows: any[]) => {
       xp: (A?.xp || 0) + (B?.xp || 0),
       isAdmin: !!(A?.isAdmin || B?.isAdmin),
       isProfessor: !!(A?.isProfessor || B?.isProfessor),
+    };
+  });
+};
+
+// Mesma métrica somada nas semanas da campanha. Sem doneA/doneB (a UI desenha
+// a barra proporcional a partir de juntos + dias que só um fez).
+export const buildPairSeasonRanking = (roster: any[], seasonRows: any[]) => {
+  const porUser: Record<string, any[]> = {};
+  for (const r of collapseByUserWeek(seasonRows)) {
+    (porUser[r.userId] ||= []).push(r);
+  }
+  return roster.map((p: any) => {
+    const semanasA: Record<string, any> = {};
+    const semanasB: Record<string, any> = {};
+    (porUser[p.aId] || []).forEach(r => { semanasA[r.week] = r; });
+    (porUser[p.bId] || []).forEach(r => { semanasB[r.week] = r; });
+    let diasA = 0, diasB = 0, juntos = 0, xp = 0;
+    let nomeA = p.aNome, avatarA = p.aAvatar, nomeB = p.bNome, avatarB = p.bAvatar;
+    let isAdmin = false, isProfessor = false;
+    for (const week of new Set([...Object.keys(semanasA), ...Object.keys(semanasB)])) {
+      const wa = semanasA[week], wb = semanasB[week];
+      const doneA: number[] = wa?.done || [];
+      const doneB: number[] = wb?.done || [];
+      const setB = new Set(doneB);
+      diasA += doneA.length;
+      diasB += doneB.length;
+      juntos += doneA.filter(d => setB.has(d)).length;
+      xp += (wa?.xp || 0) + (wb?.xp || 0);
+      if (wa) { nomeA = wa.nome || nomeA; avatarA = wa.avatar || avatarA; }
+      if (wb) { nomeB = wb.nome || nomeB; avatarB = wb.avatar || avatarB; }
+      isAdmin = isAdmin || !!wa?.isAdmin || !!wb?.isAdmin;
+      isProfessor = isProfessor || !!wa?.isProfessor || !!wb?.isProfessor;
+    }
+    return {
+      ...p,
+      aNome: nomeA, aAvatar: avatarA, bNome: nomeB, bAvatar: avatarB,
+      diasA, diasB, juntos, xp, dias: pairDias(diasA, diasB), isAdmin, isProfessor,
     };
   });
 };

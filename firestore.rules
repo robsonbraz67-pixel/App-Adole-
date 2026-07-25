@@ -337,6 +337,50 @@ service cloud.firestore {
       allow delete: if isUserAdmin();
     }
 
+    // ===== Escalação pública das duplas =====
+    // Espelho enxuto de pairs/ criado para o ranking de duplas ser calculado AO
+    // VIVO no cliente: pairs/ só pode ser lido pelos dois membros (guarda as
+    // anotações compartilhadas), então ninguém conseguiria montar a lista de
+    // duplas do local sem um processo servidor. Aqui vai só quem forma cada
+    // dupla — SEM anotações, SEM destaques e SEM o tipo do vínculo
+    // (família/casal/amigo), que continua sendo assunto apenas dos dois.
+    // Escrito junto com pairs/ no mesmo batch, então os dois nunca divergem.
+    function isValidPairPublic(data) {
+      return data.keys().hasOnly(['pairId', 'members', 'aId', 'aNome', 'aAvatar', 'bId', 'bNome', 'bAvatar', 'locationId', 'track', 'active', 'createdAt'])
+        && data.members is list && data.members.size() == 2
+        && data.aId is string && data.bId is string && data.aId != data.bId
+        && data.members.hasOnly([data.aId, data.bId])
+        && data.aNome is string && data.bNome is string
+        && data.aAvatar is string && data.bAvatar is string
+        && data.locationId is string && data.locationId.size() > 0
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.active is bool;
+    }
+
+    match /pairsPublic/{pairId} {
+      // Legível por qualquer autenticado (o cliente filtra pelo próprio local).
+      // As regras não conseguem impor o filtro de uma query, então o que protege
+      // aqui é o conteúdo ser mínimo — nada além do que o ranking já mostra.
+      allow get, list: if isAuthenticated();
+
+      // Criado por quem aceita o convite, no mesmo batch de pairs/{pairId}.
+      allow create: if isAuthenticated()
+        && pairId == incoming().pairId
+        && request.auth.uid == incoming().bId
+        && incoming().active == true
+        && isValidPairPublic(incoming())
+        && myLocationTrackMatches(incoming().locationId, incoming().track);
+
+      // Só desfazer — nome e avatar exibidos vêm do progresso (ao vivo), então
+      // ninguém precisa (nem pode) reescrever o texto que aparece do parceiro.
+      allow update: if isAuthenticated()
+        && (request.auth.uid in existing().members)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['active'])
+        && incoming().active == false;
+
+      allow delete: if isUserAdmin();
+    }
+
     // ===== Grupo de Estudo (Etapa 5) =====
     // Reaproveita o mesmo escopo local+trilha da dupla. Diferença: N membros e
     // convite reutilizável (revogação é no nível do grupo via 'active', não
@@ -545,11 +589,21 @@ service cloud.firestore {
       allow delete: if isUserAdmin();
     }
 
+    // Local do DONO do progresso, lido do próprio users/{uid}. É o que permite
+    // validar o locationId gravado no progresso sem confiar no cliente.
+    function ownLocationId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('locationId', '');
+    }
+
     function isValidProgress(data) {
       return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string
         && data.week is string && data.week.size() > 0 && data.week.size() <= 20
         && (!data.keys().hasAny(['track']) || data.track in ['teen', 'youngAdult', 'adult'])
+        // locationId no progresso é o que torna o ranking por local calculável
+        // ao vivo pelo cliente (progress é público; users/{uid} de terceiro não
+        // é). Só pode ser o local real do dono — a regra confere, não o cliente.
+        && (!data.keys().hasAny(['locationId']) || data.locationId == ownLocationId())
         && (!data.keys().hasAny(['trimestre']) || data.trimestre is string)
         && data.xp is number
         && data.streak is number
@@ -573,7 +627,7 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && progressId.split('_')[0] == incoming().userId
         && isOwner(incoming().userId)
-        && incoming().keys().hasOnly(['userId', 'week', 'track', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
+        && incoming().keys().hasOnly(['userId', 'week', 'track', 'trimestre', 'locationId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));
 
@@ -583,7 +637,7 @@ service cloud.firestore {
         && isOwner(existing().userId)
         && incoming().userId == existing().userId
         && incoming().week == existing().week
-        && incoming().diff(existing()).affectedKeys().hasOnly(['track', 'trimestre', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['track', 'trimestre', 'locationId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
         && isValidProgress(incoming());
 
       allow delete: if false;
@@ -620,32 +674,5 @@ service cloud.firestore {
       allow delete: if isUserAdmin();
     }
 
-    // ===== Rankings pré-calculados (Etapa 6) =====
-    // Escritos SÓ pela Netlify function (admin SDK, que ignora estas regras).
-    // Cliente só lê o ranking do PRÓPRIO local (mesmo sabendo o id de outro doc,
-    // o campo locationId precisa bater com o seu). Doc inexistente é liberado
-    // para o cliente conseguir a resposta "ainda não calculado" sem erro.
-    match /rankings/{docId} {
-      allow get: if isAuthenticated() && (
-        resource == null
-        || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            && resource.data.locationId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.locationId)
-      );
-      allow list: if false;
-      allow write: if false; // só o processo servidor (admin SDK) escreve
-    }
-
-    // Ranking de duplas: mesmo escopo e mesmas garantias do ranking por local.
-    // O doc traz só a escalação (quem forma cada dupla) e os totais — nunca o
-    // TIPO do vínculo (família/casal/amigo), que fica visível apenas aos dois.
-    match /pairRankings/{docId} {
-      allow get: if isAuthenticated() && (
-        resource == null
-        || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            && resource.data.locationId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.locationId)
-      );
-      allow list: if false;
-      allow write: if false; // só o processo servidor (admin SDK) escreve
-    }
   }
 }

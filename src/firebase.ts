@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { isRankingHidden, computeRealStreak } from './utils';
+import { isRankingHidden, computeRealStreak, aggregateWeekRanking, aggregateSeasonRanking } from './utils';
 import { LICOES } from './data';
 const firebaseConfig = {
   projectId:         import.meta.env.VITE_FB_PROJECT_ID,
@@ -277,7 +277,7 @@ const stripPrivateNotes = (history: any): any => {
 const trackKey = (userId: string, week: string, track?: string) =>
   (!track || track === 'teen') ? `${userId}_${week}` : `${userId}_${track}_${week}`;
 
-export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, track: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean) => {
+export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, track: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean, locationId?: string) => {
   const progId = trackKey(userId, week, track);
   const progRef = doc(db, 'progress', progId);
   await setDoc(progRef, {
@@ -285,6 +285,10 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     week,
     track,
     trimestre,
+    // Carimba o local para o ranking por local ser calculável ao vivo pelo
+    // cliente (a regra confere que é mesmo o local do dono). Só quando existe:
+    // usuário ainda não matriculado não tem local para gravar.
+    ...(locationId ? { locationId } : {}),
     xp: prog.xp,
     streak: prog.streak,
     done: prog.done,
@@ -471,6 +475,22 @@ export const acceptPairInvite = async (inviteId: string, jogador: any): Promise<
       sharesA: {},
       sharesB: {},
     });
+    // Espelho público da escalação, no MESMO batch — é o que permite montar o
+    // ranking de duplas ao vivo sem expor as anotações que ficam em pairs/.
+    batch.set(doc(db, 'pairsPublic', inviteId), {
+      pairId: inviteId,
+      members: [inv.createdBy, jogador.id],
+      aId: inv.createdBy,
+      aNome: inv.createdByName || '',
+      aAvatar: inv.createdByAvatar || '🦁',
+      bId: jogador.id,
+      bNome: jogador.nome || '',
+      bAvatar: jogador.avatar || '🦁',
+      locationId: inv.locationId,
+      track: inv.track,
+      active: true,
+      createdAt: serverTimestamp(),
+    });
     batch.update(doc(db, 'pairInvites', inviteId), { status: 'accepted' });
     await batch.commit();
     return { ok: true, pairId: inviteId };
@@ -480,8 +500,18 @@ export const acceptPairInvite = async (inviteId: string, jogador: any): Promise<
   }
 };
 
+// Desfaz nos dois lugares atomicamente: se só um caísse, a dupla sumiria do
+// feed mas continuaria no ranking (ou o contrário).
 export const unpair = async (pairId: string) => {
-  await setDoc(doc(db, 'pairs', pairId), { active: false }, { merge: true });
+  const pubRef = doc(db, 'pairsPublic', pairId);
+  // Duplas anteriores a pairsPublic ainda não têm espelho; o backfill cria com
+  // o active certo. Um `set` com merge viraria create e a regra (com razão)
+  // recusaria um doc só com `active`, derrubando o batch inteiro.
+  const pub = await getDoc(pubRef).catch(() => null);
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'pairs', pairId), { active: false }, { merge: true });
+  if (pub?.exists()) batch.update(pubRef, { active: false });
+  await batch.commit();
 };
 
 // Escuta a dupla em tempo real (feed). Retorna unsubscribe.
@@ -707,118 +737,126 @@ export const endFriendStreak = async (streakId: string) => {
   await setDoc(doc(db, 'friendStreaks', streakId), { active: false }, { merge: true });
 };
 
+// ===== Rankings ao vivo =====
+// Tudo é derivado da coleção progress, que já é pública para o ranking. Nada
+// de doc pré-calculado no meio do caminho: a escala aqui (uma escola sabatina,
+// ~100 pessoas) torna o cálculo no cliente mais barato E instantâneo.
+//
+// Um usuário pode ter mais de um doc na mesma semana (chave legada + chave por
+// trilha da janela do bug, ou trilhas diferentes para admin/professor). Todo
+// agregador colapsa por (usuário, semana) ficando com o doc MAIS COMPLETO —
+// nunca duplica a linha nem soma duas trilhas, o que seria injusto no ranking.
+
+// Linha crua de progresso, já filtrada (convidado e nomes ocultos ficam fora)
+export type ProgressRow = {
+  id: string; userId: string; week: string; trimestre?: string; track?: string;
+  locationId?: string; nome: string; avatar: string; done: number[]; dias: number;
+  xp: number; isAdmin: boolean; isProfessor: boolean;
+};
+
+const rowsFromSnap = (snap: any, adminIds: Set<string>): ProgressRow[] => {
+  const rows: ProgressRow[] = [];
+  snap.forEach((d: any) => {
+    const data = d.data();
+    if (isRankingHidden(data.nome)) return;
+    if (data.isGuest) return;
+    rows.push({
+      ...data,
+      id: data.userId,
+      done: data.done || [],
+      dias: data.done?.length || 0,
+      xp: data.xp || 0,
+      isAdmin: data.isAdmin || adminIds.has(data.userId),
+      isProfessor: !!data.isProfessor,
+    });
+  });
+  return rows;
+};
+
+// Assina o progresso de uma semana. É a base ao vivo do ranking da semana e do
+// de duplas — ~1 doc por aluno, o caminho quente e mais barato do app.
+export const listenToWeekProgress = (week: string, cb: (rows: ProgressRow[]) => void) => {
+  let stop = false;
+  let unsub: (() => void) | null = null;
+  getAdminIds().then(adminIds => {
+    if (stop) return;
+    unsub = onSnapshot(
+      query(collection(db, 'progress'), where('week', '==', week)),
+      snap => cb(rowsFromSnap(snap, adminIds)),
+      err => console.error('listenToWeekProgress', err),
+    );
+  });
+  return () => { stop = true; unsub?.(); };
+};
+
+// Progresso da campanha inteira (13 semanas). Leitura pontual, não assinatura:
+// é ~13× mais docs que a semana e muda devagar. A semana corrente é sobreposta
+// ao vivo por cima disto (ver mergeLiveWeek), então o total nunca fica atrasado.
+export const getSeasonProgress = async (trimestre: string): Promise<ProgressRow[]> => {
+  const [snap, adminIds] = await Promise.all([
+    getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre))),
+    getAdminIds(),
+  ]);
+  return rowsFromSnap(snap, adminIds);
+};
+
 export const getWeeklyRanking = async (week: string) => {
   const [snap, adminIds] = await Promise.all([
     getDocs(query(collection(db, 'progress'), where('week', '==', week))),
     getAdminIds(),
   ]);
-  // Um usuário pode ter mais de um doc na mesma semana (chave legada + chave
-  // por trilha da janela do bug, ou trilhas diferentes para admin/professor).
-  // Fica com o doc MAIS COMPLETO por usuário — nunca duplica a linha nem
-  // soma duas trilhas (o que seria injusto no ranking).
-  const byUser: Record<string, any> = {};
-  snap.forEach(doc => {
-    const data = doc.data();
-    if (isRankingHidden(data.nome)) return;
-    if (data.isGuest) return;
-    const row: any = { id: data.userId, ...data, dias: data.done?.length || 0, isAdmin: data.isAdmin || adminIds.has(data.userId), isProfessor: !!data.isProfessor };
-    const cur = byUser[data.userId];
-    if (!cur || row.dias > cur.dias || (row.dias === cur.dias && (row.xp || 0) > (cur.xp || 0))) {
-      byUser[data.userId] = row;
-    }
-  });
-  return Object.values(byUser).sort((a: any, b: any) => b.xp - a.xp);
+  return aggregateWeekRanking(rowsFromSnap(snap, adminIds));
 };
 
-export const getSeasonRanking = async (trimestre: string) => {
-  const [snap, adminIds] = await Promise.all([
-    getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre))),
-    getAdminIds(),
-  ]);
-  // Primeiro colapsa por (usuário, semana) pegando o doc mais completo — evita
-  // contar duas vezes a mesma semana quando há doc legado + doc da janela do
-  // bug. Só depois soma as semanas de cada usuário.
-  const porUserSemana: Record<string, any> = {};
-  snap.forEach(doc => {
-    const data = doc.data();
-    if (isRankingHidden(data.nome)) return;
-    if (data.isGuest) return;
-    const k = `${data.userId}__${data.week}`;
-    const cur = porUserSemana[k];
-    const dias = data.done?.length || 0;
-    if (!cur || dias > (cur.done?.length || 0) || (dias === (cur.done?.length || 0) && (data.xp || 0) > (cur.xp || 0))) {
-      porUserSemana[k] = data;
-    }
-  });
-  const userTotals: Record<string, any> = {};
-  Object.values(porUserSemana).forEach((data: any) => {
-    const uid = data.userId;
-    if (!userTotals[uid]) {
-      userTotals[uid] = { id: uid, nome: data.nome, avatar: data.avatar, xp: 0, dias: 0, isAdmin: data.isAdmin || adminIds.has(uid), isProfessor: !!data.isProfessor };
-    }
-    userTotals[uid].xp += (data.xp || 0);
-    userTotals[uid].dias += (data.done?.length || 0);
-  });
-  return Object.values(userTotals).sort((a, b) => b.xp - a.xp);
-};
+export const getSeasonRanking = async (trimestre: string) =>
+  aggregateSeasonRanking(await getSeasonProgress(trimestre));
 
-// ===== Ranking por local, pré-calculado (Etapa 6) =====
-// Lê os docs prontos escritos pela Netlify function recompute-rankings.
-// PRECISA bater EXATAMENTE com o slug() da função (mesma regra de caracteres).
-const rankingSlug = (s: string) => (s || 'sem-temporada').replace(/[^A-Za-z0-9]+/g, '_');
-
-export type LocationRankingDoc = {
-  locationId: string;
-  track: string;
-  trimestre: string;
-  entries: any[];
-  count: number;
-  updatedAt?: any;
-} | null;
-
-// track === 'general' → ranking geral do local (todas as trilhas juntas)
-export const getLocationRanking = async (locationId: string, track: string, trimestre: string): Promise<LocationRankingDoc> => {
-  if (!locationId) return null;
-  const id = `${locationId}__${track}__${rankingSlug(trimestre)}`;
-  try {
-    const snap = await getDoc(doc(db, 'rankings', id));
-    return snap.exists() ? (snap.data() as any) : null;
-  } catch {
-    return null;
-  }
-};
-
-// ===== Ranking de Duplas, pré-calculado =====
-// Mesma razão do ranking por local: montar a ESCALAÇÃO das duplas de um local
-// exige ler pairs/ de outras pessoas, o que as regras (com razão) não permitem
-// — só o admin SDK consegue. O doc traz a escalação + os totais da campanha;
-// os números da SEMANA o cliente recalcula ao vivo em cima de progress/, que
-// já é público (ver buildPairWeekRanking em utils.ts).
-export type PairRankingEntry = {
+// ===== Escalação pública das duplas (ao vivo) =====
+// pairs/ só pode ser lido pelos dois membros — guarda as anotações
+// compartilhadas. pairsPublic/ é o espelho enxuto (quem forma cada dupla, sem
+// anotações e sem o tipo do vínculo) que deixa o ranking de duplas ser montado
+// ao vivo no cliente. Escrito no mesmo batch de pairs/, nunca diverge.
+export type PairRosterEntry = {
   id: string;
   aId: string; aNome: string; aAvatar: string;
   bId: string; bNome: string; bAvatar: string;
-  diasA: number; diasB: number; juntos: number; dias: number; xp: number;
-  isAdmin: boolean; isProfessor: boolean;
+  locationId: string; track: string;
 };
 
-export type PairRankingDoc = {
-  locationId: string;
-  track: string;
-  trimestre: string;
-  entries: PairRankingEntry[];
-  count: number;
-  updatedAt?: any;
-} | null;
+const rosterFromSnap = (snap: any, track: string): PairRosterEntry[] => {
+  const out: PairRosterEntry[] = [];
+  snap.forEach((d: any) => {
+    const p = d.data();
+    // active/track filtrados aqui: a query usa só locationId (índice
+    // automático de campo único), evitando exigir índice composto.
+    if (!p.active || p.track !== track) return;
+    out.push({
+      id: d.id,
+      aId: p.aId, aNome: p.aNome || '', aAvatar: p.aAvatar || '🦁',
+      bId: p.bId, bNome: p.bNome || '', bAvatar: p.bAvatar || '🦁',
+      locationId: p.locationId, track: p.track,
+    });
+  });
+  return out;
+};
 
-export const getPairRanking = async (locationId: string, track: string, trimestre: string): Promise<PairRankingDoc> => {
-  if (!locationId) return null;
-  const id = `${locationId}__${track}__${rankingSlug(trimestre)}`;
+export const listenToPairRoster = (locationId: string, track: string, cb: (roster: PairRosterEntry[]) => void) => {
+  if (!locationId) { cb([]); return () => {}; }
+  return onSnapshot(
+    query(collection(db, 'pairsPublic'), where('locationId', '==', locationId)),
+    snap => cb(rosterFromSnap(snap, track)),
+    err => { console.error('listenToPairRoster', err); cb([]); },
+  );
+};
+
+export const getPairRoster = async (locationId: string, track: string): Promise<PairRosterEntry[]> => {
+  if (!locationId) return [];
   try {
-    const snap = await getDoc(doc(db, 'pairRankings', id));
-    return snap.exists() ? (snap.data() as any) : null;
-  } catch {
-    return null;
+    const snap = await getDocs(query(collection(db, 'pairsPublic'), where('locationId', '==', locationId)));
+    return rosterFromSnap(snap, track);
+  } catch (e) {
+    console.error('getPairRoster', e);
+    return [];
   }
 };
 

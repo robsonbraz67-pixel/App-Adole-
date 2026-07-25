@@ -1148,14 +1148,16 @@ const DUPLA_SCOPES = [
   { k: 'duplasCampanha', label: 'Campanha' },
 ];
 
-export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao, rankingPending }: any) => {
+export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao, rankingLoading, onRefresh }: any) => {
   // Rankings por local (trilha/geral) vêm pré-calculados e são ordenados por
   // DIAS no período (métrica justa entre trilhas); a semana continua por XP.
   // O de duplas segue a mesma lógica de dias, mas com a métrica da dupla
   // (dia cheio = os dois; meio dia = só um), que é o próprio critério do rank.
   const isPair = type === 'duplasSemana' || type === 'duplasCampanha';
-  const isLocal = type === 'trilha' || type === 'geral';
   const isSemanal = type === 'week' || type === 'duplasSemana';
+  // A semana ordena por XP (é a corrida do sorteio); a campanha inteira ordena
+  // por DIAS, métrica justa entre trilhas com número de dias diferente.
+  const porDias = !isSemanal || isPair;
   const mainTab = type === 'week' ? 'week' : isPair ? 'duplas' : 'campanha';
 
   const { regular, staff } = useMemo(() => {
@@ -1177,14 +1179,14 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           const isProfessor = !isAdmin && (r.isProfessor || (isMe && !!jogador.isProfessor));
           return { ...r, nome, avatar, dias, xp, isAdmin, isProfessor, eu: isMe };
         });
-    const bySort = (isLocal || isPair)
+    const bySort = porDias
       ? (a: any, b: any) => (b.dias - a.dias) || (b.xp - a.xp)
       : (a: any, b: any) => b.xp - a.xp;
     return {
       regular: all.filter((r: any) => !r.isAdmin && !r.isProfessor).sort(bySort).slice(0, 10),
       staff: all.filter((r: any) => r.isAdmin || r.isProfessor).sort(bySort),
     };
-  }, [ranking, jogador, type, prog, isLocal, isPair]);
+  }, [ranking, jogador, type, prog, porDias, isPair]);
 
   const myIsStaff = !!jogador.isAdmin || !!jogador.isProfessor;
   const myIdx = myIsStaff
@@ -1311,15 +1313,22 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
                 style={{padding:'6px 14px',borderRadius:20,fontSize:12,fontWeight:800,cursor:'pointer',fontFamily:'Poppins,sans-serif',border:`1.5px solid ${type===s.k?'rgba(247,198,0,.5)':'var(--b2)'}`,background:type===s.k?'rgba(247,198,0,.12)':'transparent',color:type===s.k?'var(--gold)':'var(--mut)'}}
               >{s.label}</div>
             ))}
+            {/* A semana chega por assinatura; as semanas antigas da campanha são
+                lidas uma vez e ficam em memória — daí o atualizar manual. */}
+            {!isSemanal && onRefresh && (
+              <div
+                onClick={() => !rankingLoading && onRefresh()}
+                style={{padding:'6px 12px',borderRadius:20,fontSize:12,fontWeight:800,cursor:rankingLoading?'default':'pointer',fontFamily:'Poppins,sans-serif',border:'1.5px solid var(--b2)',background:'transparent',color:'var(--mut)',opacity:rankingLoading?.5:1}}
+                title="Recarregar as semanas anteriores"
+              >{rankingLoading ? '⏳' : '🔄'}</div>
+            )}
           </div>
         )}
       </div>
 
-      {(isLocal || isPair) && rankingPending && (
+      {rankingLoading && (
         <div style={{margin:'0 16px 12px', padding:'14px 16px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)', fontSize:13, color:'var(--txt2)', lineHeight:1.5}}>
-          ⏳ {isPair
-            ? 'A lista de duplas do seu local ainda está sendo montada (atualiza de hora em hora). Sua própria dupla já aparece aqui na hora.'
-            : `O ranking ${type === 'trilha' ? 'da sua trilha' : 'do seu local'} está sendo calculado. Ele é atualizado de hora em hora — volte em breve.`}
+          ⏳ Somando as 13 semanas da campanha...
         </div>
       )}
 
@@ -1411,7 +1420,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
             </div>
           )}
           {atrasados.map((r: any) => renderRow(r, 'down'))}
-          {regular.length === 0 && !((isLocal || isPair) && rankingPending) && (
+          {regular.length === 0 && !rankingLoading && (
             <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>
               {isPair ? 'Nenhuma dupla pontuou ainda. Convide alguém e sejam os primeiros! 👥' : 'Ninguém pontuou ainda. Seja o primeiro!'}
             </div>
@@ -1453,6 +1462,9 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         </div>
       </div>
       <div className="sec">
+        <div style={{textAlign:'center', fontSize:11, color:'var(--mut)', marginBottom:10, fontFamily:'Poppins,sans-serif', fontWeight:700}}>
+          {isSemanal ? '🟢 ao vivo — atualiza sozinho enquanto a tela estiver aberta' : '🔄 somado agora, com a semana atual ao vivo'}
+        </div>
         <div className="purple-card" style={{textAlign:'center'}}>
           <div style={{fontSize:13,color:'var(--mut)',marginBottom:4}}>{isPair ? 'Sua dupla' : 'Sua posição'}</div>
           {isPair && myIdx === -1
