@@ -634,5 +634,18 @@ service cloud.firestore {
       allow list: if false;
       allow write: if false; // só o processo servidor (admin SDK) escreve
     }
+
+    // Ranking de duplas: mesmo escopo e mesmas garantias do ranking por local.
+    // O doc traz só a escalação (quem forma cada dupla) e os totais — nunca o
+    // TIPO do vínculo (família/casal/amigo), que fica visível apenas aos dois.
+    match /pairRankings/{docId} {
+      allow get: if isAuthenticated() && (
+        resource == null
+        || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && resource.data.locationId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.locationId)
+      );
+      allow list: if false;
+      allow write: if false; // só o processo servidor (admin SDK) escreve
+    }
   }
 }

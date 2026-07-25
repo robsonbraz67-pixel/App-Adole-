@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { DEMO, LICOES, getTrackLessons } from './data';
-import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, computeMutualStreak } from './utils';
+import { gs, ss, uid, AVTS, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, computeMutualStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome } from './utils';
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
 export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 1 e 2 Coríntios' };
@@ -885,6 +885,12 @@ const gerarImagemRanking = async (opts: {
   type: string; licao: any; metaDias: number; zoneOn: boolean;
 }): Promise<Blob | null> => {
   const { emDia, atrasados, regular, type, licao, metaDias, zoneOn } = opts;
+  const isPair = type === 'duplasSemana' || type === 'duplasCampanha';
+  const isSemanal = type === 'week' || type === 'duplasSemana';
+  // Emoji do par lado a lado; se algum for foto, cai no avatar da 1ª pessoa
+  const rowAvatar = (u: any) => !isPair ? u.avatar
+    : (u.aAvatar?.startsWith('data:') || u.bAvatar?.startsWith('data:')) ? (u.aAvatar || u.bAvatar)
+    : `${u.aAvatar || '👤'}${u.bAvatar || '👤'}`;
   const W = 1080;
   const podio = regular.slice(0, 3);
   const listaRows = [...emDia, ...atrasados].slice(0, 12);
@@ -931,10 +937,10 @@ const gerarImagemRanking = async (opts: {
 
   c.font = '900 52px sans-serif';
   c.fillStyle = '#FFFFFF';
-  c.fillText(type === 'week' ? '🏆 RANKING DA SEMANA' : '🏆 RANKING DA TEMPORADA', W / 2, 235);
+  c.fillText(isPair ? '👥 RANKING DE DUPLAS' : isSemanal ? '🏆 RANKING DA SEMANA' : '🏆 RANKING DA CAMPANHA', W / 2, 235);
   c.font = '700 32px sans-serif';
   c.fillStyle = '#C8D8F0';
-  c.fillText(type === 'week' ? truncName(licao?.titulo || '', 42) : `Temporada ${licao?.trimestre || ''} · 13 semanas`, W / 2, 285);
+  c.fillText(isSemanal ? truncName(licao?.titulo || '', 42) : `Campanha ${licao?.trimestre || ''} · 13 semanas`, W / 2, 285);
 
   let y = 330;
 
@@ -963,11 +969,11 @@ const gerarImagemRanking = async (opts: {
         c.stroke();
         c.shadowBlur = 0;
       }
-      await drawAvatar(c, u.avatar, cx, cy, r);
+      await drawAvatar(c, rowAvatar(u), cx, cy, r);
       c.font = `900 ${pi === 0 ? 40 : 30}px sans-serif`;
       c.fillStyle = pi === 0 ? '#F7C600' : '#FFFFFF';
       c.textAlign = 'center';
-      c.fillText(truncName(u.nome, 14), cx, medY[pi]);
+      c.fillText(truncName(u.nome, isPair ? 18 : 14), cx, medY[pi]);
       c.font = '52px sans-serif';
       c.fillText(medalha[pi], cx, medY[pi] + 62);
       c.font = '900 32px sans-serif';
@@ -997,7 +1003,7 @@ const gerarImagemRanking = async (opts: {
     const u = listaRows[gi];
     const promo = zoneOn && gi < emDia.length;
     if (nDividers && gi === emDia.length) {
-      drawDivider('⬆ ZONA DE PROMOÇÃO — SORTEIO 🎰 ⬆', '#1E9E86');
+      drawDivider(isPair ? '⬆ ZONA DE PROMOÇÃO — DUPLA EM DIA 🤝 ⬆' : '⬆ ZONA DE PROMOÇÃO — SORTEIO 🎰 ⬆', '#1E9E86');
     }
     const pos = regular.indexOf(u);
     rrect(c, mx, y, rw, 82, 20);
@@ -1012,13 +1018,18 @@ const gerarImagemRanking = async (opts: {
     c.font = '900 34px sans-serif';
     c.fillStyle = pos < 3 ? '#F5C842' : promo ? '#1E9E86' : '#E5006D';
     c.fillText(pos < 3 ? ['🥇', '🥈', '🥉'][pos] : `${pos + 1}º`, mx + 26, y + 54);
-    await drawAvatar(c, u.avatar, mx + 150, y + 41, 30);
+    await drawAvatar(c, rowAvatar(u), mx + 150, y + 41, 30);
     c.font = '800 32px sans-serif';
     c.fillStyle = '#FFFFFF';
     c.fillText(truncName(u.nome, 20), mx + 200, y + 43);
     c.font = '700 22px sans-serif';
     c.fillStyle = promo ? '#2BBBA0' : '#7DA4C8';
-    c.fillText(promo ? `📅 ${u.dias || 0} dias · em dia 🎰` : `📅 ${u.dias || 0} dia${u.dias !== 1 ? 's' : ''}`, mx + 200, y + 71);
+    c.fillText(
+      isPair
+        ? `📅 ${fmtDias(u.dias || 0)} dias · 🤝 ${u.juntos || 0} junto${u.juntos !== 1 ? 's' : ''}${promo ? ' · em dia' : ''}`
+        : promo ? `📅 ${u.dias || 0} dias · em dia 🎰` : `📅 ${u.dias || 0} dia${u.dias !== 1 ? 's' : ''}`,
+      mx + 200, y + 71
+    );
     c.textAlign = 'right';
     c.font = '900 34px sans-serif';
     c.fillStyle = '#F7C600';
@@ -1037,7 +1048,13 @@ const gerarImagemRanking = async (opts: {
   c.fill();
   c.textAlign = 'center';
   c.fillStyle = '#3A2800';
-  if (type === 'week') {
+  if (isPair) {
+    c.font = '900 36px sans-serif';
+    c.fillText('🤝 ESTUDO EM DUPLA', W / 2, y + 66);
+    c.font = '700 27px sans-serif';
+    c.fillText('O dia só conta cheio quando os DOIS estudam.', W / 2, y + 114);
+    c.fillText('Chame alguém e subam juntos no ranking!', W / 2, y + 154);
+  } else if (type === 'week') {
     c.font = '900 36px sans-serif';
     c.fillText('🎰 SORTEIO DA SEMANA!', W / 2, y + 70);
     c.font = '700 28px sans-serif';
@@ -1045,10 +1062,10 @@ const gerarImagemRanking = async (opts: {
     c.fillText('promoção e concorra ao sorteio!', W / 2, y + 158);
   } else {
     c.font = '900 36px sans-serif';
-    c.fillText('👑 GRANDE SORTEIO DA TEMPORADA!', W / 2, y + 66);
+    c.fillText('👑 GRANDE SORTEIO DA CAMPANHA!', W / 2, y + 66);
     c.font = '700 27px sans-serif';
     c.fillText('Revise as lições e fique em dia para participar.', W / 2, y + 114);
-    c.fillText('Quem sabe você é o campeão da temporada?', W / 2, y + 154);
+    c.fillText('Quem sabe você é o campeão da campanha?', W / 2, y + 154);
   }
   y += ctaH + 46;
 
@@ -1063,35 +1080,116 @@ const gerarImagemRanking = async (opts: {
   return new Promise(res => cv.toBlob(b => res(b), 'image/png'));
 };
 
+/* ===== DUPLA: preenchimento pela metade =====
+   Peças visuais compartilhadas entre o ranking de duplas e a tela da dupla.
+   Regra única: dia cheio = os dois estudaram; meio preenchido = só um estudou. */
+
+// Trilho dia a dia (usado quando temos os dias em si — semana atual)
+export const PairStrip = ({ dias, doneA, doneB, nomeA, nomeB }: any) => (
+  <div className="pd-strip">
+    {(dias || []).map((d: any) => {
+      const a = (doneA || []).includes(d.id);
+      const b = (doneB || []).includes(d.id);
+      const cls = a && b ? 'full' : (a || b) ? 'half' : '';
+      const quem = a && b ? 'os dois' : a ? (nomeA || 'só um') : b ? (nomeB || 'só um') : 'ninguém';
+      return (
+        <div key={d.id} className={`pd-cell ${cls}`} title={`${formatDiaSemana(d.diaSemana)}: ${quem}`}>
+          <div className="pd-fill" />
+        </div>
+      );
+    })}
+  </div>
+);
+
+// Barra proporcional (usada na campanha, onde temos só os totais do período)
+export const PairBar = ({ juntos, solo, total }: any) => {
+  const base = Math.max(total || 0, juntos + solo, 1);
+  return (
+    <div className="pd-bar">
+      <div className="pd-seg full" style={{ width: `${(juntos / base) * 100}%` }} />
+      <div className="pd-seg half" style={{ width: `${(solo / base) * 50}%` }} />
+    </div>
+  );
+};
+
+export const PairLegend = () => (
+  <div className="pd-legend">
+    <span><i className="full" />dia cheio: os dois estudaram</span>
+    <span><i className="half" />pela metade: só um estudou</span>
+    <span><i className="none" />ninguém</span>
+  </div>
+);
+
+const PairAvatars = ({ a, b }: any) => (
+  <div className="pd-avts">
+    {[a, b].map((av: string, i: number) => (
+      <div key={i} className="pd-av">
+        {av?.length > 10 ? <img src={av} alt="avatar" /> : <span>{av || '👤'}</span>}
+      </div>
+    ))}
+  </div>
+);
+
 /* ===== RANKING ===== */
+// Abas: [Semana] [Campanha] [Duplas]. Campanha e Duplas têm um segundo nível de
+// escopo (a campanha por trilha/local/geral; as duplas por semana/campanha).
+const RANK_TABS = [
+  { k: 'week', label: '📅 Semana' },
+  { k: 'campanha', label: '👑 Campanha' },
+  { k: 'duplas', label: '👥 Duplas' },
+];
+const CAMPANHA_SCOPES = [
+  { k: 'trilha', label: 'Minha Trilha' },
+  { k: 'geral', label: 'Meu Local' },
+  { k: 'season', label: 'Geral' },
+];
+const DUPLA_SCOPES = [
+  { k: 'duplasSemana', label: 'Semana' },
+  { k: 'duplasCampanha', label: 'Campanha' },
+];
+
 export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao, rankingPending }: any) => {
   // Rankings por local (trilha/geral) vêm pré-calculados e são ordenados por
   // DIAS no período (métrica justa entre trilhas); a semana continua por XP.
+  // O de duplas segue a mesma lógica de dias, mas com a métrica da dupla
+  // (dia cheio = os dois; meio dia = só um), que é o próprio critério do rank.
+  const isPair = type === 'duplasSemana' || type === 'duplasCampanha';
   const isLocal = type === 'trilha' || type === 'geral';
+  const isSemanal = type === 'week' || type === 'duplasSemana';
+  const mainTab = type === 'week' ? 'week' : isPair ? 'duplas' : 'campanha';
+
   const { regular, staff } = useMemo(() => {
-    const all = [...ranking].map((r: any) => {
-      const isMe = r.id === jogador.id;
-      const nome = isMe ? jogador.nome : r.nome;
-      const avatar = isMe ? jogador.avatar : r.avatar;
-      const dias = isMe && type === 'week' ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
-      const xp = isMe && type === 'week' ? (prog.xp || 0) : (r.xp || 0);
-      const isAdmin = r.isAdmin || (isMe && !!jogador.isAdmin);
-      const isProfessor = !isAdmin && (r.isProfessor || (isMe && !!jogador.isProfessor));
-      return { ...r, nome, avatar, dias, xp, isAdmin, isProfessor };
-    });
-    const bySort = isLocal
+    const all = isPair
+      ? [...ranking].map((r: any) => ({
+          ...r,
+          nome: pairNome(r.aNome, r.bNome),
+          dias: r.dias ?? pairDias(r.diasA || 0, r.diasB || 0),
+          xp: r.xp || 0,
+          eu: r.aId === jogador.id || r.bId === jogador.id,
+        }))
+      : [...ranking].map((r: any) => {
+          const isMe = r.id === jogador.id;
+          const nome = isMe ? jogador.nome : r.nome;
+          const avatar = isMe ? jogador.avatar : r.avatar;
+          const dias = isMe && type === 'week' ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
+          const xp = isMe && type === 'week' ? (prog.xp || 0) : (r.xp || 0);
+          const isAdmin = r.isAdmin || (isMe && !!jogador.isAdmin);
+          const isProfessor = !isAdmin && (r.isProfessor || (isMe && !!jogador.isProfessor));
+          return { ...r, nome, avatar, dias, xp, isAdmin, isProfessor, eu: isMe };
+        });
+    const bySort = (isLocal || isPair)
       ? (a: any, b: any) => (b.dias - a.dias) || (b.xp - a.xp)
       : (a: any, b: any) => b.xp - a.xp;
     return {
       regular: all.filter((r: any) => !r.isAdmin && !r.isProfessor).sort(bySort).slice(0, 10),
       staff: all.filter((r: any) => r.isAdmin || r.isProfessor).sort(bySort),
     };
-  }, [ranking, jogador, type, prog, isLocal]);
+  }, [ranking, jogador, type, prog, isLocal, isPair]);
 
   const myIsStaff = !!jogador.isAdmin || !!jogador.isProfessor;
   const myIdx = myIsStaff
-    ? staff.findIndex((r: any) => r.id === jogador.id)
-    : regular.findIndex((r: any) => r.id === jogador.id);
+    ? staff.findIndex((r: any) => r.eu)
+    : regular.findIndex((r: any) => r.eu);
   const meds = ['🥇','🥈','🥉'];
 
   // Zonas estilo divisão: em dia com os dias liberados → zona do sorteio;
@@ -1100,7 +1198,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     const h = new Date();
     const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
     let meta = 0;
-    if (type === 'week') {
+    if (isSemanal) {
       meta = (licao?.dias || []).filter((d: any) => d.data && d.data <= hojeISO).length;
     } else {
       meta = LICOES
@@ -1114,7 +1212,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       emDia: on ? regular.filter((r: any) => (r.dias || 0) >= meta) : regular,
       atrasados: on ? regular.filter((r: any) => (r.dias || 0) < meta) : [],
     };
-  }, [regular, type, licao]);
+  }, [regular, type, licao, isSemanal]);
 
   const [sharing, setSharing] = useState(false);
   const handleExport = async () => {
@@ -1124,9 +1222,11 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       const blob = await gerarImagemRanking({ emDia, atrasados, regular, type, licao, metaDias, zoneOn });
       if (!blob) throw new Error('Falha ao gerar imagem');
       const url = window.location.origin;
-      const texto = type === 'week'
-        ? `🏆 Ranking da semana — ${licao?.titulo || ''}\n🎰 Estude todos os dias e concorra ao sorteio!\n📲 Venha estudar com a gente: ${url}`
-        : `🏆 Ranking da temporada ${licao?.trimestre || ''}\n👑 Revise as lições, fique em dia e participe do GRANDE SORTEIO da temporada! Quem sabe você é o campeão!\n📲 Venha estudar com a gente: ${url}`;
+      const texto = isPair
+        ? `👥 Ranking de duplas — ${isSemanal ? (licao?.titulo || 'esta semana') : `campanha ${licao?.trimestre || ''}`}\n🤝 O dia só conta cheio quando os DOIS estudam. Chame alguém e venha para o topo!\n📲 ${url}`
+        : type === 'week'
+          ? `🏆 Ranking da semana — ${licao?.titulo || ''}\n🎰 Estude todos os dias e concorra ao sorteio!\n📲 Venha estudar com a gente: ${url}`
+          : `🏆 Ranking da campanha ${licao?.trimestre || ''}\n👑 Revise as lições, fique em dia e participe do GRANDE SORTEIO da campanha! Quem sabe você é o campeão!\n📲 Venha estudar com a gente: ${url}`;
       const file = new File([blob], 'ranking-sabatinaquest.png', { type: 'image/png' });
       if ((navigator as any).canShare?.({ files: [file] })) {
         await (navigator as any).share({ files: [file], text: texto });
@@ -1146,7 +1246,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   };
 
   const renderRow = (r: any, zone: 'promo' | 'down' | '') => {
-    const eu = r.id === jogador.id;
+    const eu = !!r.eu;
     const i = regular.indexOf(r);
     const atraso = metaDias - (r.dias || 0);
     const bg = eu ? 'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))'
@@ -1157,18 +1257,27 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     return (
       <div key={r.id} style={{background:bg,border:`2px solid ${bd}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
         <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
-        <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
-          {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
-        </div>
+        {isPair
+          ? <PairAvatars a={r.aAvatar} b={r.bAvatar} />
+          : (
+            <div style={{width: 40, height: 40, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0}}>
+              {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
+            </div>
+          )}
         <div style={{flex:1, minWidth:0}}>
           <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:'var(--txt)'}}>{r.nome}{eu ? ' 👈' : ''}</div>
           <div style={{fontSize:12,color:zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)',marginTop:2,fontWeight:zone?700:400}}>
-            {zone === 'promo'
-              ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · {type === 'week' ? '🎰 no sorteio' : '✅ em dia'}</>
-              : zone === 'down'
-                ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · ⚠️ {atraso} dia{atraso!==1?'s':''} atrasado{atraso!==1?'s':''}</>
-                : <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</>}
+            {isPair
+              ? <>📅 {fmtDias(r.dias || 0)} de {metaDias || (licao?.dias?.length || 0)} · 🤝 {r.juntos || 0} junto{r.juntos!==1?'s':''} · ½ {pairSolo(r.diasA || 0, r.diasB || 0, r.juntos || 0)} sozinho{pairSolo(r.diasA || 0, r.diasB || 0, r.juntos || 0)!==1?'s':''}</>
+              : zone === 'promo'
+                ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · {isSemanal ? '🎰 no sorteio' : '✅ em dia'}</>
+                : zone === 'down'
+                  ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · ⚠️ {atraso} dia{atraso!==1?'s':''} atrasado{atraso!==1?'s':''}</>
+                  : <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</>}
           </div>
+          {isPair && (type === 'duplasSemana'
+            ? <PairStrip dias={licao?.dias} doneA={r.doneA} doneB={r.doneB} nomeA={firstName(r.aNome)} nomeB={firstName(r.bNome)} />
+            : <PairBar juntos={r.juntos || 0} solo={pairSolo(r.diasA || 0, r.diasB || 0, r.juntos || 0)} total={metaDias} />)}
         </div>
         <div style={{fontWeight:900,color:'var(--gold)',fontSize:15,flexShrink:0}}>{r.xp || 0} XP</div>
       </div>
@@ -1185,21 +1294,36 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       
       <div style={{padding:'4px 16px 12px'}}>
         <div style={{display:'flex',background:'var(--g3)',borderRadius:12,padding:4,gap:2}}>
-          {[
-            { k: 'week', label: 'Semana' },
-            { k: 'trilha', label: 'Minha Trilha' },
-            { k: 'geral', label: 'Meu Local' },
-          ].map(t => (
-            <div key={t.k} onClick={() => onChangeType(t.k)} style={{flex:1,textAlign:'center',padding:'8px 4px',borderRadius:8,fontWeight:800,fontSize:13,cursor:'pointer',transition:'background .2s',background:type===t.k?'rgba(247,198,0,.15)':'transparent',color:type===t.k?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}>{t.label}</div>
+          {RANK_TABS.map(t => (
+            <div
+              key={t.k}
+              onClick={() => onChangeType(t.k === 'campanha' ? 'trilha' : t.k === 'duplas' ? 'duplasSemana' : 'week')}
+              style={{flex:1,textAlign:'center',padding:'8px 4px',borderRadius:8,fontWeight:800,fontSize:13,cursor:'pointer',transition:'background .2s',background:mainTab===t.k?'rgba(247,198,0,.15)':'transparent',color:mainTab===t.k?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}
+            >{t.label}</div>
           ))}
         </div>
+        {mainTab !== 'week' && (
+          <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'center',flexWrap:'wrap'}}>
+            {(mainTab === 'campanha' ? CAMPANHA_SCOPES : DUPLA_SCOPES).map(s => (
+              <div
+                key={s.k}
+                onClick={() => onChangeType(s.k)}
+                style={{padding:'6px 14px',borderRadius:20,fontSize:12,fontWeight:800,cursor:'pointer',fontFamily:'Poppins,sans-serif',border:`1.5px solid ${type===s.k?'rgba(247,198,0,.5)':'var(--b2)'}`,background:type===s.k?'rgba(247,198,0,.12)':'transparent',color:type===s.k?'var(--gold)':'var(--mut)'}}
+              >{s.label}</div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {isLocal && rankingPending && (
+      {(isLocal || isPair) && rankingPending && (
         <div style={{margin:'0 16px 12px', padding:'14px 16px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)', fontSize:13, color:'var(--txt2)', lineHeight:1.5}}>
-          ⏳ O ranking {type === 'trilha' ? 'da sua trilha' : 'do seu local'} está sendo calculado. Ele é atualizado de hora em hora — volte em breve.
+          ⏳ {isPair
+            ? 'A lista de duplas do seu local ainda está sendo montada (atualiza de hora em hora). Sua própria dupla já aparece aqui na hora.'
+            : `O ranking ${type === 'trilha' ? 'da sua trilha' : 'do seu local'} está sendo calculado. Ele é atualizado de hora em hora — volte em breve.`}
         </div>
       )}
+
+      {isPair && <div style={{padding:'0 16px 10px'}}><PairLegend /></div>}
 
       {regular.length > 0 && (
         <div style={{padding:'0 16px 4px'}}>
@@ -1213,32 +1337,38 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         <div style={{padding:'8px 16px 0'}}>
           <div className="podium">
             <div className="pod-col">
-              <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
-                {regular[1].avatar?.length > 10 ? <img src={regular[1].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[1].avatar}</span>}
-              </div>
-              <div style={{fontWeight:800,fontSize:12,maxWidth:66,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[1].nome}</div>
+              {isPair ? <PairAvatars a={regular[1].aAvatar} b={regular[1].bAvatar} /> : (
+                <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
+                  {regular[1].avatar?.length > 10 ? <img src={regular[1].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[1].avatar}</span>}
+                </div>
+              )}
+              <div style={{fontWeight:800,fontSize:12,maxWidth:74,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[1].nome}</div>
               <div className="pod-base p2">🥈</div>
               <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{regular[1].xp} XP</div>
-              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {regular[1].dias || 0} d</div>
+              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {fmtDias(regular[1].dias || 0)} d</div>
             </div>
             <div className="pod-col">
               <div style={{fontSize:20,animation:'bounce 2s ease-in-out infinite'}}>👑</div>
-              <div style={{width: 62, height: 62, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 34, overflow:'hidden', margin:'0 auto 4px', flexShrink:0, border:'2.5px solid #F5C842', animation:'goldGlow 2.2s infinite'}}>
-                {regular[0].avatar?.length > 10 ? <img src={regular[0].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[0].avatar}</span>}
-              </div>
-              <div style={{fontWeight:900,fontSize:14,maxWidth:78,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--gold)'}}>{regular[0].nome}</div>
+              {isPair ? <PairAvatars a={regular[0].aAvatar} b={regular[0].bAvatar} /> : (
+                <div style={{width: 62, height: 62, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 34, overflow:'hidden', margin:'0 auto 4px', flexShrink:0, border:'2.5px solid #F5C842', animation:'goldGlow 2.2s infinite'}}>
+                  {regular[0].avatar?.length > 10 ? <img src={regular[0].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[0].avatar}</span>}
+                </div>
+              )}
+              <div style={{fontWeight:900,fontSize:14,maxWidth:86,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--gold)'}}>{regular[0].nome}</div>
               <div className="pod-base p1">🥇</div>
               <div style={{fontWeight:900,color:'var(--gold)',fontSize:14,lineHeight:1.1}}>{regular[0].xp} XP</div>
-              <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {regular[0].dias || 0} d</div>
+              <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {fmtDias(regular[0].dias || 0)} d</div>
             </div>
             <div className="pod-col">
-              <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
-                {regular[2].avatar?.length > 10 ? <img src={regular[2].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[2].avatar}</span>}
-              </div>
-              <div style={{fontWeight:800,fontSize:11,maxWidth:58,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[2].nome}</div>
+              {isPair ? <PairAvatars a={regular[2].aAvatar} b={regular[2].bAvatar} /> : (
+                <div style={{width: 44, height: 44, borderRadius: '50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center', fontSize: 24, overflow:'hidden', margin:'0 auto 4px', flexShrink:0}}>
+                  {regular[2].avatar?.length > 10 ? <img src={regular[2].avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{regular[2].avatar}</span>}
+                </div>
+              )}
+              <div style={{fontWeight:800,fontSize:11,maxWidth:70,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[2].nome}</div>
               <div className="pod-base p3">🥉</div>
               <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{regular[2].xp} XP</div>
-              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {regular[2].dias || 0} d</div>
+              <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {fmtDias(regular[2].dias || 0)} d</div>
             </div>
           </div>
         </div>
@@ -1251,11 +1381,17 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
               ? `🎯 Minha trilha · ${licao?.trimestre || ''}`
               : type === 'geral'
                 ? `🏠 Meu local · ${licao?.trimestre || ''}`
-                : `🏆 Geral: ${licao?.trimestre || 'Carregando...'}`}
+                : type === 'duplasSemana'
+                  ? `👥 Duplas da semana · ${licao?.titulo || ''}`
+                  : type === 'duplasCampanha'
+                    ? `👥 Duplas da campanha · ${licao?.trimestre || ''}`
+                    : `👑 Campanha: ${licao?.trimestre || 'Carregando...'}`}
         </div>
         {zoneOn && (
           <div className="zone-hint">
-            🎰 Fique em dia com os {metaDias} dia{metaDias!==1?'s':''} já liberado{metaDias!==1?'s':''} para participar do sorteio
+            {isPair
+              ? <>🤝 A dupla precisa somar {metaDias} dia{metaDias!==1?'s':''} para ficar em dia — e o dia só conta cheio quando os DOIS estudam</>
+              : <>🎰 Fique em dia com os {metaDias} dia{metaDias!==1?'s':''} já liberado{metaDias!==1?'s':''} para participar do sorteio</>}
           </div>
         )}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
@@ -1263,7 +1399,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           {zoneOn && emDia.length > 0 && (
             <div className="zone-divider promo">
               <div className="zl"/>
-              <div className="zt">⬆ ZONA DE PROMOÇÃO — {type === 'week' ? 'SORTEIO 🎰' : 'EM DIA 📖'} ⬆</div>
+              <div className="zt">⬆ ZONA DE PROMOÇÃO — {isPair ? 'DUPLA EM DIA 🤝' : type === 'week' ? 'SORTEIO 🎰' : 'EM DIA 📖'} ⬆</div>
               <div className="zl"/>
             </div>
           )}
@@ -1275,7 +1411,11 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
             </div>
           )}
           {atrasados.map((r: any) => renderRow(r, 'down'))}
-          {regular.length === 0 && !(isLocal && rankingPending) && <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>Ninguém pontuou ainda. Seja o primeiro!</div>}
+          {regular.length === 0 && !((isLocal || isPair) && rankingPending) && (
+            <div style={{textAlign:'center',padding:'20px',color:'var(--mut)'}}>
+              {isPair ? 'Nenhuma dupla pontuou ainda. Convide alguém e sejam os primeiros! 👥' : 'Ninguém pontuou ainda. Seja o primeiro!'}
+            </div>
+          )}
 
           {staff.length > 0 && (
             <>
@@ -1285,19 +1425,24 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
                 <div style={{flex:1,height:1,background:'rgba(155,109,255,.3)'}}/>
               </div>
               {staff.map((r: any, i: number) => {
-                const eu = r.id === jogador.id;
+                const eu = !!r.eu;
                 const cor = r.isAdmin ? 'var(--admin)' : 'var(--blu)';
                 const rgb = r.isAdmin ? '155,109,255' : '74,144,217';
                 const ic = r.isAdmin ? '🛡️' : '🎓';
                 return (
                   <div key={r.id} style={{background:eu?`linear-gradient(135deg,rgba(${rgb},.16),rgba(${rgb},.06))`:`rgba(${rgb},.08)`,border:`2px solid ${eu?`rgba(${rgb},.55)`:`rgba(${rgb},.25)`}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
                     <div style={{fontWeight:900,fontSize:14,width:26,textAlign:'center',color:cor}}>{ic}</div>
-                    <div style={{width: 40, height: 40, borderRadius: '50%', background:`rgba(${rgb},.18)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:`1.5px solid rgba(${rgb},.35)`}}>
-                      {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
-                    </div>
+                    {isPair ? <PairAvatars a={r.aAvatar} b={r.bAvatar} /> : (
+                      <div style={{width: 40, height: 40, borderRadius: '50%', background:`rgba(${rgb},.18)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize: 22, overflow:'hidden', flexShrink:0, border:`1.5px solid rgba(${rgb},.35)`}}>
+                        {r.avatar?.length > 10 ? <img src={r.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{r.avatar}</span>}
+                      </div>
+                    )}
                     <div style={{flex:1, minWidth:0}}>
                       <div style={{fontWeight:800,fontSize:15,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',color:cor}}>{r.nome}{eu ? ' 👈' : ''}</div>
-                      <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
+                      <div style={{fontSize:12,color:'var(--mut)',marginTop:2}}>📅 {fmtDias(r.dias || 0)} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</div>
+                      {isPair && (type === 'duplasSemana'
+                        ? <PairStrip dias={licao?.dias} doneA={r.doneA} doneB={r.doneB} nomeA={firstName(r.aNome)} nomeB={firstName(r.bNome)} />
+                        : <PairBar juntos={r.juntos || 0} solo={pairSolo(r.diasA || 0, r.diasB || 0, r.juntos || 0)} total={metaDias} />)}
                     </div>
                     <div style={{fontWeight:900,color:cor,fontSize:15,flexShrink:0,opacity:.85}}>{r.xp || 0} XP</div>
                   </div>
@@ -1309,14 +1454,16 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       </div>
       <div className="sec">
         <div className="purple-card" style={{textAlign:'center'}}>
-          <div style={{fontSize:13,color:'var(--mut)',marginBottom:4}}>Sua posição</div>
-          {myIsStaff
-            ? <div style={{fontWeight:900,fontSize:22,color:jogador.isAdmin?'var(--admin)':'var(--blu)'}}>{jogador.isAdmin ? '🛡️ Admin' : '🎓 Professor'}</div>
-            : <div style={{fontWeight:900,fontSize:32,color:'var(--gold)'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
+          <div style={{fontSize:13,color:'var(--mut)',marginBottom:4}}>{isPair ? 'Sua dupla' : 'Sua posição'}</div>
+          {isPair && myIdx === -1
+            ? <div style={{fontSize:14,color:'var(--txt2)',lineHeight:1.5,fontWeight:700}}>Você ainda não está em uma dupla — ou ela ainda não pontuou. Abra <strong>👥 Dupla</strong> na barra de baixo e convide alguém. 🤝</div>
+            : myIsStaff
+              ? <div style={{fontWeight:900,fontSize:22,color:jogador.isAdmin?'var(--admin)':'var(--blu)'}}>{jogador.isAdmin ? '🛡️ Admin' : '🎓 Professor'}</div>
+              : <div style={{fontWeight:900,fontSize:32,color:'var(--gold)'}}>#{myIdx >= 0 ? myIdx + 1 : '?'}</div>
           }
           {myIdx !== -1 && (
             <div style={{fontSize:13,color:'var(--mut)'}}>
-              📅 {(myIsStaff ? staff : regular)[myIdx]?.dias} dia{(myIsStaff ? staff : regular)[myIdx]?.dias!==1?'s':''} • ⭐ {(myIsStaff ? staff : regular)[myIdx]?.xp} XP {type === 'week' ? 'esta semana' : 'nesta temporada'}
+              📅 {fmtDias((myIsStaff ? staff : regular)[myIdx]?.dias || 0)} dia{(myIsStaff ? staff : regular)[myIdx]?.dias!==1?'s':''} • ⭐ {(myIsStaff ? staff : regular)[myIdx]?.xp} XP {isSemanal ? 'esta semana' : 'nesta campanha'}
             </div>
           )}
         </div>
@@ -1546,7 +1693,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
 /* ===== ESTUDO EM DUPLA (Etapa 4) ===== */
 const PAIR_TYPE_LABELS: Record<PairType, string> = { family: '👨‍👧 Família', couple: '💑 Casal', friend: '🤝 Amigo(a)' };
 
-export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange, onClearPending, onBack, onSwitchToGroup, onSwitchToFriends }: any) => {
+export const Dupla = ({ jogador, licao, prog, activePair, pendingInvite, onPairChange, onClearPending, onBack, onSwitchToGroup, onSwitchToFriends, onRankingDuplas }: any) => {
   const [pair, setPair] = useState<any>(activePair || null);
   const [tipo, setTipo] = useState<PairType>('friend');
   const [linkGerado, setLinkGerado] = useState('');
@@ -1628,6 +1775,24 @@ export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange,
   };
 
   const dias = licao?.dias || [];
+  const myDone: number[] = prog?.done || [];
+
+  // Placar da dupla na semana, com a mesma métrica do ranking de duplas:
+  // dia cheio quando os dois estudaram, meio dia quando só um estudou.
+  const placar = useMemo(() => {
+    const setP = new Set(partnerDone);
+    const juntos = myDone.filter(d => setP.has(d)).length;
+    const hojeISO = hojeLocalISO();
+    const liberados = dias.filter((d: any) => d.data && d.data <= hojeISO).length;
+    return {
+      juntos,
+      solo: pairSolo(myDone.length, partnerDone.length, juntos),
+      total: pairDias(myDone.length, partnerDone.length),
+      sincronia: pairSincronia(myDone.length, partnerDone.length, juntos),
+      liberados,
+      emDia: liberados > 0 && pairDias(myDone.length, partnerDone.length) >= liberados,
+    };
+  }, [myDone, partnerDone, dias]);
 
   return (
     <div className="scr" style={{paddingBottom:100}}>
@@ -1670,19 +1835,53 @@ export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange,
               <button onClick={handleDesfazer} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>Desfazer</button>
             </div>
 
+            {/* Placar da dupla: mesma métrica do ranking de duplas */}
+            <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:'16px 18px'}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:2}}>
+                <div style={{fontSize:12, color:'var(--mut)', fontWeight:800, textTransform:'uppercase', letterSpacing:1}}>Placar da dupla · semana</div>
+                <div style={{fontSize:12, fontWeight:800, color: placar.emDia ? 'var(--teal)' : 'var(--magenta)'}}>
+                  {placar.emDia ? '✅ em dia' : `⚠️ faltam ${fmtDias(Math.max(placar.liberados - placar.total, 0))}`}
+                </div>
+              </div>
+              <div style={{display:'flex', alignItems:'baseline', gap:6, marginBottom:2}}>
+                <div style={{fontSize:32, fontWeight:900, color:'var(--gold)', lineHeight:1}}>{fmtDias(placar.total)}</div>
+                <div style={{fontSize:14, color:'var(--mut)', fontWeight:700}}>de {dias.length} dias</div>
+              </div>
+              <PairStrip dias={dias} doneA={myDone} doneB={partnerDone} nomeA="você" nomeB={firstName(partnerName)} />
+              <div style={{display:'flex', gap:16, marginTop:12, fontSize:12, color:'var(--txt2)', fontWeight:700, flexWrap:'wrap'}}>
+                <span>🤝 {placar.juntos} junto{placar.juntos!==1?'s':''}</span>
+                <span>½ {placar.solo} pela metade</span>
+                <span>🔗 {placar.sincronia}% de sincronia</span>
+              </div>
+              <div style={{fontSize:11, color:'var(--mut)', marginTop:10, lineHeight:1.5}}>
+                O dia só conta cheio quando os dois estudam. Enquanto só um fizer, ele fica preenchido pela metade — e a dupla soma meio ponto.
+              </div>
+              {onRankingDuplas && (
+                <button onClick={onRankingDuplas} className="btn btn-gold" style={{fontSize:14, padding:'12px 18px', marginTop:14}}>🏆 VER RANKING DE DUPLAS</button>
+              )}
+            </div>
+
             <div>
-              <div className="sec-title" style={{marginBottom:8}}>Progresso de {(partnerName||'').split(' ')[0] || 'quem estuda com você'} — {licao?.semana}</div>
+              <div className="sec-title" style={{marginBottom:8}}>Dia a dia — você e {firstName(partnerName) || 'sua dupla'} · {licao?.semana}</div>
               <div style={{display:'flex', flexDirection:'column', gap:8}}>
                 {dias.map((d: any) => {
                   const feito = partnerDone.includes(d.id);
+                  const meuFeito = myDone.includes(d.id);
+                  const cheio = feito && meuFeito;
                   const shared = partnerShares?.[`${licao.semana}__${d.id}`];
                   return (
-                    <div key={d.id} style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'12px 14px'}}>
+                    <div key={d.id} style={{background:'var(--panel-bg)', border:`1px solid ${cheio ? 'rgba(30,158,134,.45)' : 'var(--panel-border)'}`, borderRadius:12, padding:'12px 14px'}}>
                       <div style={{display:'flex', alignItems:'center', gap:10}}>
-                        <span style={{fontSize:18}}>{feito ? '✅' : '⬜'}</span>
-                        <div style={{flex:1}}>
+                        <span style={{fontSize:18}}>{cheio ? '✅' : (feito || meuFeito) ? '◐' : '⬜'}</span>
+                        <div style={{flex:1, minWidth:0}}>
                           <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{formatDiaSemana(d.diaSemana)} — {d.titulo || `Dia ${d.id}`}</div>
-                          <div style={{fontSize:11, color:'var(--mut)'}}>{feito ? 'Concluiu este dia' : 'Ainda não fez'}</div>
+                          <div style={{fontSize:11, color: cheio ? 'var(--teal)' : (feito || meuFeito) ? 'var(--gold)' : 'var(--mut)', fontWeight:700}}>
+                            {cheio ? 'Os dois concluíram — dia cheio'
+                              : meuFeito ? `Só você fez — falta ${firstName(partnerName) || 'sua dupla'}`
+                              : feito ? `Só ${firstName(partnerName) || 'sua dupla'} fez — falta você`
+                              : 'Ninguém fez ainda'}
+                          </div>
+                          <PairStrip dias={[d]} doneA={myDone} doneB={partnerDone} nomeA="você" nomeB={firstName(partnerName)} />
                         </div>
                       </div>
                       {shared?.note && (
@@ -1714,8 +1913,11 @@ export const Dupla = ({ jogador, licao, activePair, pendingInvite, onPairChange,
             <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18}}>
               <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>Convide alguém para estudar em dupla</div>
               <div style={{fontSize:13, color:'var(--mut)', marginBottom:16, lineHeight:1.5}}>
-                Pai, mãe, namorado(a) ou um amigo do mesmo grupo. Vocês veem o progresso um do outro e podem compartilhar anotações. (Uma dupla ativa por vez.)
+                Pai, mãe, namorado(a) ou um amigo do mesmo grupo. Vocês veem o progresso um do outro, podem compartilhar anotações e entram juntos no <strong>ranking de duplas</strong> — onde o dia só conta cheio quando os dois estudam. (Uma dupla ativa por vez.)
               </div>
+              {onRankingDuplas && (
+                <button onClick={onRankingDuplas} className="btn btn-ghost btn-sm" style={{width:'100%', fontSize:12, marginBottom:16}}>🏆 Ver o ranking de duplas do meu local</button>
+              )}
 
               <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, textTransform:'uppercase', letterSpacing:1, marginBottom:8}}>Tipo de vínculo</div>
               <div style={{display:'flex', gap:8, marginBottom:16}}>

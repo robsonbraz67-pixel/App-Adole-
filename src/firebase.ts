@@ -788,6 +788,40 @@ export const getLocationRanking = async (locationId: string, track: string, trim
   }
 };
 
+// ===== Ranking de Duplas, pré-calculado =====
+// Mesma razão do ranking por local: montar a ESCALAÇÃO das duplas de um local
+// exige ler pairs/ de outras pessoas, o que as regras (com razão) não permitem
+// — só o admin SDK consegue. O doc traz a escalação + os totais da campanha;
+// os números da SEMANA o cliente recalcula ao vivo em cima de progress/, que
+// já é público (ver buildPairWeekRanking em utils.ts).
+export type PairRankingEntry = {
+  id: string;
+  aId: string; aNome: string; aAvatar: string;
+  bId: string; bNome: string; bAvatar: string;
+  diasA: number; diasB: number; juntos: number; dias: number; xp: number;
+  isAdmin: boolean; isProfessor: boolean;
+};
+
+export type PairRankingDoc = {
+  locationId: string;
+  track: string;
+  trimestre: string;
+  entries: PairRankingEntry[];
+  count: number;
+  updatedAt?: any;
+} | null;
+
+export const getPairRanking = async (locationId: string, track: string, trimestre: string): Promise<PairRankingDoc> => {
+  if (!locationId) return null;
+  const id = `${locationId}__${track}__${rankingSlug(trimestre)}`;
+  try {
+    const snap = await getDoc(doc(db, 'pairRankings', id));
+    return snap.exists() ? (snap.data() as any) : null;
+  } catch {
+    return null;
+  }
+};
+
 // Ofensiva real de todos os usuários da temporada (para o painel Admin/Professor)
 export const getAllUsersStreaks = async (trimestre: string): Promise<Record<string, { nome: string; avatar: string; streak: number; isAdmin: boolean; isProfessor: boolean }>> => {
   const snap = await getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre)));

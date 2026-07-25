@@ -133,6 +133,58 @@ export const computeMutualStreak = (allDoneA: Record<string, number[]>, allDoneB
   return streak;
 };
 
+// ===== Métrica da dupla =====
+// Um dia vale 1 ponto quando os DOIS completaram e 0,5 quando só um completou.
+// É a regra que faz o "preenchimento" de um dia ficar pela metade enquanto a
+// outra pessoa não estudar — o ranking de duplas premia caminhar junto, não a
+// soma bruta de dois esforços separados.
+export const pairDias = (diasA: number, diasB: number) => (diasA + diasB) / 2;
+
+// Dias em que exatamente UM dos dois estudou (o "meio preenchido")
+export const pairSolo = (diasA: number, diasB: number, juntos: number) => diasA + diasB - 2 * juntos;
+
+// Sincronia: quanto do esforço da dupla foi feito lado a lado (0–100)
+export const pairSincronia = (diasA: number, diasB: number, juntos: number) => {
+  const total = diasA + diasB;
+  return total === 0 ? 0 : Math.round((2 * juntos * 100) / total);
+};
+
+// 3,5 em vez de 3.5 (pt-BR); inteiro fica sem casa decimal
+export const fmtDias = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ','));
+
+export const firstName = (n: string) => (n || '').trim().split(/\s+/)[0] || '—';
+
+export const pairNome = (a: string, b: string) => `${firstName(a)} & ${firstName(b)}`;
+
+// Ranking de duplas da SEMANA, calculado ao vivo: cruza a escalação das duplas
+// (doc pré-calculado, única parte que exige credencial de servidor) com o
+// progresso semanal, que já é público para o ranking individual. Assim a aba
+// Duplas/Semana é tão em tempo real quanto a aba Semana.
+export const buildPairWeekRanking = (roster: any[], weeklyRows: any[]) => {
+  const byId: Record<string, any> = {};
+  weeklyRows.forEach((r: any) => { byId[r.id] = r; });
+  return roster.map((p: any) => {
+    const A = byId[p.aId], B = byId[p.bId];
+    const doneA: number[] = A?.done || [];
+    const doneB: number[] = B?.done || [];
+    const setB = new Set(doneB);
+    const juntos = doneA.filter(d => setB.has(d)).length;
+    return {
+      ...p,
+      aNome: A?.nome || p.aNome, aAvatar: A?.avatar || p.aAvatar,
+      bNome: B?.nome || p.bNome, bAvatar: B?.avatar || p.bAvatar,
+      doneA, doneB,
+      diasA: doneA.length,
+      diasB: doneB.length,
+      juntos,
+      dias: pairDias(doneA.length, doneB.length),
+      xp: (A?.xp || 0) + (B?.xp || 0),
+      isAdmin: !!(A?.isAdmin || B?.isAdmin),
+      isProfessor: !!(A?.isProfessor || B?.isProfessor),
+    };
+  });
+};
+
 export const getMsgRes = (a: number, t: number) => {
   const r = a / t;
   if (r === 1) return { ic: '🏆', mg: 'PERFEITO! Você é imbatível!' };

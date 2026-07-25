@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getTrackLessons } from './data';
-import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp } from './utils';
-import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getLocationRanking, getFriendStreakInvite } from './firebase';
+import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, scheduleStudyReminder, shareApp, buildPairWeekRanking } from './utils';
+import { listenToUserNotifications, getWeeklyRanking, waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, logout, getSeasonRanking, getDayOverride, getActivePair, getPairInvite, getMyGroups, getGroupInvite, getLocationRanking, getPairRanking, getFriendStreakInvite } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, Grupo, Amigos } from './components';
 
 const CACHE_VERSION = '3T2026';
@@ -445,6 +445,30 @@ export default function App() {
           const docData = await getLocationRanking(jogador?.locationId, track, l.trimestre);
           setRanking(docData?.entries || []);
           setRankingPending(!docData); // doc ainda não existe → "calculando"
+        } else if (type === 'duplasSemana' || type === 'duplasCampanha') {
+          // A escalação das duplas vem do doc pré-calculado (única parte que
+          // exige credencial de servidor). Na aba Semana os números são
+          // recalculados ao vivo em cima do progresso semanal, que é público.
+          const [pairDoc, weekly] = await Promise.all([
+            getPairRanking(jogador?.locationId, jogador?.track || 'teen', l.trimestre),
+            type === 'duplasSemana' ? getWeeklyRanking(l.semana) : Promise.resolve([] as any[]),
+          ]);
+          setRankingPending(!pairDoc);
+          const roster = pairDoc?.entries || [];
+          if (type === 'duplasCampanha') {
+            setRanking(roster);
+          } else {
+            // Dupla recém-formada ainda não está no doc da hora cheia: entra
+            // aqui ao vivo para quem a formou não ficar de fora do ranking.
+            const minha = activePair?.userA && activePair?.userB && !roster.some((p: any) => p.id === activePair.id)
+              ? [{
+                  id: activePair.id,
+                  aId: activePair.userA, aNome: activePair.userAName, aAvatar: activePair.userAAvatar,
+                  bId: activePair.userB, bNome: activePair.userBName, bAvatar: activePair.userBAvatar,
+                }]
+              : [];
+            setRanking(buildPairWeekRanking([...roster, ...minha], weekly));
+          }
         } else {
           const dbRanking = await getSeasonRanking(l.trimestre);
           setRanking(dbRanking);
@@ -587,7 +611,7 @@ export default function App() {
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onSorteador={() => setTela('sorteador')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onSwitchTrack={handleSwitchTrack} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
-      {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onSwitchToGroup={() => setTela('grupo')} onSwitchToFriends={() => setTela('amigos')} />}
+      {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} prog={prog} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onSwitchToGroup={() => setTela('grupo')} onSwitchToFriends={() => setTela('amigos')} onRankingDuplas={() => loadLatestRanking('duplasSemana')} />}
       {tela === 'grupo' && <Grupo jogador={jogador} licao={licao} pendingGroupInvite={pendingGroupInvite} onClearPendingGroupInvite={clearPendingGroupInvite} onBack={() => setTela('home')} onSwitchToPair={() => setTela('dupla')} onSwitchToFriends={() => setTela('amigos')} />}
       {tela === 'amigos' && <Amigos jogador={jogador} licao={licao} pendingFriendInvite={pendingFriendInvite} onClearPendingFriendInvite={clearPendingFriendInvite} onBack={() => setTela('home')} onSwitchToPair={() => setTela('dupla')} onSwitchToGroup={() => setTela('grupo')} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}

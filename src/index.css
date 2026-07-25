@@ -418,6 +418,29 @@ body{font-family:'Lora','Georgia',serif;background:linear-gradient(160deg,var(--
 .zone-divider.down .zt{color:var(--magenta)}
 .zone-hint{background:linear-gradient(135deg,rgba(30,158,134,.12),rgba(30,158,134,.04));border:1.5px solid rgba(30,158,134,.3);border-radius:12px;padding:10px 14px;font-size:12px;color:var(--txt2);font-family:'Poppins',sans-serif;font-weight:600;text-align:center;margin-bottom:10px}
 
+/* ===== DUPLA: preenchimento pela metade =====
+   Um dia vale cheio quando os DOIS estudaram e metade quando só um estudou.
+   .half usa hachura para o "meio feito" não se confundir com um dia cheio
+   pequeno — a diferença precisa ser legível de relance, sem depender só da cor. */
+.pd-strip{display:flex;gap:4px;margin-top:7px}
+.pd-cell{flex:1;height:10px;border-radius:5px;background:var(--g5);overflow:hidden;position:relative;display:flex}
+.pd-cell .pd-fill{width:0;height:100%;border-radius:5px;transition:width .35s ease}
+.pd-cell.full .pd-fill{width:100%;background:linear-gradient(90deg,var(--teal),#2BBBA0)}
+.pd-cell.half .pd-fill{width:50%;border-radius:5px 0 0 5px;background:repeating-linear-gradient(45deg,rgba(247,198,0,.95) 0 4px,rgba(247,198,0,.35) 4px 8px)}
+.pd-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--g5);margin-top:7px}
+.pd-bar .pd-seg{height:100%;transition:width .35s ease}
+.pd-bar .pd-seg.full{background:linear-gradient(90deg,var(--teal),#2BBBA0)}
+.pd-bar .pd-seg.half{background:repeating-linear-gradient(45deg,rgba(247,198,0,.95) 0 4px,rgba(247,198,0,.35) 4px 8px)}
+.pd-legend{display:flex;gap:14px;align-items:center;justify-content:center;font-size:11px;color:var(--mut);font-family:'Poppins',sans-serif;font-weight:700;margin-bottom:10px;flex-wrap:wrap}
+.pd-legend i{display:inline-block;width:16px;height:9px;border-radius:5px;margin-right:5px;vertical-align:middle}
+.pd-legend i.full{background:linear-gradient(90deg,var(--teal),#2BBBA0)}
+.pd-legend i.half{background:repeating-linear-gradient(45deg,rgba(247,198,0,.95) 0 4px,rgba(247,198,0,.35) 4px 8px)}
+.pd-legend i.none{background:var(--g5)}
+.pd-avts{display:flex;align-items:center;flex-shrink:0}
+.pd-avts .pd-av{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:19px;overflow:hidden;border:2px solid var(--card)}
+.pd-avts .pd-av+.pd-av{margin-left:-13px}
+.pd-avts .pd-av img{width:100%;height:100%;object-fit:cover}
+
 /* ===== SORTEADOR (tela própria) ===== */
 .sorteador-wrap{padding:20px 16px;max-width:520px;margin:0 auto}
 .sorteador-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:20px}
