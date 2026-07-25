@@ -1068,16 +1068,19 @@ const gerarImagemRanking = async (opts: {
    Regra única: dia cheio = os dois estudaram; meio preenchido = só um estudou. */
 
 // Trilho dia a dia (usado quando temos os dias em si — semana atual)
+// Versão compacta da trilha, para as linhas do ranking. Mesma leitura dos nós
+// da tela de Dupla: metade esquerda é a 1ª pessoa, direita é a 2ª — o dia só
+// fica cheio quando as duas metades acendem.
 export const PairStrip = ({ dias, doneA, doneB, nomeA, nomeB }: any) => (
   <div className="pd-strip">
     {(dias || []).map((d: any) => {
       const a = (doneA || []).includes(d.id);
       const b = (doneB || []).includes(d.id);
-      const cls = a && b ? 'full' : (a || b) ? 'half' : '';
       const quem = a && b ? 'os dois' : a ? (nomeA || 'só um') : b ? (nomeB || 'só um') : 'ninguém';
       return (
-        <div key={d.id} className={`pd-cell ${cls}`} title={`${formatDiaSemana(d.diaSemana)}: ${quem}`}>
-          <div className="pd-fill" />
+        <div key={d.id} className="pd-cell" title={`${formatDiaSemana(d.diaSemana)}: ${quem}`}>
+          <span className={`pd-h${a ? ' on' : ''}`} />
+          <span className={`pd-h${b ? ' on' : ''}`} />
         </div>
       );
     })}
@@ -1097,8 +1100,8 @@ export const PairBar = ({ juntos, solo, total }: any) => {
 
 export const PairLegend = () => (
   <div className="pd-legend">
-    <span><i className="full" />dia cheio: os dois estudaram</span>
-    <span><i className="half" />pela metade: só um estudou</span>
+    <span><i className="full" />cheio: os dois estudaram</span>
+    <span><i className="half" />metade: só um estudou</span>
     <span><i className="none" />ninguém</span>
   </div>
 );
@@ -1141,9 +1144,11 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   // (dia cheio = os dois; meio dia = só um), que é o próprio critério do rank.
   const isPair = type === 'duplasSemana' || type === 'duplasCampanha';
   const isSemanal = type === 'week' || type === 'duplasSemana';
-  // A semana ordena por XP (é a corrida do sorteio); a campanha inteira ordena
-  // por DIAS, métrica justa entre trilhas com número de dias diferente.
-  const porDias = !isSemanal || isPair;
+  // Só o ranking de DUPLAS ordena por dias — ali "dias" é a métrica da dupla
+  // (dia cheio = os dois; meio dia = só um), que é o próprio critério.
+  // Semana e campanha ordenam por PONTOS: a campanha é a soma do XP de todas
+  // as lições até hoje.
+  const porDias = isPair;
   const mainTab = type === 'week' ? 'week' : isPair ? 'duplas' : 'campanha';
 
   const { regular, staff } = useMemo(() => {
@@ -1787,7 +1792,6 @@ export const Dupla = ({ jogador, licao, prog, activePair, pendingInvite, onPairC
                 <div style={{fontSize:32, fontWeight:900, color:'var(--gold)', lineHeight:1}}>{fmtDias(placar.total)}</div>
                 <div style={{fontSize:14, color:'var(--mut)', fontWeight:700}}>de {dias.length} dias</div>
               </div>
-              <PairStrip dias={dias} doneA={myDone} doneB={partnerDone} nomeA="você" nomeB={firstName(partnerName)} />
               <div style={{display:'flex', gap:16, marginTop:12, fontSize:12, color:'var(--txt2)', fontWeight:700, flexWrap:'wrap'}}>
                 <span>🤝 {placar.juntos} junto{placar.juntos!==1?'s':''}</span>
                 <span>½ {placar.solo} pela metade</span>
@@ -1801,50 +1805,72 @@ export const Dupla = ({ jogador, licao, prog, activePair, pendingInvite, onPairC
               )}
             </div>
 
+            {/* Trilha da dupla: mesmo caminho da tela de Início, com o nó
+                dividido ao meio — só quem estudou pinta a sua metade. */}
             <div>
-              <div className="sec-title" style={{marginBottom:8}}>Dia a dia — você e {firstName(partnerName) || 'sua dupla'} · {licao?.semana}</div>
-              <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                {dias.map((d: any) => {
-                  const feito = partnerDone.includes(d.id);
-                  const meuFeito = myDone.includes(d.id);
-                  const cheio = feito && meuFeito;
-                  const shared = partnerShares?.[`${licao.semana}__${d.id}`];
+              <div className="sec-title" style={{marginBottom:8}}>Trilha da dupla · {licao?.semana}</div>
+              <div className="pair-quem">
+                <span><i className="eu"/>você</span>
+                <span><i className="ele"/>{firstName(partnerName) || 'sua dupla'}</span>
+                <span><i className="dois"/>os dois</span>
+              </div>
+              <div className="path-wrap">
+                {dias.map((d: any, i: number) => {
+                  const eu = myDone.includes(d.id);
+                  const ele = partnerDone.includes(d.id);
+                  const liberado = !!d.data && d.data <= hojeLocalISO();
+                  const st = eu && ele ? 'pair-both' : eu ? 'pair-me' : ele ? 'pair-partner' : liberado ? 'pair-none' : 'locked';
+                  const legenda = eu && ele ? 'os dois'
+                    : eu ? `falta ${firstName(partnerName) || 'a dupla'}`
+                    : ele ? 'falta você'
+                    : '';
                   return (
-                    <div key={d.id} style={{background:'var(--panel-bg)', border:`1px solid ${cheio ? 'rgba(30,158,134,.45)' : 'var(--panel-border)'}`, borderRadius:12, padding:'12px 14px'}}>
-                      <div style={{display:'flex', alignItems:'center', gap:10}}>
-                        <span style={{fontSize:18}}>{cheio ? '✅' : (feito || meuFeito) ? '◐' : '⬜'}</span>
-                        <div style={{flex:1, minWidth:0}}>
-                          <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>{formatDiaSemana(d.diaSemana)} — {d.titulo || `Dia ${d.id}`}</div>
-                          <div style={{fontSize:11, color: cheio ? 'var(--teal)' : (feito || meuFeito) ? 'var(--gold)' : 'var(--mut)', fontWeight:700}}>
-                            {cheio ? 'Os dois concluíram — dia cheio'
-                              : meuFeito ? `Só você fez — falta ${firstName(partnerName) || 'sua dupla'}`
-                              : feito ? `Só ${firstName(partnerName) || 'sua dupla'} fez — falta você`
-                              : 'Ninguém fez ainda'}
-                          </div>
-                          <PairStrip dias={[d]} doneA={myDone} doneB={partnerDone} nomeA="você" nomeB={firstName(partnerName)} />
-                        </div>
+                    <div key={d.id} className="path-step" style={{transform:`translateX(${Math.round(Math.sin((i * Math.PI) / 3.5) * 70)}px)`}}>
+                      <div className={`path-node ${st}`} title={`${formatDiaSemana(d.diaSemana)} — ${legenda || 'ninguém fez ainda'}`}>
+                        {eu && ele ? '⭐' : st === 'locked' ? '🔒' : '📖'}
                       </div>
-                      {shared?.note && (
-                        <div style={{marginTop:10, padding:'10px 12px', background:'rgba(30,158,134,.08)', borderRadius:10, borderLeft:'3px solid var(--teal)'}}>
-                          <div style={{fontSize:10, color:'var(--teal)', fontWeight:800, textTransform:'uppercase', letterSpacing:1, marginBottom:4}}>📝 Anotação compartilhada</div>
-                          <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.5, whiteSpace:'pre-wrap', fontFamily:'Lora,Georgia,serif'}}>{shared.note}</div>
-                        </div>
-                      )}
-                      {shared?.highlights?.length > 0 && (
-                        <div style={{marginTop:10, display:'flex', flexDirection:'column', gap:6}}>
-                          <div style={{fontSize:10, color:'var(--gold)', fontWeight:800, textTransform:'uppercase', letterSpacing:1}}>🖍️ Destaques compartilhados</div>
-                          {shared.highlights.map((t: string, i: number) => (
-                            <div key={i} style={{fontSize:13, color:'var(--txt2)', fontStyle:'italic', paddingLeft:8, borderLeft:'2px solid var(--gold)'}}>"{t}"</div>
-                          ))}
-                        </div>
-                      )}
+                      <div className={`path-label${eu && ele ? ' hoje' : ''}`}>{formatDiaSemana(d.diaSemana)}</div>
+                      {legenda && <div className="pair-falta">{legenda}</div>}
                     </div>
                   );
                 })}
               </div>
-              <div style={{fontSize:11, color:'var(--mut)', textAlign:'center', marginTop:12, lineHeight:1.5}}>
-                Para compartilhar suas anotações ou destaques de um dia, abra o estudo daquele dia e use os botões de compartilhar com a dupla.
+            </div>
+
+            {/* Só os dias em que a outra pessoa compartilhou algo */}
+            {dias.some((d: any) => partnerShares?.[`${licao.semana}__${d.id}`]) && (
+              <div>
+                <div className="sec-title" style={{marginBottom:8}}>O que {firstName(partnerName) || 'sua dupla'} compartilhou</div>
+                <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                  {dias.map((d: any) => {
+                    const shared = partnerShares?.[`${licao.semana}__${d.id}`];
+                    if (!shared?.note && !shared?.highlights?.length) return null;
+                    return (
+                      <div key={d.id} style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'12px 14px'}}>
+                        <div style={{fontSize:13, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>{formatDiaSemana(d.diaSemana)} — {d.titulo || `Dia ${d.id}`}</div>
+                        {shared?.note && (
+                          <div style={{padding:'10px 12px', background:'rgba(30,158,134,.08)', borderRadius:10, borderLeft:'3px solid var(--teal)'}}>
+                            <div style={{fontSize:10, color:'var(--teal)', fontWeight:800, textTransform:'uppercase', letterSpacing:1, marginBottom:4}}>📝 Anotação compartilhada</div>
+                            <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.5, whiteSpace:'pre-wrap', fontFamily:'Lora,Georgia,serif'}}>{shared.note}</div>
+                          </div>
+                        )}
+                        {shared?.highlights?.length > 0 && (
+                          <div style={{marginTop:10, display:'flex', flexDirection:'column', gap:6}}>
+                            <div style={{fontSize:10, color:'var(--gold)', fontWeight:800, textTransform:'uppercase', letterSpacing:1}}>🖍️ Destaques compartilhados</div>
+                            {shared.highlights.map((t: string, i: number) => (
+                              <div key={i} style={{fontSize:13, color:'var(--txt2)', fontStyle:'italic', paddingLeft:8, borderLeft:'2px solid var(--gold)'}}>"{t}"</div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+            )}
+
+            <div style={{fontSize:11, color:'var(--mut)', textAlign:'center', lineHeight:1.5}}>
+              Para compartilhar suas anotações ou destaques de um dia, abra o estudo daquele dia e use os botões de compartilhar com a dupla.
             </div>
           </>
         ) : !pendingInvite && (
