@@ -3,6 +3,7 @@ import { getTrackLessons, loadTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking } from './utils';
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla } from './components';
+import { BUILD_ID, buscarBuildPublicado, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
 
 const CACHE_VERSION = '3T2026';
 
@@ -52,6 +53,38 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => (localStorage.getItem('theme') as 'light' | 'dark' | 'auto') || 'auto');
   const [activePair, setActivePair] = useState<any>(null);
   const [pendingInvite, setPendingInvite] = useState<any>(null);
+  const [temVersaoNova, setTemVersaoNova] = useState(false);
+
+  // ===== Atualização automática =====
+  // Checa se saiu versão nova ao abrir, ao voltar para o app e a cada 15 min.
+  // Só marca a flag aqui; quem decide QUANDO aplicar é o efeito abaixo.
+  useEffect(() => {
+    let cancelado = false;
+    const checar = async () => {
+      if (document.visibilityState === 'hidden' || cancelado) return;
+      const publicado = await buscarBuildPublicado();
+      if (!cancelado && publicado && publicado !== BUILD_ID) setTemVersaoNova(true);
+    };
+    checar();
+    document.addEventListener('visibilitychange', checar);
+    window.addEventListener('focus', checar);
+    const iv = setInterval(checar, INTERVALO_CHECAGEM_MS);
+    return () => {
+      cancelado = true;
+      document.removeEventListener('visibilitychange', checar);
+      window.removeEventListener('focus', checar);
+      clearInterval(iv);
+    };
+  }, []);
+
+  // Aplica só em tela segura. No quiz (ou no estudo/resultado) espera: um reload
+  // ali jogaria fora as respostas da rodada. Assim que a pessoa volta para uma
+  // tela sem trabalho em andamento, a atualização entra sozinha.
+  useEffect(() => {
+    if (!temVersaoNova || !telaPermiteReload(tela)) return;
+    const t = setTimeout(recarregar, 400);
+    return () => clearTimeout(t);
+  }, [temVersaoNova, tela]);
 
   // Deep link ?dupla=<id>: guarda e limpa da URL (sobrevive ao login)
   useEffect(() => {
@@ -372,14 +405,24 @@ export default function App() {
   // Campanha: leitura sob demanda, memorizada por temporada. Trocar entre
   // Minha Trilha / Meu Local / Geral / Duplas não custa leitura nenhuma —
   // os quatro saem do mesmo conjunto de linhas.
+  // Semanas que compõem a campanha. A busca é por elas (e não pelo trimestre)
+  // porque 'week' existe em todo doc de progresso — 'trimestre' é opcional e
+  // falta nos docs mais antigos, que sumiriam do acumulado sem dar erro.
+  const semanasDaCampanha = (trimestre: string) =>
+    (getTrackLessons(jogador?.track) as any[])
+      .filter(l => !l.isAdminOnly && l.trimestre === trimestre)
+      .map(l => l.semana);
+
   const loadSeason = async (trimestre: string, forcar = false) => {
     if (!trimestre) return;
     if (!forcar && seasonTrimestre === trimestre) return;
+    const semanas = semanasDaCampanha(trimestre);
+    if (!semanas.length) return;
     setSeasonLoading(true);
     try {
       const user = await waitForAuthInit();
       if (user) {
-        setSeasonRows(await getSeasonProgress(trimestre));
+        setSeasonRows(await getSeasonProgress(semanas));
         setSeasonTrimestre(trimestre);
       }
     } catch (e) {
@@ -418,7 +461,7 @@ export default function App() {
     const minhaTrilha = jogador?.track || 'teen';
     if (rankingType === 'week') return weekRows;
     if (rankingType === 'duplasSemana') return buildPairWeekRanking(rosterComMinha, weekRows);
-    const campanha = mergeLiveWeek(seasonRows, weekRows, semana, licao?.trimestre);
+    const campanha = mergeLiveWeek(seasonRows, weekRows, semana, minhaTrilha);
     switch (rankingType) {
       case 'trilha': return aggregateSeasonRanking(campanha, { locationId: meuLocal, track: minhaTrilha });
       case 'geral': return aggregateSeasonRanking(campanha, { locationId: meuLocal });
@@ -426,7 +469,7 @@ export default function App() {
       case 'duplasCampanha': return buildPairSeasonRanking(rosterComMinha, campanha);
       default: return aggregateSeasonRanking(campanha);
     }
-  }, [rankingType, weekRows, seasonRows, rosterComMinha, licao?.semana, licao?.trimestre, jogador?.locationId, jogador?.track]);
+  }, [rankingType, weekRows, seasonRows, rosterComMinha, licao?.semana, jogador?.locationId, jogador?.track]);
 
   const handleChangeLicao = async (newLicao: any, trackOverride?: string) => {
     ss('licao_atual', newLicao);
@@ -563,6 +606,15 @@ export default function App() {
           onSorteador={() => setTela('sorteador')}
           onDupla={() => setTela('dupla')}
         />
+      )}
+
+      {temVersaoNova && !telaPermiteReload(tela) && (
+        <div style={{position:'fixed', bottom:16, left:'50%', transform:'translateX(-50%)', zIndex:9997,
+                     background:'var(--notif-bg)', border:'1px solid var(--notif-border)', borderRadius:14,
+                     padding:'10px 16px', fontSize:12, color:'var(--txt2)', fontFamily:'Poppins,sans-serif',
+                     fontWeight:700, boxShadow:'0 8px 24px rgba(0,0,0,.3)', maxWidth:'90%', textAlign:'center'}}>
+          ⬆️ Versão nova pronta — atualiza sozinho quando você terminar
+        </div>
       )}
 
       {inAppNotif && (

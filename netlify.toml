@@ -19,3 +19,28 @@
 
 [context.branch-deploy]
   ignore = "false"
+
+# ===== Cache: o que trava versão antiga no navegador =====
+# Os arquivos de /assets já têm hash no nome, então nunca mudam de conteúdo —
+# podem ser guardados para sempre. Já o index.html é o que APONTA para eles: se
+# ele vier do cache, o navegador carrega o bundle antigo mesmo com deploy novo.
+# version.json precisa ser sempre fresco, senão o aviso de atualização não chega.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/version.json"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"

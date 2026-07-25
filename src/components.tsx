@@ -662,11 +662,18 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
   const timerRef = useRef<any>(null);
   const startRef = useRef<number>(0);
   
+  // Uma pergunta malformada (sem opcoes, ou com 'correta' fora do intervalo)
+  // derrubava a tela inteira no meio do quiz — e o editor de conteúdo do Admin
+  // consegue gravar exatamente isso. Aqui a pergunta ruim é descartada em vez
+  // de quebrar a rodada de quem está respondendo.
   const [shuffledPergs] = useState(() =>
-    (dia.perguntas || []).map((q: any) => {
-      const correctText = q.opcoes[q.correta];
-      const shuffled = [...q.opcoes].sort(() => Math.random() - 0.5);
-      return { ...q, opcoes: shuffled, correta: shuffled.indexOf(correctText) };
+    (dia.perguntas || []).flatMap((q: any) => {
+      const opcoes = Array.isArray(q?.opcoes) ? q.opcoes.filter((o: any) => typeof o === 'string') : [];
+      if (opcoes.length < 2) return [];
+      const idxCorreta = typeof q.correta === 'number' && q.correta >= 0 && q.correta < opcoes.length ? q.correta : 0;
+      const correctText = opcoes[idxCorreta];
+      const shuffled = [...opcoes].sort(() => Math.random() - 0.5);
+      return [{ ...q, opcoes: shuffled, correta: shuffled.indexOf(correctText) }];
     })
   );
   const pergs = shuffledPergs;
@@ -733,6 +740,29 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
   const tPct = tempo / 40 * 100;
   const tColor = tPct > 50 ? '#2ECC71' : tPct > 25 ? '#F5C842' : '#E31C3D';
   const xpSoFar = resps.reduce((s, r) => s + r.xp, 0);
+
+  // Dia sem nenhuma pergunta aproveitável (conteúdo ainda não preenchido ou
+  // edição que apagou as opções): tela explicando, em vez de branco.
+  if (!q) {
+    return (
+      <div className="scr">
+        <div className="hdr">
+          <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
+          <div style={{fontWeight:900,fontSize:17}}>Quiz</div>
+          <div style={{width:64}} />
+        </div>
+        <div style={{padding:'60px 24px', textAlign:'center', color:'var(--mut)'}}>
+          <div style={{fontSize:52, marginBottom:16}}>🛠️</div>
+          <div style={{fontSize:18, fontWeight:900, color:'var(--txt2)', marginBottom:8}}>Quiz indisponível</div>
+          <div style={{fontSize:14, lineHeight:1.5, marginBottom:24}}>
+            As perguntas deste dia ainda não estão prontas. Seu progresso não foi afetado —
+            avise a liderança da classe e volte mais tarde.
+          </div>
+          <button className="btn btn-ghost" onClick={onBack} style={{width:'auto', display:'inline-flex'}}>Voltar ao estudo</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="scr-full">
@@ -2126,7 +2156,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const [streaks, setStreaks] = useState<Record<string, { streak: number }>>({});
   useEffect(() => {
     if (!licao?.trimestre) return;
-    getAllUsersStreaks(licao.trimestre, getTrackLessons(jogador?.track)).then(setStreaks).catch(() => {});
+    getAllUsersStreaks(getTrackLessons(jogador?.track)).then(setStreaks).catch(() => {});
   }, [licao?.trimestre]);
 
   const handleToggleGuest = async (userId: string, currentStatus: boolean) => {

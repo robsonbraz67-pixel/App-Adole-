@@ -570,12 +570,22 @@ export const listenToWeekProgress = (week: string, cb: (rows: ProgressRow[]) => 
 // Progresso da campanha inteira (13 semanas). Leitura pontual, não assinatura:
 // é ~13× mais docs que a semana e muda devagar. A semana corrente é sobreposta
 // ao vivo por cima disto (ver mergeLiveWeek), então o total nunca fica atrasado.
-export const getSeasonProgress = async (trimestre: string): Promise<ProgressRow[]> => {
-  const [snap, adminIds] = await Promise.all([
-    getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre))),
+//
+// Busca pelas SEMANAS, não pelo trimestre: 'week' é obrigatório nas regras
+// (todo doc de progresso tem), enquanto 'trimestre' é opcional e só passou a
+// ser gravado em 27/06 — filtrar por ele fazia as semanas antigas sumirem do
+// acumulado sem erro nenhum, só faltando pontos.
+export const getSeasonProgress = async (semanas: string[]): Promise<ProgressRow[]> => {
+  if (!semanas?.length) return [];
+  // 'in' aceita até 30 valores; uma campanha tem 13, mas o lote protege o caso
+  // de alguém montar uma campanha maior no futuro.
+  const lotes: string[][] = [];
+  for (let i = 0; i < semanas.length; i += 30) lotes.push(semanas.slice(i, i + 30));
+  const [adminIds, ...snaps] = await Promise.all([
     getAdminIds(),
+    ...lotes.map(lote => getDocs(query(collection(db, 'progress'), where('week', 'in', lote)))),
   ]);
-  return rowsFromSnap(snap, adminIds);
+  return (snaps as any[]).flatMap(snap => rowsFromSnap(snap, adminIds));
 };
 
 export const getWeeklyRanking = async (week: string) => {
@@ -627,15 +637,21 @@ export const listenToPairRoster = (locationId: string, track: string, cb: (roste
 
 // Ofensiva real de todos os usuários da temporada (para o painel Admin/Professor)
 // `licoes` vem de fora: o conteúdo é carregado sob demanda por trilha, então
-// firebase.ts não pode mais importá-lo estaticamente (e nem deveria).
-export const getAllUsersStreaks = async (trimestre: string, licoes: any[]): Promise<Record<string, { nome: string; avatar: string; streak: number; isAdmin: boolean; isProfessor: boolean }>> => {
-  const snap = await getDocs(query(collection(db, 'progress'), where('trimestre', '==', trimestre)));
+// firebase.ts não pode mais importá-lo estaticamente (e nem deveria). A busca é
+// pelas SEMANAS dessas lições — mesma razão do getSeasonProgress: 'trimestre'
+// falta nos docs antigos e a ofensiva vinha curta sem dar erro.
+export const getAllUsersStreaks = async (licoes: any[]): Promise<Record<string, { nome: string; avatar: string; streak: number; isAdmin: boolean; isProfessor: boolean }>> => {
+  const semanas = (licoes || []).map((l: any) => l.semana).filter(Boolean);
+  if (!semanas.length) return {};
+  const lotes: string[][] = [];
+  for (let i = 0; i < semanas.length; i += 30) lotes.push(semanas.slice(i, i + 30));
+  const snaps = await Promise.all(lotes.map(lote => getDocs(query(collection(db, 'progress'), where('week', 'in', lote)))));
   const porUsuario: Record<string, { nome: string; avatar: string; done: Record<string, number[]>; isAdmin?: boolean; isProfessor?: boolean }> = {};
-  snap.forEach(doc => {
+  snaps.forEach(snap => snap.forEach(doc => {
     const d = doc.data();
     if (!porUsuario[d.userId]) porUsuario[d.userId] = { nome: d.nome, avatar: d.avatar, done: {}, isAdmin: d.isAdmin, isProfessor: d.isProfessor };
     porUsuario[d.userId].done[d.week] = d.done || [];
-  });
+  }));
   const resultado: Record<string, any> = {};
   for (const uid of Object.keys(porUsuario)) {
     const u = porUsuario[uid];
