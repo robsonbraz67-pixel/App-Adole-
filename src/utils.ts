@@ -167,7 +167,7 @@ export const aggregateSeasonRanking = (rows: any[], filtro?: { locationId?: stri
   const totals: Record<string, any> = {};
   for (const r of collapseByUserWeek(rows)) {
     if (filtro?.locationId && r.locationId !== filtro.locationId) continue;
-    if (filtro?.track && r.track !== filtro.track) continue;
+    if (filtro?.track && (r.track || 'teen') !== filtro.track) continue;
     if (!totals[r.userId]) {
       totals[r.userId] = { id: r.userId, nome: r.nome, avatar: r.avatar, xp: 0, dias: 0, isAdmin: false, isProfessor: false };
     }
@@ -184,14 +184,19 @@ export const aggregateSeasonRanking = (rows: any[], filtro?: { locationId?: stri
 // corrente chega por assinatura ao vivo. Sobrepor uma na outra faz o total da
 // campanha refletir na hora o quiz que a pessoa acabou de fazer.
 // ATENÇÃO: trilhas diferentes compartilham a MESMA string de semana
-// ("2026-W26") e só se distinguem pelo trimestre. Como weekRows vem de uma
-// query só por semana, ele traz todas as trilhas — sem recortar pelo trimestre
-// da campanha, o acumulado de "Geral" ganharia a semana atual de gente que nem
-// está nesta campanha.
-export const mergeLiveWeek = (seasonRows: any[], weekRows: any[], semana: string, trimestre?: string) => {
-  if (!semana) return seasonRows;
-  const live = trimestre ? weekRows.filter((r: any) => (r.trimestre || '') === trimestre) : weekRows;
-  return [...seasonRows.filter((r: any) => r.week !== semana), ...live];
+// ("2026-W26"), então as duas listas trazem gente de outras trilhas. O recorte
+// é por TRILHA (e não por trimestre, que docs antigos podem nem ter); doc sem
+// 'track' é teen, que é o que ele era quando o campo ainda não existia.
+export const mergeLiveWeek = (seasonRows: any[], weekRows: any[], semana: string, track?: string) => {
+  const daTrilha = (r: any) => !track || (r.track || 'teen') === track;
+  const base = seasonRows.filter(daTrilha);
+  if (!semana) return base;
+  const live = weekRows.filter(daTrilha);
+  // A semana corrente só é SUBSTITUÍDA para quem realmente veio na assinatura.
+  // Trocar em bloco fazia o acumulado perder a semana inteira enquanto o
+  // snapshot não chegava (ou se ele viesse parcial) — some ponto sem avisar.
+  const temLive = new Set(live.map((r: any) => r.userId));
+  return [...base.filter((r: any) => r.week !== semana || !temLive.has(r.userId)), ...live];
 };
 
 // Cruza a escalação das duplas com o progresso: dia cheio quando os dois

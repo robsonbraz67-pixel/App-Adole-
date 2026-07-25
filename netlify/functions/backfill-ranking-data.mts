@@ -10,6 +10,7 @@ import type { Config } from "@netlify/functions";
 // 1) Carimbar locationId nos docs de progresso antigos. É o campo que torna o
 //    ranking por local calculável sem ler users/{uid} de terceiros (as regras
 //    não deixam, e com razão). Docs novos já nascem com ele; estes são o legado.
+//    Idem para 'track', que docs anteriores às trilhas não têm (eram todos teen).
 // 2) Espelhar as duplas antigas em pairsPublic/. Duplas novas escrevem o
 //    espelho no mesmo batch; estas são anteriores à mudança.
 // 3) Continuar limpando nota/destaque vazados no history (segurança, Etapa 8).
@@ -68,6 +69,9 @@ export default async (): Promise<Response> => {
       patch.locationId = u.locationId;
       carimbados++;
     }
+    // Antes das trilhas todo progresso era teen; sem o campo, o recorte por
+    // trilha teria de adivinhar a cada leitura.
+    if (!p.track && u?.track) patch.track = u.track;
 
     if (Object.keys(patch).length) progWrites.push(d.ref.update(patch));
   });

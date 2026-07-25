@@ -372,14 +372,24 @@ export default function App() {
   // Campanha: leitura sob demanda, memorizada por temporada. Trocar entre
   // Minha Trilha / Meu Local / Geral / Duplas não custa leitura nenhuma —
   // os quatro saem do mesmo conjunto de linhas.
+  // Semanas que compõem a campanha. A busca é por elas (e não pelo trimestre)
+  // porque 'week' existe em todo doc de progresso — 'trimestre' é opcional e
+  // falta nos docs mais antigos, que sumiriam do acumulado sem dar erro.
+  const semanasDaCampanha = (trimestre: string) =>
+    (getTrackLessons(jogador?.track) as any[])
+      .filter(l => !l.isAdminOnly && l.trimestre === trimestre)
+      .map(l => l.semana);
+
   const loadSeason = async (trimestre: string, forcar = false) => {
     if (!trimestre) return;
     if (!forcar && seasonTrimestre === trimestre) return;
+    const semanas = semanasDaCampanha(trimestre);
+    if (!semanas.length) return;
     setSeasonLoading(true);
     try {
       const user = await waitForAuthInit();
       if (user) {
-        setSeasonRows(await getSeasonProgress(trimestre));
+        setSeasonRows(await getSeasonProgress(semanas));
         setSeasonTrimestre(trimestre);
       }
     } catch (e) {
@@ -418,7 +428,7 @@ export default function App() {
     const minhaTrilha = jogador?.track || 'teen';
     if (rankingType === 'week') return weekRows;
     if (rankingType === 'duplasSemana') return buildPairWeekRanking(rosterComMinha, weekRows);
-    const campanha = mergeLiveWeek(seasonRows, weekRows, semana, licao?.trimestre);
+    const campanha = mergeLiveWeek(seasonRows, weekRows, semana, minhaTrilha);
     switch (rankingType) {
       case 'trilha': return aggregateSeasonRanking(campanha, { locationId: meuLocal, track: minhaTrilha });
       case 'geral': return aggregateSeasonRanking(campanha, { locationId: meuLocal });
@@ -426,7 +436,7 @@ export default function App() {
       case 'duplasCampanha': return buildPairSeasonRanking(rosterComMinha, campanha);
       default: return aggregateSeasonRanking(campanha);
     }
-  }, [rankingType, weekRows, seasonRows, rosterComMinha, licao?.semana, licao?.trimestre, jogador?.locationId, jogador?.track]);
+  }, [rankingType, weekRows, seasonRows, rosterComMinha, licao?.semana, jogador?.locationId, jogador?.track]);
 
   const handleChangeLicao = async (newLicao: any, trackOverride?: string) => {
     ss('licao_atual', newLicao);

@@ -2126,7 +2126,7 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
   const [streaks, setStreaks] = useState<Record<string, { streak: number }>>({});
   useEffect(() => {
     if (!licao?.trimestre) return;
-    getAllUsersStreaks(licao.trimestre, getTrackLessons(jogador?.track)).then(setStreaks).catch(() => {});
+    getAllUsersStreaks(getTrackLessons(jogador?.track)).then(setStreaks).catch(() => {});
   }, [licao?.trimestre]);
 
   const handleToggleGuest = async (userId: string, currentStatus: boolean) => {
