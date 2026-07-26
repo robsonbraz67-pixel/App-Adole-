@@ -183,20 +183,21 @@ export const aggregateSeasonRanking = (rows: any[], filtro?: { locationId?: stri
 // A campanha é lida sob demanda (13× mais docs que a semana) enquanto a semana
 // corrente chega por assinatura ao vivo. Sobrepor uma na outra faz o total da
 // campanha refletir na hora o quiz que a pessoa acabou de fazer.
-// ATENÇÃO: trilhas diferentes compartilham a MESMA string de semana
-// ("2026-W26"), então as duas listas trazem gente de outras trilhas. O recorte
-// é por TRILHA (e não por trimestre, que docs antigos podem nem ter); doc sem
-// 'track' é teen, que é o que ele era quando o campo ainda não existia.
-export const mergeLiveWeek = (seasonRows: any[], weekRows: any[], semana: string, track?: string) => {
-  const daTrilha = (r: any) => !track || (r.track || 'teen') === track;
-  const base = seasonRows.filter(daTrilha);
-  if (!semana) return base;
-  const live = weekRows.filter(daTrilha);
+//
+// NÃO filtra por trilha aqui — só combina as duas fontes. O recorte por
+// trilha/local é responsabilidade exclusiva de aggregateSeasonRanking (via
+// `filtro`), aplicado depois. Chegou a existir um filtro por trilha aqui, mas
+// ele rodava ANTES do filtro de verdade e afetava até a Campanha "Geral" (sem
+// filtro nenhum) — se o jogador tivesse mudado de trilha (só admin/professor
+// podiam), as próprias semanas antigas dele, salvas sob a trilha anterior,
+// desapareciam do total. Sem filtro aqui, esse cenário nunca mais acontece.
+export const mergeLiveWeek = (seasonRows: any[], weekRows: any[], semana: string) => {
+  if (!semana) return seasonRows;
   // A semana corrente só é SUBSTITUÍDA para quem realmente veio na assinatura.
   // Trocar em bloco fazia o acumulado perder a semana inteira enquanto o
   // snapshot não chegava (ou se ele viesse parcial) — some ponto sem avisar.
-  const temLive = new Set(live.map((r: any) => r.userId));
-  return [...base.filter((r: any) => r.week !== semana || !temLive.has(r.userId)), ...live];
+  const temLive = new Set(weekRows.map((r: any) => r.userId));
+  return [...seasonRows.filter((r: any) => r.week !== semana || !temLive.has(r.userId)), ...weekRows];
 };
 
 // Cruza a escalação das duplas com o progresso: dia cheio quando os dois
