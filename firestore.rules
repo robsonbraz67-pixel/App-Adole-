@@ -381,6 +381,26 @@ service cloud.firestore {
       allow delete: if isUserAdmin();
     }
 
+    // Local do DONO do progresso, lido do próprio users/{uid}. É o que permite
+    // validar o locationId gravado no progresso sem confiar no cliente.
+    //
+    // BUG HISTÓRICO (publicado 2026-07-25T16:31Z, corrigido aqui): esta função foi apagada por
+    // engano numa limpeza de código feita por range de texto (o script de
+    // remoção usou "function isValidProgress" como marcador de fim, e essa
+    // função ficava bem antes dele — foi engolida junto). A referência
+    // ownLocationId() abaixo ficou órfã, mas o `firebase deploy` publicou
+    // mesmo assim (a validação da CLI não pega função indefinida na hora do
+    // deploy — só quebra em tempo de EXECUÇÃO). Resultado: toda gravação de
+    // progresso que incluísse 'locationId' — ou seja, TODO aluno matriculado,
+    // em TODO quiz — falhava silenciosamente, com "Progresso não sincronizado"
+    // aparecendo pra sempre, mesmo com internet perfeita. Reportado por dois
+    // usuários; provavelmente afetava todos. Lição: nunca apagar regras por
+    // intervalo de texto sem, depois, rodar exatamente a checagem de função
+    // indefinida que encontrou este bug.
+    function ownLocationId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('locationId', '');
+    }
+
     function isValidProgress(data) {
       return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string
