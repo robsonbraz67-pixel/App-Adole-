@@ -287,7 +287,11 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
 // Mescla dois docs de progresso SEM perder nada: une os dias concluídos,
 // junta o history por dia (fica com a entrada de maior XP), e recalcula o XP
 // total a partir do history (com piso no maior XP dos dois, por segurança).
-const mergeProgress = (a: any, b: any) => {
+// Exportado: também serve para reconciliar o progresso LOCAL (localStorage)
+// com o do servidor no boot — sem isso, um quiz que terminou mas nunca
+// sincronizou (ex: bug de regra, ou só falta de rede) seria APAGADO no
+// próximo login, porque o boot sobrescrevia o local com o valor do servidor.
+export const mergeProgress = (a: any, b: any) => {
   if (!a) return b;
   if (!b) return a;
   const done = Array.from(new Set([...(a.done || []), ...(b.done || [])])).sort((x: any, y: any) => x - y);

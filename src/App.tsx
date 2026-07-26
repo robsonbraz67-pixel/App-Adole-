@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getTrackLessons, loadTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking } from './utils';
-import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
+import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla } from './components';
 import { BUILD_ID, buscarBuildPublicado, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
 
@@ -245,11 +245,19 @@ export default function App() {
             }
             const track = dbUser?.track || initialTrack;
             const dbProg = await getProgress(j.id, l.semana, track);
-            if (dbProg) {
-              p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
+            // Mescla com o local em vez de SOBRESCREVER: sem isso, um quiz que
+            // terminou mas não chegou à nuvem (falha de rede, ou o bug de regra
+            // que apagava toda gravação com locationId) seria APAGADO aqui no
+            // próximo login, porque o servidor tinha a versão mais velha.
+            const merged = mergeProgress(p, dbProg);
+            if (merged) {
+              p = { xp: merged.xp, streak: merged.streak, done: merged.done || [], history: merged.history || {} };
               ss(semKey(l, track), p);
-            } else if ((p.xp > 0 || (p.done?.length ?? 0) > 0) && dbUser) {
-              saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor, dbUser.locationId).catch(console.error);
+              // Servidor ficou pra trás do que o merge revelou? Sobe a versão
+              // completa — é o que efetivamente RECUPERA o quiz perdido.
+              if (dbUser && (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0))) {
+                saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor, dbUser.locationId).catch(console.error);
+              }
             }
 
             // Also sync previous lesson's local progress if it never reached Firestore
@@ -318,9 +326,16 @@ export default function App() {
       await saveUser(j);
 
       const dbProg = await getProgress(j.id, l.semana, j?.track || 'teen');
-      if (dbProg) {
-        p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
+      // Mescla em vez de sobrescrever — mesmo motivo do boot: progresso local
+      // não sincronizado (falha de rede, ou o bug de regra que travava toda
+      // gravação com locationId) não pode ser apagado por login.
+      const merged = mergeProgress(p, dbProg);
+      if (merged) {
+        p = { xp: merged.xp, streak: merged.streak, done: merged.done || [], history: merged.history || {} };
         ss(semKey(l, j?.track), p);
+        if (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0)) {
+          saveProgress(p, l.semana, j.id, j.nome, j.avatar, l.trimestre, j?.track || 'teen', !!j.isAdmin, !!j.isGuest, !!j.isProfessor, j.locationId).catch(console.error);
+        }
       }
     } catch(e) {
       console.error("Error saving user profile or loading progress:", e);
@@ -484,9 +499,13 @@ export default function App() {
       const user = await waitForAuthInit();
       if (user) {
         const dbProg = await getProgress(jogador.id, newLicao.semana, track);
-        if (dbProg) {
-          p = { xp: dbProg.xp, streak: dbProg.streak, done: dbProg.done || [], history: dbProg.history || {} };
+        const merged = mergeProgress(p, dbProg);
+        if (merged) {
+          p = { xp: merged.xp, streak: merged.streak, done: merged.done || [], history: merged.history || {} };
           ss(semKey(newLicao, track), p);
+          if (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0)) {
+            saveProgress(p, newLicao.semana, jogador.id, jogador.nome, jogador.avatar, newLicao.trimestre, track, !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId).catch(console.error);
+          }
         }
 
         setProg({ ...p, pos: calcPos(weekRows, jogador.id, p.xp || 0) });
