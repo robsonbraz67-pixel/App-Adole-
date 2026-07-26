@@ -79,7 +79,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, getProgress, PairType, getStudyNotes } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes } from './firebase';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -1671,13 +1671,12 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
 /* ===== ESTUDO EM DUPLA (Etapa 4) ===== */
 const PAIR_TYPE_LABELS: Record<PairType, string> = { family: '👨‍👧 Família', couple: '💑 Casal', friend: '🤝 Amigo(a)' };
 
-export const Dupla = ({ jogador, licao, prog, activePair, pendingInvite, onPairChange, onClearPending, onBack, onRankingDuplas }: any) => {
+export const Dupla = ({ jogador, licao, prog, weekRows, activePair, pendingInvite, onPairChange, onClearPending, onBack, onRankingDuplas }: any) => {
   const [pair, setPair] = useState<any>(activePair || null);
   const [tipo, setTipo] = useState<PairType>('friend');
   const [linkGerado, setLinkGerado] = useState('');
   const [gerando, setGerando] = useState(false);
   const [aceitando, setAceitando] = useState(false);
-  const [partnerDone, setPartnerDone] = useState<number[]>([]);
 
   // Feed em tempo real da dupla ativa
   useEffect(() => {
@@ -1692,11 +1691,15 @@ export const Dupla = ({ jogador, licao, prog, activePair, pendingInvite, onPairC
   const partnerAvatar = pair ? (isUserA ? pair.userBAvatar : pair.userAAvatar) : '';
   const partnerShares = pair ? (isUserA ? pair.sharesB : pair.sharesA) : {};
 
-  // Progresso do parceiro na semana atual (dias concluídos)
-  useEffect(() => {
-    if (!partnerId || !licao?.semana) return;
-    getProgress(partnerId, licao.semana, jogador?.track || 'teen').then((p: any) => setPartnerDone(p?.done || [])).catch(() => {});
-  }, [partnerId, licao?.semana, jogador?.track, pair]);
+  // Dias concluídos pelo parceiro na semana atual — vem da MESMA assinatura ao
+  // vivo (weekRows) que já alimenta o Ranking de Duplas. Antes era uma leitura
+  // única (getProgress) que só rodava ao entrar na tela: o parceiro terminar o
+  // quiz enquanto a tela já estava aberta não atualizava nada aqui, mesmo o
+  // Ranking já mostrando o dado novo (esse vinha da assinatura, este não).
+  const partnerDone: number[] = useMemo(() => {
+    if (!partnerId) return [];
+    return (weekRows || []).find((r: any) => r.userId === partnerId)?.done || [];
+  }, [weekRows, partnerId]);
 
   const shareUrl = (id: string) => `${window.location.origin}${window.location.pathname}?dupla=${id}`;
 
