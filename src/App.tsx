@@ -610,7 +610,7 @@ export default function App() {
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onSwitchTrack={handleSwitchTrack} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
-      {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} prog={prog} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onRankingDuplas={() => loadLatestRanking('duplasSemana')} />}
+      {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} prog={prog} weekRows={weekRows} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onRankingDuplas={() => loadLatestRanking('duplasSemana')} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
 
       {!['splash', 'login', 'quiz'].includes(tela) && !(tela === 'config' && !jogador.locationId) && (
