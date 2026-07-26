@@ -461,7 +461,7 @@ export default function App() {
     const minhaTrilha = jogador?.track || 'teen';
     if (rankingType === 'week') return weekRows;
     if (rankingType === 'duplasSemana') return buildPairWeekRanking(rosterComMinha, weekRows);
-    const campanha = mergeLiveWeek(seasonRows, weekRows, semana, minhaTrilha);
+    const campanha = mergeLiveWeek(seasonRows, weekRows, semana);
     switch (rankingType) {
       case 'trilha': return aggregateSeasonRanking(campanha, { locationId: meuLocal, track: minhaTrilha });
       case 'geral': return aggregateSeasonRanking(campanha, { locationId: meuLocal });
