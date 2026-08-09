@@ -362,7 +362,14 @@ export default function App() {
 
     let readingXP = 0;
     const isRepeat = prog.done.includes(diaAtual.id);
-    if (!isRepeat) {
+    // Anti-fraude: reabrir o quiz do dia sem terminar (2ª tentativa em diante)
+    // zera o XP daquele dia ao concluir — ver Quiz em components.tsx. A 1ª
+    // reabertura é perdoada (bateria, ligação, aba fechada sem querer), e a
+    // punição não vale para dia já concluído (isRepeat): ali não há XP novo.
+    const punido = !isRepeat && !!res.reiniciado;
+    if (punido) {
+      res.xpTotal = 0;
+    } else if (!isRepeat) {
       readingXP = Math.round(100 * (dbLicaoData || diaAtual.data ? getRecencyMult(dbLicaoData || diaAtual.data) : 1.0));
       res.xpTotal += readingXP;
     }
@@ -379,9 +386,11 @@ export default function App() {
       history: { ...prog.history, [diaAtual.id]: {
          ...prog.history[diaAtual.id],
          xp: isRepeat ? (prog.history[diaAtual.id]?.xp || 0) : res.xpTotal,
-         acertos: isRepeat ? (prog.history[diaAtual.id]?.acertos || 0) : res.acertos
+         acertos: isRepeat ? (prog.history[diaAtual.id]?.acertos || 0) : res.acertos,
+         ...(punido ? { reiniciado: true } : {})
       } }
     };
+    res.punido = punido;
 
     // Sem remendo otimista na lista: o save dispara a assinatura e o ranking
     // de todo mundo (inclusive o meu) chega atualizado em seguida.

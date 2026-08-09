@@ -661,7 +661,27 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
   const [xpMsg, setXpMsg] = useState<string | null>(null);
   const timerRef = useRef<any>(null);
   const startRef = useRef<number>(0);
-  
+
+  // Anti-fraude: fechar o quiz no meio e reabrir permitia tentar de novo até
+  // acertar tudo, com XP cheio. A partir da 2ª abertura do mesmo dia, o XP
+  // final é zerado (ver App.tsx:handleDoneQuiz) — a 1ª reabertura é perdoada
+  // (bateria, ligação, aba fechada sem querer). Contagem por data real do dia
+  // porque dia.id se repete entre semanas.
+  const attemptKey = `quizTentativas_${dia.data || dia.id}`;
+  const [reiniciado] = useState(() => {
+    try { return parseInt(localStorage.getItem(attemptKey) || '0', 10) >= 1; }
+    catch { return false; }
+  });
+  const attemptWrittenRef = useRef(false);
+  useEffect(() => {
+    if (attemptWrittenRef.current) return;
+    attemptWrittenRef.current = true;
+    try {
+      const anteriores = parseInt(localStorage.getItem(attemptKey) || '0', 10);
+      localStorage.setItem(attemptKey, String(anteriores + 1));
+    } catch { /* localStorage indisponível: segue sem marcar, sem quebrar o quiz */ }
+  }, []);
+
   // Uma pergunta malformada (sem opcoes, ou com 'correta' fora do intervalo)
   // derrubava a tela inteira no meio do quiz — e o editor de conteúdo do Admin
   // consegue gravar exatamente isso. Aqui a pergunta ruim é descartada em vez
@@ -732,7 +752,7 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
         const ac = nr.filter(r => r.ans === r.correta).length;
         const xpT = nr.reduce((s, r) => s + r.xp, 0);
         const tM = nr.reduce((s, r) => s + r.t, 0) / nr.length;
-        onDone({ acertos: ac, total: pergs.length, xpTotal: xpT, tempoMedio: tM });
+        onDone({ acertos: ac, total: pergs.length, xpTotal: xpT, tempoMedio: tM, reiniciado });
       }
     }, 2500);
   };
@@ -811,7 +831,7 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
 
 /* ===== RESULTADO ===== */
 export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
-  const { acertos, total, xpTotal, tempoMedio } = res;
+  const { acertos, total, xpTotal, tempoMedio, punido } = res;
   const { ic, mg } = getMsgRes(acertos, total);
   
   const badges = [];
@@ -834,6 +854,12 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
           </div>
         ))}
       </div>
+      {punido && (
+        <div style={{animation:'fadeIn .5s ease .8s both',marginBottom:14,padding:'12px 16px',borderRadius:14,background:'rgba(227,28,61,.15)',border:'1.5px solid #E31C3D',textAlign:'left'}}>
+          <div style={{fontWeight:800,fontSize:14,marginBottom:4,color:'#E31C3D'}}>⚠️ XP zerado</div>
+          <div style={{fontSize:13,color:'var(--txt2)',lineHeight:1.5}}>Este quiz foi fechado e reaberto antes de terminar — pontos do dia não contam quando isso acontece.</div>
+        </div>
+      )}
       {prog.streak > 0 && <div style={{animation:'fadeIn .5s ease .9s both',marginBottom:14}}><div className="streak-badge" style={{fontSize:16,padding:'8px 20px'}}>🔥 Sequência: {prog.streak} dias!</div></div>}
       {badges.length > 0 && (
         <div style={{animation:'fadeIn .5s ease 1s both',marginBottom:22}}>
