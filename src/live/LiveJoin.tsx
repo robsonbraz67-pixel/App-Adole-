@@ -5,7 +5,8 @@ import {
   getSala, entrarNaSala, assinarSala, assinarJogadores,
   assinarMeuJogador, assinarMinhaResposta, responder,
 } from './liveGameApi';
-import { BarraRespostas, Placar, LivePodium, OPCOES_ESTILO } from './LiveShared';
+import { BarraRespostas, Placar, LivePodium, OPCOES_ESTILO, Contagem, MS_CONTAGEM } from './LiveShared';
+import { Confetti } from '../components';
 
 // Renderiza inteiramente FORA da máquina de telas do App: um convidado sem
 // conta nenhuma não pode passar pelo gate de login, e este fluxo não deve
@@ -26,7 +27,8 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
   const [minhaResposta, setMinhaResposta] = useState<any>(null);
   const [respostaEscolhida, setRespostaEscolhida] = useState<number | null>(null);
   const [tempoRestante, setTempoRestante] = useState(0);
-  const questionShownAtRef = useRef<number>(0);
+  const [contagem, setContagem] = useState(0);
+  const questionShownAtRef = useRef<{ idx: number; at: number }>({ idx: -1, at: 0 });
 
   useEffect(() => { waitForAuthInit().then(u => setUsuarioAtual(u)); }, []);
 
@@ -103,15 +105,10 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
     }
   }, [etapa, codigo, game?.phase, meuUid]);
 
-  // Reseta a cada pergunta nova e guarda, num ref, o instante em que ELA
-  // apareceu NESTE aparelho — o tempo de resposta usa só esse relógio local,
-  // nunca misturado com o relógio do servidor (doc de origem, seção 1.6):
-  // um aparelho com o relógio atrasado não pode zerar os próprios pontos.
   useEffect(() => {
     if (game?.phase === 'question') {
       setRespostaEscolhida(null);
       setMinhaResposta(null);
-      questionShownAtRef.current = Date.now();
     }
   }, [game?.phase, game?.currentIndex]);
 
@@ -121,22 +118,37 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
     return () => unsub();
   }, [game?.phase, game?.currentIndex, codigo, meuUid]);
 
-  // Cronômetro: ancorado no relógio do servidor, só re-renderiza quando o
-  // segundo exibido muda.
+  // Cronômetro + contagem regressiva, ancorados no relógio do servidor. Só
+  // re-renderiza quando o segundo exibido muda.
   useEffect(() => {
-    if (game?.phase !== 'question' || !game.questionStartedAt) return;
+    if (game?.phase !== 'question' || !game.questionStartedAt) { setContagem(0); return; }
     const inicio = game.questionStartedAt.toMillis();
-    const iv = setInterval(() => {
-      const r = Math.max(0, Math.ceil((inicio + game.questionDurationSec * 1000 - Date.now()) / 1000));
+    const tick = () => {
+      const agora = Date.now();
+      const c = Math.max(0, Math.ceil((inicio + MS_CONTAGEM - agora) / 1000));
+      setContagem(prev => (prev === c ? prev : c));
+      // O cronômetro de PONTUAÇÃO começa no instante em que a pergunta
+      // aparece NESTE aparelho — um relógio só, nunca misturado com o do
+      // servidor (doc de origem, 1.6): um celular atrasado não pode zerar os
+      // próprios pontos. Marcado no fim da contagem, e não quando a fase
+      // muda (que é quando a contagem COMEÇA). Guardar o índice junto cobre
+      // quem entrou com a pergunta já rolando: aí vale o primeiro instante
+      // em que este aparelho viu a pergunta, que é o que se quer medir.
+      if (c === 0 && questionShownAtRef.current.idx !== game.currentIndex) {
+        questionShownAtRef.current = { idx: game.currentIndex, at: Date.now() };
+      }
+      const r = Math.max(0, Math.ceil((inicio + MS_CONTAGEM + game.questionDurationSec * 1000 - agora) / 1000));
       setTempoRestante(prev => (prev === r ? prev : r));
-    }, 200);
+    };
+    tick();
+    const iv = setInterval(tick, 100);
     return () => clearInterval(iv);
   }, [game?.phase, game?.questionStartedAt, game?.questionDurationSec]);
 
   const responderClick = (i: number) => {
     if (respostaEscolhida !== null || !codigo || !meuUid || !game) return;
     setRespostaEscolhida(i);
-    const tempoRespostaMs = Date.now() - questionShownAtRef.current;
+    const tempoRespostaMs = Date.now() - questionShownAtRef.current.at;
     responder(codigo, meuUid, game.currentIndex, i, tempoRespostaMs).catch(e => console.error(e));
   };
 
@@ -208,6 +220,17 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
     );
   }
 
+  // ===== Contagem regressiva (primeiros segundos da fase 'question') =====
+  // O celular não emite som: com 40 aparelhos juntos viraria bagunça — quem
+  // apita é só o telão do professor.
+  if (game.phase === 'question' && contagem > 0) {
+    return (
+      <div className="scr-full">
+        <Contagem n={contagem} />
+      </div>
+    );
+  }
+
   // ===== Pergunta =====
   if (game.phase === 'question') {
     const opcoes: string[] = game.currentQuestion?.opcoes || [];
@@ -272,8 +295,11 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
   }
 
   // ===== Fim de jogo =====
+  // Confete sim, som não: quem apita é só o telão (ver comentário da
+  // contagem regressiva acima).
   return (
     <div className="scr">
+      <Confetti show={true} />
       <div className="hdr"><div style={{ fontWeight: 900, fontSize: 17, margin: '0 auto' }}>🏁 Fim de jogo</div></div>
       <div style={{ padding: '10px 16px 100px' }}>
         <LivePodium jogadores={jogadores} />

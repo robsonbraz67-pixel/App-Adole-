@@ -5,8 +5,9 @@ import {
   iniciarPergunta, revelarPergunta, avancarParaPlacar, encerrarJogo,
   buscarRespostasPergunta, corrigirRespostas, selecionarPerguntasSala,
 } from './liveGameApi';
-import { BarraRespostas, Placar, LivePodium, OPCOES_ESTILO } from './LiveShared';
-import { tocarMusicaFundo, pararMusicaFundo } from './chiptune';
+import { BarraRespostas, Placar, LivePodium, OPCOES_ESTILO, Contagem, MS_CONTAGEM } from './LiveShared';
+import { tocarMusicaFundo, pararMusicaFundo, prepararAudio, audioLiberado, somContagem, somVai, somGongo, somPodio, prepararPodio } from './chiptune';
+import { Confetti } from '../components';
 
 const DURACOES = [15, 20, 30];
 const QTDS = [5, 8, 10, 12];
@@ -21,18 +22,55 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   const [criando, setCriando] = useState(false);
   const [erro, setErro] = useState('');
   const [tempoRestante, setTempoRestante] = useState(0);
+  const [contagem, setContagem] = useState(0);   // 5..1 antes da pergunta; 0 = valendo
   const [musicaOn, setMusicaOn] = useState(true);
+  // Modo automático: com ele ligado o jogo anda sozinho (pergunta → gráfico →
+  // placar → próxima) e o professor fica de frente para a turma. Desligado,
+  // nada avança sem o botão — útil quando a turma quer comentar cada questão.
+  // Fica no localStorage porque é preferência do professor, não da sala.
+  const [autoOn, setAutoOn] = useState(() => localStorage.getItem('liveAutoOff') !== '1');
+  useEffect(() => { localStorage.setItem('liveAutoOff', autoOn ? '0' : '1'); }, [autoOn]);
 
   const emCorrecaoRef = useRef<Set<string>>(new Set());
   const acoesRef = useRef<any>({});
 
-  // Música de fundo (chiptune original — ver chiptune.ts): toca enquanto a
-  // sala está aberta, silencia ao encerrar. O toggle só troca o estado; quem
-  // liga/desliga o áudio de fato é o efeito abaixo.
+  // Música de fundo (chiptune original — ver chiptune.ts). A trilha de
+  // suspense vale a partida inteira, do lobby às perguntas: como ela não
+  // muda de fase para fase, não há corte de música a cada 6 segundos.
+  // Silêncio só durante a contagem regressiva — o gongo e os bipes precisam
+  // de espaço, e o corte é por si só o aviso de que vai começar.
+  // No pódio a trilha vira a animada: é o único momento em que a troca de
+  // música não corta nada — ela marca o fim da partida.
+  const emContagem = game?.phase === 'question' && contagem > 0;
   useEffect(() => {
-    if (!code || game?.phase === 'ended') { pararMusicaFundo(); return; }
-    if (musicaOn) tocarMusicaFundo();
+    if (!code || !musicaOn || emContagem) { pararMusicaFundo(); return; }
+    tocarMusicaFundo(game?.phase === 'ended' ? 'jogo' : 'lobby');
     return () => pararMusicaFundo();
+  }, [code, musicaOn, game?.phase, emContagem]);
+
+  // Enquanto a turma entra pelo QR não há nada acontecendo na tela: é a hora
+  // de montar o buffer de palmas, que é caro (ver prepararPodio).
+  useEffect(() => { if (code) prepararPodio(); }, [code]);
+
+  // Festa do pódio: aplausos e estouros de confete, uma vez só por partida.
+  const festaRef = useRef(false);
+  useEffect(() => {
+    if (game?.phase !== 'ended') { festaRef.current = false; return; }
+    if (festaRef.current || !musicaOn) return;
+    festaRef.current = true;
+    somPodio();
+  }, [game?.phase, musicaOn]);
+
+  // O navegador pode recusar o áudio mesmo depois do clique (política de
+  // autoplay). Sem este aviso a falha é invisível: o professor acha que a
+  // música simplesmente não existe. Só fica vigiando enquanto há motivo.
+  const [somBloqueado, setSomBloqueado] = useState(false);
+  useEffect(() => {
+    if (!code || !musicaOn || game?.phase === 'ended') { setSomBloqueado(false); return; }
+    const checar = () => setSomBloqueado(!audioLiberado());
+    checar();
+    const iv = setInterval(checar, 1000);
+    return () => clearInterval(iv);
   }, [code, musicaOn, game?.phase === 'ended']);
 
   // Recupera a sala depois de um F5: sem liveGamesPrivate como coleção
@@ -67,9 +105,15 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
 
   const criarSalaHandler = async () => {
     setErro('');
+    // Ainda dentro do clique: é a única janela em que o Safari deixa o
+    // AudioContext sair de "suspended". Se isto ficasse só no useEffect que
+    // toca a música, ela nunca começaria naquele navegador.
+    prepararAudio();
     const pool = selecionarPerguntasSala(licao, totalQuestions);
     if (pool.length < 2) { setErro('Esta lição ainda não tem perguntas suficientes.'); return; }
     setCriando(true);
+    gongoTocadoRef.current = false;             // sala nova, gongo de novo
+    if (musicaOn) tocarMusicaFundo('lobby');    // ainda na mesma pilha do clique
     try {
       const novoCodigo = await criarSala({
         hostId: jogador.id, hostName: jogador.nome, track: jogador.track || 'teen',
@@ -90,6 +134,19 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     try { if (code && game?.phase !== 'ended') await encerrarJogo(code); } catch {}
     localStorage.removeItem('liveHostCode');
     setCode(null); setGame(null); setJogadores([]); setPerguntas([]);
+  };
+
+  // Cancelar derruba a sala para TODO mundo que já entrou, e não dá para
+  // desfazer: quem estava no lobby teria que escanear o QR de novo. Por isso
+  // pergunta antes — e diz quantas pessoas seriam afetadas.
+  const cancelarComConfirmacao = () => {
+    const n = jogadores.length;
+    const quem = n === 0 ? 'Ninguém entrou ainda.'
+      : n === 1 ? '1 jogador já está na sala e será desconectado.'
+      : `${n} jogadores já estão na sala e serão desconectados.`;
+    if (window.confirm(`Cancelar a partida?\n\n${quem}\n\nO código ${code} deixa de valer e não dá para voltar atrás.`)) {
+      encerrarESair();
+    }
   };
 
   // ===== Ações guardadas num ref, atualizadas a cada render =====
@@ -142,7 +199,16 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     else if (game.phase === 'reveal') irParaPlacar();
     else if (game.phase === 'placar') proximaOuEncerrar();
   };
-  const encerrarManual = () => { if (code) encerrarJogo(code); };
+  // Encerrar no meio pula as perguntas que faltam e vai direto ao pódio —
+  // menos drástico que cancelar, mas ainda assim sem volta.
+  const encerrarManual = () => {
+    if (!code) return;
+    const faltam = perguntas.length - (game?.currentIndex ?? 0) - 1;
+    const aviso = faltam > 0
+      ? `Ainda faltam ${faltam} pergunta${faltam > 1 ? 's' : ''}.`
+      : 'Esta era a última pergunta.';
+    if (window.confirm(`Encerrar a partida agora?\n\n${aviso}\nO jogo vai direto para o pódio.`)) encerrarJogo(code);
+  };
 
   // ===== Avanço automático, ancorado no relógio do servidor =====
   // Nenhuma trava de "já agendei esta fase": rearmar o setTimeout é
@@ -152,34 +218,68 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   useEffect(() => {
     if (!game) return;
     if (game.phase === 'question' && game.questionStartedAt) {
+      if (!autoOn) return;
+      // O prazo agora inclui a contagem regressiva: ela consome os primeiros
+      // MS_CONTAGEM da fase, e só depois o cronômetro da pergunta começa.
       const inicio = game.questionStartedAt.toMillis();
-      const ms = inicio + game.questionDurationSec * 1000 + 1500 - Date.now();
+      const ms = inicio + MS_CONTAGEM + game.questionDurationSec * 1000 + 1500 - Date.now();
       const t = setTimeout(() => acoesRef.current.revelar(), Math.max(0, ms));
       return () => clearTimeout(t);
     }
     if (game.phase === 'reveal' && game.faseIniciadaEm) {
       const inicio = game.faseIniciadaEm.toMillis();
+      // A varredura de retardatários roda MESMO no modo manual: ela não é
+      // ritmo, é correção — quem respondeu com a rede lenta precisa pontuar
+      // de qualquer jeito, o professor não tem como saber que faltou alguém.
       const tSweep = setTimeout(() => acoesRef.current.varrerRetardatarios(), Math.max(0, inicio + 3500 - Date.now()));
+      if (!autoOn) return () => clearTimeout(tSweep);
       const tNext = setTimeout(() => acoesRef.current.irParaPlacar(), Math.max(0, inicio + 6000 - Date.now()));
       return () => { clearTimeout(tSweep); clearTimeout(tNext); };
     }
     if (game.phase === 'placar' && game.faseIniciadaEm) {
+      if (!autoOn) return;
       const inicio = game.faseIniciadaEm.toMillis();
       const t = setTimeout(() => acoesRef.current.proximaOuEncerrar(), Math.max(0, inicio + 6000 - Date.now()));
       return () => clearTimeout(t);
     }
-  }, [game?.phase, game?.currentIndex, game?.questionStartedAt, game?.faseIniciadaEm]);
+  }, [game?.phase, game?.currentIndex, game?.questionStartedAt, game?.faseIniciadaEm, autoOn]);
 
-  // Cronômetro exibido: só re-renderiza quando o segundo mudar.
+  // Cronômetro e contagem regressiva: só re-renderizam quando o segundo
+  // exibido muda. Os dois saem do mesmo instante de servidor, então host e
+  // celulares contam juntos.
   useEffect(() => {
-    if (game?.phase !== 'question' || !game.questionStartedAt) return;
+    if (game?.phase !== 'question' || !game.questionStartedAt) { setContagem(0); return; }
     const inicio = game.questionStartedAt.toMillis();
-    const iv = setInterval(() => {
-      const r = Math.max(0, Math.ceil((inicio + game.questionDurationSec * 1000 - Date.now()) / 1000));
+    const tick = () => {
+      const agora = Date.now();
+      const c = Math.max(0, Math.ceil((inicio + MS_CONTAGEM - agora) / 1000));
+      setContagem(prev => (prev === c ? prev : c));
+      const r = Math.max(0, Math.ceil((inicio + MS_CONTAGEM + game.questionDurationSec * 1000 - agora) / 1000));
       setTempoRestante(prev => (prev === r ? prev : r));
-    }, 200);
+    };
+    tick();
+    const iv = setInterval(tick, 100);
     return () => clearInterval(iv);
   }, [game?.phase, game?.questionStartedAt, game?.questionDurationSec]);
+
+  // Som da contagem, só no telão do host: 40 celulares apitando juntos
+  // viraria bagunça (no Kahoot o som também é só da projeção). O ref evita
+  // repetir o bipe quando o efeito roda de novo no mesmo segundo.
+  const ultimaContagemRef = useRef<number | null>(null);
+  const gongoTocadoRef = useRef(false);
+  useEffect(() => {
+    if (!musicaOn || game?.phase !== 'question') { ultimaContagemRef.current = null; return; }
+    if (ultimaContagemRef.current === contagem) return;
+    // Gongo só na abertura da PRIMEIRA pergunta: é o "silêncio, vai começar"
+    // da sala. Repetir a cada pergunta gastaria o efeito.
+    if (!gongoTocadoRef.current && game.currentIndex === 0 && contagem > 0) {
+      gongoTocadoRef.current = true;
+      somGongo();
+    }
+    ultimaContagemRef.current = contagem;
+    if (contagem > 0) somContagem(contagem);
+    else somVai();
+  }, [contagem, game?.phase, game?.currentIndex, musicaOn]);
 
   // ===== Setup =====
   if (!code) {
@@ -219,15 +319,45 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   const joinUrl = `${window.location.origin}${window.location.pathname}?joinGame=${code}`;
 
   const botaoMusica = (
-    <button className="btn btn-ghost btn-sm" onClick={() => setMusicaOn(v => !v)} style={{ width: 'auto' }} title="Música de fundo">
-      {musicaOn ? '🔊' : '🔇'}
+    <button
+      className="btn btn-ghost btn-sm"
+      onClick={() => {
+        // Tudo dentro do clique: destravar o áudio E começar a tocar. Deixar
+        // o start só para o efeito é o que fazia o Safari engolir a música.
+        prepararAudio();
+        const ligar = !musicaOn;
+        setMusicaOn(ligar);
+        if (ligar) tocarMusicaFundo('lobby');
+        else pararMusicaFundo();
+      }}
+      style={{ width: 'auto', borderColor: somBloqueado ? 'var(--gold)' : undefined }}
+      title={somBloqueado ? 'Toque para liberar o som' : 'Música de fundo'}
+    >
+      {somBloqueado ? '🔈!' : musicaOn ? '🔊' : '🔇'}
     </button>
   );
 
+  // Rótulo do que o botão vai fazer AGORA. Um "Avançar" genérico obriga o
+  // professor a adivinhar o que vem — pior ainda no telão, de longe.
+  const ultimaPergunta = game.currentIndex >= perguntas.length - 1;
+  const proximoPasso =
+    game.phase === 'question' ? '📊 Revelar respostas'
+    : game.phase === 'reveal' ? '🏆 Ver placar'
+    : game.phase === 'placar' ? (ultimaPergunta ? '🏁 Ver pódio' : '➡️ Próxima pergunta')
+    : '';
+
   const barraControles = (
-    <div style={{ position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 10, zIndex: 50 }}>
-      <button className="btn btn-ghost btn-sm" onClick={avancarManual} style={{ width: 'auto', background: 'var(--card)' }}>⏭️ Avançar</button>
-      <button className="btn btn-ghost btn-sm" onClick={encerrarManual} style={{ width: 'auto', background: 'var(--card)', borderColor: '#E31C3D', color: '#E31C3D' }}>⏹️ Encerrar</button>
+    <div className="live-controls">
+      <button className="btn btn-gold" onClick={avancarManual} style={{ flex: 1 }}>{proximoPasso}</button>
+      <button
+        className="btn btn-ghost btn-sm"
+        onClick={() => setAutoOn(v => !v)}
+        style={{ width: 'auto', borderColor: autoOn ? 'var(--teal)' : undefined, color: autoOn ? 'var(--teal)' : 'var(--mut)' }}
+        title={autoOn ? 'Automático ligado — o jogo anda sozinho' : 'Manual — só avança pelo botão'}
+      >
+        {autoOn ? '🔁 Auto' : '✋ Manual'}
+      </button>
+      <button className="btn btn-ghost btn-sm" onClick={encerrarManual} style={{ width: 'auto', borderColor: '#E31C3D', color: '#E31C3D' }}>⏹️</button>
     </div>
   );
 
@@ -236,11 +366,19 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     return (
       <div className="scr">
         <div className="hdr">
-          <button className="btn btn-ghost btn-sm" onClick={encerrarESair} style={{ width: 'auto' }}>✕ Cancelar</button>
+          <button className="btn btn-ghost btn-sm" onClick={cancelarComConfirmacao} style={{ width: 'auto' }}>✕ Cancelar</button>
           <div style={{ fontWeight: 900, fontSize: 17 }}>Lobby</div>
           {botaoMusica}
         </div>
         <div style={{ padding: '20px 16px 100px', textAlign: 'center' }}>
+          {somBloqueado && (
+            <div
+              onClick={() => { prepararAudio(); tocarMusicaFundo('lobby'); }}
+              style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 12, border: '1.5px solid var(--gold)', background: 'rgba(247,198,0,.1)', color: 'var(--gold)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+            >
+              🔈 O navegador bloqueou o som — toque aqui para liberar a música
+            </div>
+          )}
           <div className="live-code">{code}</div>
           <div style={{ fontSize: 13, color: 'var(--mut)', margin: '8px 0 18px' }}>Entre em {window.location.host} e digite o código, ou escaneie:</div>
           <div style={{ background: '#fff', display: 'inline-block', padding: 12, borderRadius: 16, marginBottom: 22 }}>
@@ -254,8 +392,33 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
               </div>
             ))}
           </div>
+          <div
+            onClick={() => setAutoOn(v => !v)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 16, padding: '8px 14px', borderRadius: 30, border: `1.5px solid ${autoOn ? 'var(--teal)' : 'var(--b3)'}`, background: autoOn ? 'rgba(30,158,134,.12)' : 'transparent', fontSize: 13, fontWeight: 700, color: autoOn ? 'var(--teal)' : 'var(--mut)', fontFamily: 'Poppins,sans-serif' }}
+          >
+            {autoOn ? '🔁 Automático ligado' : '✋ Manual'}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--mut)', marginBottom: 18, lineHeight: 1.5 }}>
+            {autoOn
+              ? 'O jogo anda sozinho: pergunta → gráfico → placar → próxima. Você fica de frente para a turma.'
+              : 'Nada avança sem você tocar em "Avançar" — bom quando a turma comenta cada questão.'}
+          </div>
           <button className="btn btn-gold" onClick={() => iniciarPergunta(code, 0, perguntas[0])} disabled={perguntas.length === 0}>▶️ INICIAR</button>
         </div>
+      </div>
+    );
+  }
+
+  // ===== Contagem regressiva (primeiros 5s da fase 'question') =====
+  if (game.phase === 'question' && contagem > 0) {
+    return (
+      <div className="scr-full">
+        <div className="hdr">
+          <div style={{ width: 64 }} />
+          <div style={{ fontWeight: 900, fontSize: 17 }}>{game.currentIndex + 1}/{perguntas.length}</div>
+          {botaoMusica}
+        </div>
+        <Contagem n={contagem} pergunta={game.currentQuestion?.pergunta} />
       </div>
     );
   }
@@ -296,13 +459,18 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   // ===== Revelação =====
   if (game.phase === 'reveal') {
     const pergunta = perguntas[game.currentIndex];
+    const totalRespostas = (game.revealCounts || []).reduce((s: number, n: number) => s + n, 0);
+    const acertaram = (game.revealCounts || [])[game.revealCorrectIndex] || 0;
     return (
-      <div className="scr">
+      <div className="live-screen">
         <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>Revelação</div>{botaoMusica}</div>
-        <div style={{ padding: '10px 16px 100px' }}>
-          <div style={{ fontWeight: 800, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>{game.currentQuestion?.pergunta}</div>
+        <div className="live-body" style={{ padding: '10px 16px 16px' }}>
+          <div style={{ fontWeight: 800, fontSize: 16, textAlign: 'center', marginBottom: 10 }}>{game.currentQuestion?.pergunta}</div>
+          <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--mut)', marginBottom: 4 }}>
+            ✅ {acertaram} de {totalRespostas} acertaram
+          </div>
           <BarraRespostas opcoes={game.currentQuestion?.opcoes || []} counts={game.revealCounts || []} correctIndex={game.revealCorrectIndex} />
-          {pergunta?.explicacao && <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 14, background: 'var(--g3)', fontSize: 13, color: 'var(--txt2)', lineHeight: 1.5 }}>{pergunta.explicacao}</div>}
+          {pergunta?.explicacao && <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--g3)', fontSize: 13, color: 'var(--txt2)', lineHeight: 1.5 }}>{pergunta.explicacao}</div>}
         </div>
         {barraControles}
       </div>
@@ -312,9 +480,11 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   // ===== Placar =====
   if (game.phase === 'placar') {
     return (
-      <div className="scr">
+      <div className="live-screen">
         <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>🏆 Placar</div>{botaoMusica}</div>
-        <Placar jogadores={jogadores} roundKey={game.currentIndex} />
+        <div className="live-body">
+          <Placar jogadores={jogadores} roundKey={game.currentIndex} comSom={musicaOn} />
+        </div>
         {barraControles}
       </div>
     );
@@ -323,7 +493,8 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   // ===== Fim de jogo =====
   return (
     <div className="scr">
-      <div className="hdr"><div style={{ fontWeight: 900, fontSize: 17, margin: '0 auto' }}>🏁 Fim de jogo</div></div>
+      <Confetti show={true} />
+      <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>🏁 Fim de jogo</div>{botaoMusica}</div>
       <div style={{ padding: '10px 16px 100px' }}>
         <LivePodium jogadores={jogadores} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 24 }}>
