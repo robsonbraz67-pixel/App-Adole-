@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { auth, signInWithGoogle, signInAsGuest, waitForAuthInit } from '../firebase';
 import { AVTS, shareApp } from '../utils';
 import {
@@ -7,6 +7,7 @@ import {
 } from './liveGameApi';
 import { BarraRespostas, Placar, LivePodium, OPCOES_ESTILO, Contagem, MS_CONTAGEM } from './LiveShared';
 import { Confetti } from '../components';
+import { agoraServidor } from './relogio';
 
 // Renderiza inteiramente FORA da máquina de telas do App: um convidado sem
 // conta nenhuma não pode passar pelo gate de login, e este fluxo não deve
@@ -95,15 +96,40 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
     return () => onActiveChange?.(false);
   }, [etapa, game?.phase]);
 
-  // Custo de leitura: lista completa só no lobby/placar/pódio; durante
-  // pergunta/revelação, só o próprio doc (doc de origem, seção 1.8).
+  // ===== Custo de leitura =====
+  // O aluno assina a lista de `livePlayers` UMA vez, no lobby, e só. Fora
+  // dali a classificação chega dentro do próprio doc da sala (campo
+  // `placar`), que ele já assina de graça.
+  //
+  // Antes daqui, o efeito reassinava a lista a cada placar — e cada
+  // reassinatura paga a leitura inicial dos N documentos de novo. Com 40
+  // alunos × 12 perguntas isso passava de 20.000 leituras por partida, e o
+  // plano gratuito dá 50.000 por DIA: duas partidas derrubariam ranking e
+  // progresso do app inteiro.
   useEffect(() => {
     if (etapa !== 'jogando' || !codigo || !game || !meuUid) return;
-    if (['lobby', 'placar', 'ended'].includes(game.phase)) {
-      const unsub = assinarJogadores(codigo, setJogadores);
-      return () => unsub();
+    if (game.phase !== 'lobby') return;
+    const unsub = assinarJogadores(codigo, setJogadores);
+    return () => unsub();
+  }, [etapa, codigo, game?.phase === 'lobby', meuUid]);
+
+  // Avatares vistos no lobby, guardados para enfeitar o placar agregado —
+  // que não os carrega de propósito (um avatar pode ser um data URL de 1MB
+  // e 40 deles estourariam o limite do documento).
+  const avataresRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    jogadores.forEach((j: any) => { if (j?.uid && j.avatar) avataresRef.current[j.uid] = j.avatar; });
+  }, [jogadores]);
+
+  // Classificação exibida: vem do doc da sala quando existe; se as regras
+  // publicadas ainda não conhecerem o campo `placar` (elas são compartilhadas
+  // com o LUM07), cai de volta na lista assinada — mais cara, mas funciona.
+  const classificacao = useMemo(() => {
+    if (Array.isArray(game?.placar) && game.placar.length) {
+      return game.placar.map((p: any) => ({ ...p, avatar: avataresRef.current[p.uid] || '⭐' }));
     }
-  }, [etapa, codigo, game?.phase, meuUid]);
+    return jogadores;
+  }, [game?.placar, jogadores]);
 
   useEffect(() => {
     if (game?.phase === 'question') {
@@ -124,7 +150,7 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
     if (game?.phase !== 'question' || !game.questionStartedAt) { setContagem(0); return; }
     const inicio = game.questionStartedAt.toMillis();
     const tick = () => {
-      const agora = Date.now();
+      const agora = agoraServidor();
       const c = Math.max(0, Math.ceil((inicio + MS_CONTAGEM - agora) / 1000));
       setContagem(prev => (prev === c ? prev : c));
       // O cronômetro de PONTUAÇÃO começa no instante em que a pergunta
@@ -145,11 +171,24 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
     return () => clearInterval(iv);
   }, [game?.phase, game?.questionStartedAt, game?.questionDurationSec]);
 
-  const responderClick = (i: number) => {
+  // 'enviando' → 'ok' → nada mais; 'tarde'/'falhou' avisam o aluno.
+  // Antes daqui a escrita era disparada e esquecida, e a tela já dizia
+  // "Resposta enviada!" sem nenhuma confirmação. Como a regra do Firestore
+  // recusa a escrita depois que a fase vira, quem respondia no limite ficava
+  // sem ponto achando que tinha respondido.
+  const [envio, setEnvio] = useState<'nada' | 'enviando' | 'ok' | 'tarde' | 'falhou'>('nada');
+  useEffect(() => { setEnvio('nada'); }, [game?.currentIndex, game?.phase === 'question']);
+
+  const responderClick = async (i: number) => {
     if (respostaEscolhida !== null || !codigo || !meuUid || !game) return;
     setRespostaEscolhida(i);
+    setEnvio('enviando');
     const tempoRespostaMs = Date.now() - questionShownAtRef.current.at;
-    responder(codigo, meuUid, game.currentIndex, i, tempoRespostaMs).catch(e => console.error(e));
+    const r = await responder(codigo, meuUid, game.currentIndex, i, tempoRespostaMs);
+    setEnvio(r === 'ok' ? 'ok' : r);
+    // Só devolve o botão quando dá para tentar de novo: se a pergunta já
+    // fechou ('tarde'), reabrir seria enganar o aluno duas vezes.
+    if (r === 'falhou') setRespostaEscolhida(null);
   };
 
   // ===== Entrada =====
@@ -256,7 +295,20 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
               </button>
             ))}
           </div>
-          {respostaEscolhida !== null && <div style={{ textAlign: 'center', color: 'var(--mut)', marginTop: 16, fontSize: 13 }}>Resposta enviada! Aguardando os outros...</div>}
+          {envio === 'enviando' && <div style={{ textAlign: 'center', color: 'var(--mut)', marginTop: 16, fontSize: 13 }}>⏳ Enviando...</div>}
+          {envio === 'ok' && <div style={{ textAlign: 'center', color: 'var(--teal)', marginTop: 16, fontSize: 13, fontWeight: 700 }}>✅ Resposta registrada! Aguardando os outros...</div>}
+          {envio === 'tarde' && (
+            <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 14, background: 'rgba(227,28,61,.15)', border: '1.5px solid #E31C3D', textAlign: 'center' }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: '#E31C3D', marginBottom: 4 }}>⏱️ Tempo esgotado</div>
+              <div style={{ fontSize: 13, color: 'var(--txt2)', lineHeight: 1.5 }}>Sua resposta chegou depois que a pergunta fechou e não pôde ser contada.</div>
+            </div>
+          )}
+          {envio === 'falhou' && (
+            <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 14, background: 'rgba(247,198,0,.15)', border: '1.5px solid var(--gold)', textAlign: 'center' }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--gold)', marginBottom: 4 }}>📶 Não deu para enviar</div>
+              <div style={{ fontSize: 13, color: 'var(--txt2)', lineHeight: 1.5 }}>Sua conexão falhou. Toque de novo na sua resposta enquanto der tempo.</div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -289,7 +341,7 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
     return (
       <div className="scr">
         <div className="hdr"><div style={{ fontWeight: 900, fontSize: 17, margin: '0 auto' }}>🏆 Placar</div></div>
-        <Placar jogadores={jogadores} roundKey={game.currentIndex} meuUid={meuUid || undefined} />
+        <Placar jogadores={classificacao} roundKey={game.currentIndex} meuUid={meuUid || undefined} />
       </div>
     );
   }
@@ -302,7 +354,7 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
       <Confetti show={true} />
       <div className="hdr"><div style={{ fontWeight: 900, fontSize: 17, margin: '0 auto' }}>🏁 Fim de jogo</div></div>
       <div style={{ padding: '10px 16px 100px' }}>
-        <LivePodium jogadores={jogadores} />
+        <LivePodium jogadores={classificacao} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 24 }}>
           {meuNomeAvatar?.isGuest && (
             <div className="purple-card" style={{ padding: 16, textAlign: 'center' }}>

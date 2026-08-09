@@ -501,8 +501,15 @@ service cloud.firestore {
     // acertou/errou — por isso, mesmo confiando no host, a regra também recusa
     // se ele vier com 'correta'/'explicacao' dentro (defesa em profundidade;
     // firebase.ts já monta esse campo sanitizado antes de escrever).
+    // ATENÇÃO — este bloco é publicado no MESMO banco que o LUM07 usa. O campo
+    // 'placar' é uma adição do App-Adole-: enquanto o LUM07 não tiver esta
+    // mesma lista, um deploy de lá remove o campo daqui e as escritas com
+    // placar passam a ser recusadas. O cliente trata isso (avancarParaPlacar
+    // reescreve sem o campo e o aluno volta a assinar livePlayers), então a
+    // partida não trava — só volta a custar mais leitura.
     function isValidLiveGame(data) {
-      return data.keys().hasOnly(['code', 'hostId', 'hostName', 'track', 'semana', 'trimestre', 'licaoTitulo', 'totalQuestions', 'questionDurationSec', 'phase', 'currentIndex', 'currentQuestion', 'questionStartedAt', 'revealCorrectIndex', 'revealExplicacao', 'revealCounts', 'faseIniciadaEm', 'createdAt', 'endedAt'])
+      return data.keys().hasOnly(['code', 'hostId', 'hostName', 'track', 'semana', 'trimestre', 'licaoTitulo', 'totalQuestions', 'questionDurationSec', 'phase', 'currentIndex', 'currentQuestion', 'questionStartedAt', 'revealCorrectIndex', 'revealExplicacao', 'revealCounts', 'faseIniciadaEm', 'placar', 'createdAt', 'endedAt'])
+        && (!data.keys().hasAny(['placar']) || (data.placar is list && data.placar.size() <= 300))
         && data.code is string && data.code.size() > 0 && data.code.size() <= 12
         && data.hostId is string
         && data.hostName is string && data.hostName.size() <= 50

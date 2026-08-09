@@ -6,6 +6,7 @@ import {
   buscarRespostasPergunta, corrigirRespostas, selecionarPerguntasSala,
 } from './liveGameApi';
 import { BarraRespostas, Placar, LivePodium, OPCOES_ESTILO, Contagem, MS_CONTAGEM } from './LiveShared';
+import { agoraServidor } from './relogio';
 import { tocarMusicaFundo, pararMusicaFundo, prepararAudio, audioLiberado, somContagem, somVai, somGongo, somPodio, prepararPodio } from './chiptune';
 import { Confetti } from '../components';
 
@@ -33,6 +34,34 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
 
   const emCorrecaoRef = useRef<Set<string>>(new Set());
   const acoesRef = useRef<any>({});
+
+  // ===== Uma aba só comanda =====
+  // Se o professor recarrega e sobra uma aba antiga aberta, as DUAS restauram
+  // a sala e as duas rodam os temporizadores de avanço — o jogo pula
+  // perguntas. A aba mais nova anuncia que assumiu; as antigas ouvem, param
+  // de comandar e avisam na tela. (Cobre abas do mesmo navegador, que é o
+  // caso real; dois aparelhos diferentes exigiriam gravar o dono na sala.)
+  const [comando, setComando] = useState(true);
+  const sessaoRef = useRef({ id: Math.random().toString(36).slice(2), nasceuEm: Date.now() });
+  useEffect(() => {
+    if (!code || typeof BroadcastChannel === 'undefined') return;
+    const eu = sessaoRef.current;
+    const canal = new BroadcastChannel('sabatina-live-host');
+    canal.onmessage = (ev) => {
+      const outra = ev.data;
+      if (!outra || outra.code !== code || outra.id === eu.id) return;
+      // Desempate determinístico: cede só para quem nasceu DEPOIS. Sem essa
+      // comparação, duas abas abertas quase juntas poderiam ceder uma para a
+      // outra e a sala ficaria sem ninguém comandando. O id resolve o empate
+      // exato de milissegundo.
+      const outraEhMaisNova = outra.nasceuEm > eu.nasceuEm
+        || (outra.nasceuEm === eu.nasceuEm && outra.id > eu.id);
+      if (outraEhMaisNova) setComando(false);
+      else canal.postMessage({ code, ...eu });   // avisa a mais velha que eu mando
+    };
+    canal.postMessage({ code, ...eu });
+    return () => canal.close();
+  }, [code]);
 
   // Música de fundo (chiptune original — ver chiptune.ts). A trilha de
   // suspense vale a partida inteira, do lobby às perguntas: como ela não
@@ -154,8 +183,34 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   // revelar daquele instante, ela rodaria com a lista de respostas vazia
   // depois que mais respostas chegassem. Por isso as ações vivem num ref
   // atualizado a cada render, e o setTimeout chama sempre acoesRef.current.
-  const revelar = async () => {
+  // Trava de reentrada por passo. Cada transição é identificada por fase +
+  // índice; se a mesma já está em andamento (clique do professor junto com o
+  // temporizador, ou dois cliques seguidos), a segunda desiste. Sem isso,
+  // `iniciarPergunta` podia rodar duas vezes e reescrever questionStartedAt —
+  // a contagem regressiva reiniciava na cara da turma.
+  const passoEmAndamentoRef = useRef<string | null>(null);
+  const comPasso = async (chave: string, fn: () => Promise<void>) => {
+    if (!comando || passoEmAndamentoRef.current === chave) return;
+    passoEmAndamentoRef.current = chave;
+    try {
+      await fn();
+    } catch (e) {
+      // Libera a trava quando o passo falha (queda de rede, por exemplo).
+      // Mantê-la travaria a partida de vez: o professor apertaria o botão e
+      // nada aconteceria, para sempre. O risco de um clique duplo repetir o
+      // passo é bem menor do que o de o jogo morrer no meio.
+      console.error('passo do jogo', e);
+      if (passoEmAndamentoRef.current === chave) passoEmAndamentoRef.current = null;
+    }
+  };
+
+  const revelar = () => comPasso(`revelar_${game?.currentIndex}`, async () => {
     if (!code || !game) return;
+    // A fase precisa ser conferida aqui dentro: o temporizador foi armado no
+    // início da pergunta e pode disparar depois de o professor já ter
+    // revelado no botão. Revelar de novo reescreveria faseIniciadaEm e
+    // esticaria a revelação.
+    if (game.phase !== 'question') return;
     const idx = game.currentIndex;
     const pergunta = perguntas[idx];
     if (!pergunta) return;
@@ -164,12 +219,15 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     await corrigirRespostas(code, pergunta.correta, game.questionDurationSec, respostas, uidsValidos, emCorrecaoRef.current);
     const counts = pergunta.opcoes.map((_: any, i: number) => respostas.filter(r => r.data.opcaoEscolhida === i).length);
     await revelarPergunta(code, pergunta.correta, pergunta.explicacao, counts);
-  };
+  });
 
   // Wi-Fi de igreja atrasa respostas: sem esta segunda varredura, quem
   // acertou depois da revelação fica sem pontos e ninguém entende por quê.
+  // Fora da trava de passo de propósito: é correção, não avanço de fase, e
+  // pode rodar em paralelo sem risco (o emCorrecaoRef já impede pontuar duas
+  // vezes a mesma resposta).
   const varrerRetardatarios = async () => {
-    if (!code || !game) return;
+    if (!code || !game || !comando) return;
     const idx = game.currentIndex;
     const pergunta = perguntas[idx];
     if (!pergunta) return;
@@ -178,15 +236,21 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     await corrigirRespostas(code, pergunta.correta, game.questionDurationSec, respostas, uidsValidos, emCorrecaoRef.current);
   };
 
-  const irParaPlacar = async () => { if (code) await avancarParaPlacar(code); };
+  const irParaPlacar = () => comPasso(`placar_${game?.currentIndex}`, async () => {
+    if (!code || game?.phase !== 'reveal') return;
+    // Manda a lista junto: o placar vai para dentro do doc da sala, que os
+    // alunos já assinam, em vez de cada um reler `livePlayers` (ver
+    // avancarParaPlacar — é a correção de cota).
+    await avancarParaPlacar(code, jogadores);
+  });
 
-  const proximaOuEncerrar = async () => {
-    if (!code || !game) return;
+  const proximaOuEncerrar = () => comPasso(`proxima_${game?.currentIndex}`, async () => {
+    if (!code || !game || game.phase !== 'placar') return;
     const proximoIdx = game.currentIndex + 1;
     emCorrecaoRef.current.clear();
     if (proximoIdx < perguntas.length) await iniciarPergunta(code, proximoIdx, perguntas[proximoIdx]);
-    else await encerrarJogo(code);
-  };
+    else await encerrarJogo(code, jogadores);
+  });
 
   acoesRef.current = { revelar, varrerRetardatarios, irParaPlacar, proximaOuEncerrar };
 
@@ -207,7 +271,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     const aviso = faltam > 0
       ? `Ainda faltam ${faltam} pergunta${faltam > 1 ? 's' : ''}.`
       : 'Esta era a última pergunta.';
-    if (window.confirm(`Encerrar a partida agora?\n\n${aviso}\nO jogo vai direto para o pódio.`)) encerrarJogo(code);
+    if (window.confirm(`Encerrar a partida agora?\n\n${aviso}\nO jogo vai direto para o pódio.`)) encerrarJogo(code, jogadores);
   };
 
   // ===== Avanço automático, ancorado no relógio do servidor =====
@@ -222,7 +286,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
       // O prazo agora inclui a contagem regressiva: ela consome os primeiros
       // MS_CONTAGEM da fase, e só depois o cronômetro da pergunta começa.
       const inicio = game.questionStartedAt.toMillis();
-      const ms = inicio + MS_CONTAGEM + game.questionDurationSec * 1000 + 1500 - Date.now();
+      const ms = inicio + MS_CONTAGEM + game.questionDurationSec * 1000 + 1500 - agoraServidor();
       const t = setTimeout(() => acoesRef.current.revelar(), Math.max(0, ms));
       return () => clearTimeout(t);
     }
@@ -231,15 +295,15 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
       // A varredura de retardatários roda MESMO no modo manual: ela não é
       // ritmo, é correção — quem respondeu com a rede lenta precisa pontuar
       // de qualquer jeito, o professor não tem como saber que faltou alguém.
-      const tSweep = setTimeout(() => acoesRef.current.varrerRetardatarios(), Math.max(0, inicio + 3500 - Date.now()));
+      const tSweep = setTimeout(() => acoesRef.current.varrerRetardatarios(), Math.max(0, inicio + 3500 - agoraServidor()));
       if (!autoOn) return () => clearTimeout(tSweep);
-      const tNext = setTimeout(() => acoesRef.current.irParaPlacar(), Math.max(0, inicio + 6000 - Date.now()));
+      const tNext = setTimeout(() => acoesRef.current.irParaPlacar(), Math.max(0, inicio + 6000 - agoraServidor()));
       return () => { clearTimeout(tSweep); clearTimeout(tNext); };
     }
     if (game.phase === 'placar' && game.faseIniciadaEm) {
       if (!autoOn) return;
       const inicio = game.faseIniciadaEm.toMillis();
-      const t = setTimeout(() => acoesRef.current.proximaOuEncerrar(), Math.max(0, inicio + 6000 - Date.now()));
+      const t = setTimeout(() => acoesRef.current.proximaOuEncerrar(), Math.max(0, inicio + 6000 - agoraServidor()));
       return () => clearTimeout(t);
     }
   }, [game?.phase, game?.currentIndex, game?.questionStartedAt, game?.faseIniciadaEm, autoOn]);
@@ -251,7 +315,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     if (game?.phase !== 'question' || !game.questionStartedAt) { setContagem(0); return; }
     const inicio = game.questionStartedAt.toMillis();
     const tick = () => {
-      const agora = Date.now();
+      const agora = agoraServidor();
       const c = Math.max(0, Math.ceil((inicio + MS_CONTAGEM - agora) / 1000));
       setContagem(prev => (prev === c ? prev : c));
       const r = Math.max(0, Math.ceil((inicio + MS_CONTAGEM + game.questionDurationSec * 1000 - agora) / 1000));
@@ -346,9 +410,18 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     : game.phase === 'placar' ? (ultimaPergunta ? '🏁 Ver pódio' : '➡️ Próxima pergunta')
     : '';
 
+  // Duas abas comandando a mesma sala fazem o jogo pular perguntas. A que
+  // perdeu o comando avisa, em vez de simplesmente parar de responder aos
+  // botões — o professor precisa saber qual janela está valendo.
+  const avisoComando = !comando && (
+    <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #E31C3D', background: 'rgba(227,28,61,.12)', color: '#E31C3D', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>
+      ⚠️ Esta aba perdeu o comando — a sala está sendo controlada por outra janela. Pode fechar esta.
+    </div>
+  );
+
   const barraControles = (
     <div className="live-controls">
-      <button className="btn btn-gold" onClick={avancarManual} style={{ flex: 1 }}>{proximoPasso}</button>
+      <button className="btn btn-gold" onClick={avancarManual} style={{ flex: 1 }} disabled={!comando}>{proximoPasso}</button>
       <button
         className="btn btn-ghost btn-sm"
         onClick={() => setAutoOn(v => !v)}
@@ -371,6 +444,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
           {botaoMusica}
         </div>
         <div style={{ padding: '20px 16px 100px', textAlign: 'center' }}>
+          {avisoComando}
           {somBloqueado && (
             <div
               onClick={() => { prepararAudio(); tocarMusicaFundo('lobby'); }}
@@ -403,7 +477,11 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
               ? 'O jogo anda sozinho: pergunta → gráfico → placar → próxima. Você fica de frente para a turma.'
               : 'Nada avança sem você tocar em "Avançar" — bom quando a turma comenta cada questão.'}
           </div>
-          <button className="btn btn-gold" onClick={() => iniciarPergunta(code, 0, perguntas[0])} disabled={perguntas.length === 0}>▶️ INICIAR</button>
+          <button
+            className="btn btn-gold"
+            onClick={() => comPasso('iniciar', () => iniciarPergunta(code, 0, perguntas[0]))}
+            disabled={perguntas.length === 0 || !comando}
+          >▶️ INICIAR</button>
         </div>
       </div>
     );

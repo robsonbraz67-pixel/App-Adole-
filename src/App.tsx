@@ -4,8 +4,17 @@ import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla } from './components';
 import { BUILD_ID, buscarBuildPublicado, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
-import { LiveHost } from './live/LiveHost';
-import { LiveJoin } from './live/LiveJoin';
+// Sob demanda: o Modo Ao Vivo pesa ~62 KB (tela do host, do jogador, gerador
+// de QR e o sintetizador da trilha) e é usado no sábado, por uma pessoa. Com
+// import estático, TODO aluno baixava isso todo dia só para abrir a lição.
+const LiveHost = React.lazy(() => import('./live/LiveHost').then(m => ({ default: m.LiveHost })));
+const LiveJoin = React.lazy(() => import('./live/LiveJoin').then(m => ({ default: m.LiveJoin })));
+
+const CarregandoAoVivo = () => (
+  <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',color:'var(--mut)',fontSize:14}}>
+    🎮 Carregando o Modo Ao Vivo...
+  </div>
+);
 
 const CACHE_VERSION = '3T2026';
 
@@ -643,7 +652,11 @@ export default function App() {
 
   // Convidado do Modo Ao Vivo: renderiza aqui, antes de qualquer gate de
   // login/boot. Não toca em nada abaixo (perfil, lição, progresso).
-  if (liveJoinCode) return <LiveJoin code={liveJoinCode} onExit={sairDoJogoAoVivo} onActiveChange={setLiveGameActive} />;
+  if (liveJoinCode) return (
+    <React.Suspense fallback={<CarregandoAoVivo />}>
+      <LiveJoin code={liveJoinCode} onExit={sairDoJogoAoVivo} onActiveChange={setLiveGameActive} />
+    </React.Suspense>
+  );
 
   if (tela === 'splash') return <Splash />;
   if (tela === 'login') return <Login onLogin={handleLogin} />;
@@ -657,7 +670,11 @@ export default function App() {
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading} onRefresh={() => loadSeason(licao.trimestre, true)} />}
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onModoAoVivo={() => setTela('liveHost')} />}
-      {tela === 'liveHost' && <LiveHost licao={licao} jogador={jogador} onBack={() => setTela('admin')} onActiveChange={setLiveGameActive} />}
+      {tela === 'liveHost' && (
+        <React.Suspense fallback={<CarregandoAoVivo />}>
+          <LiveHost licao={licao} jogador={jogador} onBack={() => setTela('admin')} onActiveChange={setLiveGameActive} />
+        </React.Suspense>
+      )}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onSwitchTrack={handleSwitchTrack} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
       {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} prog={prog} weekRows={weekRows} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onRankingDuplas={() => loadLatestRanking('duplasSemana')} />}

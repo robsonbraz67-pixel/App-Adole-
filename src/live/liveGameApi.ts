@@ -1,6 +1,7 @@
 import { doc, setDoc, getDoc, getDocs, collection, query, where, serverTimestamp, onSnapshot, writeBatch, increment, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { gerarCodigoSala, pontosAoVivo } from '../utils';
+import { calibrarRelogio } from './relogio';
 
 // ===== Seleção das perguntas da sala =====
 // Junta as perguntas de todos os dias da lição e sorteia até `totalQuestions`.
@@ -85,7 +86,16 @@ export const entrarNaSala = async (code: string, uid: string, nome: string, avat
 
 // ===== Assinaturas =====
 export const assinarSala = (code: string, cb: (game: any) => void) =>
-  onSnapshot(doc(db, 'liveGames', code), snap => cb(snap.exists() ? snap.data() : null));
+  onSnapshot(doc(db, 'liveGames', code), snap => {
+    const dados = snap.exists() ? snap.data() : null;
+    // Calibra o relógio de graça: este snapshot já carrega um instante do
+    // servidor, e a hora local de agora é o outro lado da conta. Só serve
+    // quando vem do servidor — o cache devolveria um instante antigo.
+    if (dados?.faseIniciadaEm && !snap.metadata.fromCache) {
+      calibrarRelogio(dados.faseIniciadaEm.toMillis(), Date.now());
+    }
+    cb(dados);
+  });
 
 // Lista completa dos jogadores — cara pra ler (~N docs por revelação). Só o
 // host assina isto o jogo inteiro (precisa do roster pra corrigir); os
@@ -108,10 +118,35 @@ export const assinarMinhaResposta = (code: string, uid: string, idx: number, cb:
 // ===== Responder =====
 // Doc id composto impede responder 2x: a 2ª tentativa de `setDoc` bate na
 // regra de `update` (só o host escreve `graded/correta/pontos`) e é recusada.
-export const responder = async (code: string, uid: string, idx: number, opcaoEscolhida: number, tempoRespostaMs: number) => {
-  await setDoc(doc(db, 'liveAnswers', `${code}_${uid}_${idx}`), {
+//
+// Devolve o que aconteceu de FATO, em vez de ser disparada e esquecida: a
+// regra do Firestore recusa a escrita se a fase já virou ou o índice mudou —
+// exatamente o caso de quem responde nos últimos instantes com a rede lenta.
+// Antes disso, a tela dizia "Resposta enviada!" sem nenhuma confirmação e o
+// aluno ficava sem ponto sem entender por quê.
+export type ResultadoResposta = 'ok' | 'tarde' | 'falhou';
+
+export const responder = async (
+  code: string, uid: string, idx: number, opcaoEscolhida: number, tempoRespostaMs: number
+): Promise<ResultadoResposta> => {
+  const dados = {
     code, uid, idx, opcaoEscolhida, tempoRespostaMs, answeredAt: serverTimestamp(), graded: false,
-  });
+  };
+  // Duas tentativas: a primeira falha muitas vezes é um soluço de rede, e
+  // meio segundo depois passa. Mais que isso não adianta — a janela da
+  // pergunta já teria fechado de qualquer jeito.
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    try {
+      await setDoc(doc(db, 'liveAnswers', `${code}_${uid}_${idx}`), dados);
+      return 'ok';
+    } catch (e: any) {
+      // 'permission-denied' aqui quer dizer que a regra recusou: a pergunta
+      // fechou. Repetir não ajuda e só atrasa o aviso ao aluno.
+      if (e?.code === 'permission-denied') return 'tarde';
+      if (tentativa === 0) await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  return 'falhou';
 };
 
 // ===== Controle do host =====
@@ -135,12 +170,47 @@ export const revelarPergunta = async (code: string, correctIndex: number, explic
   });
 };
 
-export const avancarParaPlacar = async (code: string) => {
-  await updateDoc(doc(db, 'liveGames', code), { phase: 'placar', faseIniciadaEm: serverTimestamp() });
+// ===== Placar agregado =====
+// O motivo de existir é cota. Cada aluno assinando a lista de `livePlayers`
+// custa N leituras a cada placar; com 40 alunos × 12 perguntas isso passa de
+// 20.000 leituras por partida, e o plano gratuito do Firestore dá 50.000 por
+// DIA — estourar derruba o app inteiro (ranking, progresso), não só o jogo.
+// Aqui o host, que já tem a lista em memória, publica um resumo dentro do
+// doc da sala, que todo aluno JÁ assina: custo zero de leitura nova.
+//
+// Sem avatar de propósito: ele pode ser um data URL de até 1MB, e 40 deles
+// estourariam o limite de 1MB do documento. O aluno usa o avatar que já
+// guardou do lobby, e quem entrou depois cai num emoji padrão.
+const resumoPlacar = (jogadores: any[]) =>
+  jogadores
+    .map(j => ({ uid: String(j.uid), nome: String(j.nome || '').slice(0, 50), score: Number(j.score) || 0 }))
+    .sort((a, b) => b.score - a.score);
+
+// `placar` é campo novo: se as regras publicadas ainda não o conhecerem (elas
+// são compartilhadas com o LUM07 e podem estar atrasadas), a escrita inteira
+// seria recusada e a fase não avançaria — o jogo travaria. Por isso a
+// tentativa com placar vem primeiro e, se falhar, refaz sem ele: aí o aluno
+// volta a assinar `livePlayers` como antes. Degrada em custo, nunca em jogo.
+export const avancarParaPlacar = async (code: string, jogadores: any[]) => {
+  const base = { phase: 'placar', faseIniciadaEm: serverTimestamp() };
+  try {
+    await updateDoc(doc(db, 'liveGames', code), { ...base, placar: resumoPlacar(jogadores) });
+    return true;
+  } catch {
+    await updateDoc(doc(db, 'liveGames', code), base);
+    return false;
+  }
 };
 
-export const encerrarJogo = async (code: string) => {
-  await updateDoc(doc(db, 'liveGames', code), { phase: 'ended', endedAt: serverTimestamp() });
+// O pódio também publica o resumo: é o outro momento em que todo aluno
+// precisa da classificação, e sem isto ele voltaria a ler a lista inteira.
+export const encerrarJogo = async (code: string, jogadores: any[] = []) => {
+  const base = { phase: 'ended', endedAt: serverTimestamp() };
+  try {
+    await updateDoc(doc(db, 'liveGames', code), { ...base, placar: resumoPlacar(jogadores) });
+  } catch {
+    await updateDoc(doc(db, 'liveGames', code), base);
+  }
 };
 
 // Busca as respostas de uma pergunta — usado na revelação e de novo na
@@ -165,7 +235,10 @@ export const corrigirRespostas = async (
   if (!pendentes.length) return [];
   pendentes.forEach(r => jaCorrigidos.add(r.id));
 
-  const CHUNK = 250;
+  // 200 e não 250: são até 2 operações por resposta e o teto do Firestore é
+  // 500 por lote. Com 250 o lote batia exatamente em 500 — funcionava, mas
+  // qualquer operação a mais no futuro derrubaria o lote inteiro.
+  const CHUNK = 200;
   for (let i = 0; i < pendentes.length; i += CHUNK) {
     const lote = pendentes.slice(i, i + CHUNK);
     const batch = writeBatch(db);
