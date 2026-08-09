@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { isRankingHidden, computeRealStreak, aggregateWeekRanking } from './utils';
 
@@ -37,6 +37,11 @@ export const waitForAuthInit = () => {
 
 
 export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
+
+// Modo Ao Vivo: convidado sem conta nenhuma, só nome + emoji. Precisa de
+// Auth Anônimo habilitado no Firebase Console (Authentication > Sign-in
+// method > Anonymous) — nunca foi usado no resto do app até aqui.
+export const signInAsGuest = () => signInAnonymously(auth);
 
 export const logout = async () => {
   try {

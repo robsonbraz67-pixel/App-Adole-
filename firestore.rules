@@ -480,5 +480,151 @@ service cloud.firestore {
       allow delete: if isUserAdmin();
     }
 
+    // ===== Jogo ao Vivo (estilo Kahoot) =====
+    // Sala pública (liveGames) + gabarito privado (liveGamesPrivate) — mesma
+    // separação de pairs/pairsPublic, só invertida: aqui o doc PRIVADO é que
+    // fica de fora do que todo jogador assina, para ninguém ler `correta` pela
+    // aba Network antes do host revelar. Jogadores (inclusive convidados
+    // anônimos) só precisam de isAuthenticated(); nunca de canManage().
+    //
+    // Bloco idêntico ao publicado no LUM07 (mesmo projeto/banco Firestore
+    // compartilhado — ver .firebaserc/.env): as duas apps publicam regras
+    // para o MESMO banco, então este bloco tem que ficar em paridade com o
+    // de lá, senão o deploy de uma app sobrescreve a regra que a outra usa.
+    function isGameHost(code) {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/liveGames/$(code))
+        && get(/databases/$(database)/documents/liveGames/$(code)).data.hostId == request.auth.uid;
+    }
+
+    // `currentQuestion` é o único jeito de uma pergunta chegar a quem ainda não
+    // acertou/errou — por isso, mesmo confiando no host, a regra também recusa
+    // se ele vier com 'correta'/'explicacao' dentro (defesa em profundidade;
+    // firebase.ts já monta esse campo sanitizado antes de escrever).
+    function isValidLiveGame(data) {
+      return data.keys().hasOnly(['code', 'hostId', 'hostName', 'track', 'semana', 'trimestre', 'licaoTitulo', 'totalQuestions', 'questionDurationSec', 'phase', 'currentIndex', 'currentQuestion', 'questionStartedAt', 'revealCorrectIndex', 'revealExplicacao', 'revealCounts', 'faseIniciadaEm', 'createdAt', 'endedAt'])
+        && data.code is string && data.code.size() > 0 && data.code.size() <= 12
+        && data.hostId is string
+        && data.hostName is string && data.hostName.size() <= 50
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.semana is string
+        && data.totalQuestions is number && data.totalQuestions >= 0 && data.totalQuestions <= 12
+        && data.questionDurationSec is number && data.questionDurationSec > 0
+        // 'reveal' = gráfico de quantos marcaram cada opção; 'placar' = ranking
+        // entre uma pergunta e outra. As duas são passagens automáticas.
+        && data.phase in ['lobby', 'question', 'reveal', 'placar', 'ended']
+        && data.currentIndex is number
+        && (!data.keys().hasAny(['revealCounts']) || data.revealCounts == null || data.revealCounts is list)
+        && (!data.keys().hasAny(['currentQuestion']) || data.currentQuestion == null || (data.currentQuestion is map && data.currentQuestion.keys().hasOnly(['pergunta', 'opcoes'])));
+    }
+
+    match /liveGames/{code} {
+      // Sala é lida por qualquer autenticado (inclusive convidado anônimo que
+      // acabou de escanear o QR) — o conteúdo já vem sanitizado.
+      allow get, list: if isAuthenticated();
+
+      allow create: if canManage()
+        && code == incoming().code
+        && incoming().hostId == request.auth.uid
+        && incoming().phase == 'lobby'
+        && incoming().currentIndex == -1
+        && incoming().createdAt == request.time
+        && isValidLiveGame(incoming());
+
+      // Só o próprio host controla a sala; code/hostId/track/semana/duração são imutáveis.
+      allow update: if isAuthenticated()
+        && existing().hostId == request.auth.uid
+        && incoming().hostId == existing().hostId
+        && incoming().code == existing().code
+        && incoming().track == existing().track
+        && incoming().semana == existing().semana
+        && incoming().questionDurationSec == existing().questionDurationSec
+        && incoming().createdAt == existing().createdAt
+        && isValidLiveGame(incoming());
+
+      allow delete: if isUserAdmin() || (isAuthenticated() && existing().hostId == request.auth.uid);
+    }
+
+    function isValidLiveGamePrivate(data) {
+      return data.keys().hasOnly(['perguntas']) && data.perguntas is list;
+    }
+
+    match /liveGamesPrivate/{code} {
+      // Só o host lê o gabarito completo (ex.: recuperar após um F5 no meio do jogo).
+      allow get: if isGameHost(code);
+      // canManage() já restringe a professor/admin; não dá para exigir
+      // isGameHost(code) aqui porque este doc nasce no MESMO writeBatch que
+      // liveGames/{code} — get()/exists() dentro de um batch veem o banco como
+      // estava ANTES do batch, então liveGames/{code} ainda "não existiria".
+      allow create: if canManage() && isValidLiveGamePrivate(incoming());
+      allow update, delete: if false;
+    }
+
+    function isValidLivePlayer(data) {
+      return data.keys().hasOnly(['code', 'uid', 'nome', 'avatar', 'isGuest', 'score', 'joinedAt'])
+        && data.code is string
+        && data.uid is string
+        && data.nome is string && data.nome.size() > 0 && data.nome.size() <= 50
+        && data.avatar is string && data.avatar.size() <= 1048576
+        && (!data.keys().hasAny(['isGuest']) || data.isGuest is bool)
+        && data.score is number;
+    }
+
+    match /livePlayers/{docId} {
+      // Regra não filtra a query — o host assina livePlayers do jogo dele para
+      // montar o lobby/placar; conteúdo é mínimo (nome/avatar/pontuação efêmera).
+      allow get, list: if isAuthenticated();
+
+      allow create: if isAuthenticated()
+        && docId == incoming().code + '_' + request.auth.uid
+        && incoming().uid == request.auth.uid
+        && incoming().score == 0
+        && incoming().joinedAt == request.time
+        && isValidLivePlayer(incoming());
+
+      // Só o host credita pontos (depois de conferir a resposta no gabarito privado).
+      allow update: if isGameHost(existing().code)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['score'])
+        && isValidLivePlayer(incoming());
+
+      allow delete: if isUserAdmin() || isGameHost(existing().code);
+    }
+
+    function isValidLiveAnswer(data) {
+      return data.keys().hasOnly(['code', 'uid', 'idx', 'opcaoEscolhida', 'answeredAt', 'tempoRespostaMs', 'graded', 'correta', 'pontos'])
+        && data.code is string
+        && data.uid is string
+        && data.idx is number
+        && data.opcaoEscolhida is number
+        && data.tempoRespostaMs is number
+        && data.graded is bool
+        && (!data.keys().hasAny(['correta']) || data.correta is bool)
+        && (!data.keys().hasAny(['pontos']) || data.pontos is number);
+    }
+
+    match /liveAnswers/{docId} {
+      allow get, list: if isAuthenticated();
+
+      // Só responde a pergunta CORRENTE da sala (phase='question', mesmo índice)
+      // — impede responder perguntas futuras cujo texto já tenha chegado por
+      // algum motivo, e impede reescrever resposta de pergunta já encerrada.
+      allow create: if isAuthenticated()
+        && docId == incoming().code + '_' + request.auth.uid + '_' + string(incoming().idx)
+        && incoming().uid == request.auth.uid
+        && incoming().graded == false
+        && incoming().answeredAt == request.time
+        && get(/databases/$(database)/documents/liveGames/$(incoming().code)).data.phase == 'question'
+        && get(/databases/$(database)/documents/liveGames/$(incoming().code)).data.currentIndex == incoming().idx
+        && isValidLiveAnswer(incoming());
+
+      // Só o host corrige (é o único com acesso ao gabarito em liveGamesPrivate).
+      allow update: if isGameHost(existing().code)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['graded', 'correta', 'pontos'])
+        && incoming().graded == true
+        && isValidLiveAnswer(incoming());
+
+      allow delete: if isUserAdmin() || isGameHost(existing().code);
+    }
+
   }
 }

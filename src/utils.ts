@@ -57,15 +57,30 @@ export const getRecencyMult = (diaData: string) => {
 
 export const xpSpeed = (t: number, ok: boolean, diaData?: string) => {
   if (!ok) return 0;
-  
+
   let scoreTempo = 100 - ((t / 40) * 25);
   if (scoreTempo < 75) scoreTempo = 75;
   if (scoreTempo > 100) scoreTempo = 100;
-  
+
   let mult = diaData ? getRecencyMult(diaData) : 1.0;
-  
+
   return Math.round(scoreTempo * mult);
 };
+
+// ===== Modo Ao Vivo (Kahoot) =====
+// Pontuação daquela sala é efêmera — não usa xpSpeed nem toca XP/progresso.
+// Acertou vale de 500 a 1000, conforme a rapidez da resposta.
+export const pontosAoVivo = (tempoMs: number, correta: boolean, duracaoSec: number) => {
+  if (!correta) return 0;
+  const frac = Math.min(1, Math.max(0, tempoMs / 1000 / duracaoSec));
+  return Math.round(Math.max(500, 1000 - frac * 500));
+};
+
+// Alfabeto sem caracteres ambíguos (sem 0/O, 1/I, etc.) — o código da sala é
+// lido em voz alta e digitado por gente olhando um projetor de longe.
+const ALFABETO_CODIGO_SALA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const gerarCodigoSala = () =>
+  Array.from({ length: 6 }, () => ALFABETO_CODIGO_SALA[Math.floor(Math.random() * ALFABETO_CODIGO_SALA.length)]).join('');
 
 export const getDiaId = (dias: any[]) => {
   const hoje = new Date();

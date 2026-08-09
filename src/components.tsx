@@ -2107,7 +2107,7 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
   );
 };
 
-export const Admin = ({ licao, jogador, onBack }: any) => {
+export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -2311,6 +2311,10 @@ export const Admin = ({ licao, jogador, onBack }: any) => {
           <div style={{fontSize:14,color:'var(--txt2)'}}>📖 {licao.titulo}</div>
           <div style={{fontSize:13,color:'var(--mut)'}}>📅 {licao.dias.length} dias | {licao.trimestre}</div>
         </div>
+
+        {onModoAoVivo && (
+          <button className="btn btn-gold" onClick={onModoAoVivo} style={{marginTop:16}}>🎮 MODO AO VIVO</button>
+        )}
       </div>
     </div>
   );

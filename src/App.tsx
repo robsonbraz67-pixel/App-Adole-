@@ -4,6 +4,8 @@ import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla } from './components';
 import { BUILD_ID, buscarBuildPublicado, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
+import { LiveHost } from './live/LiveHost';
+import { LiveJoin } from './live/LiveJoin';
 
 const CACHE_VERSION = '3T2026';
 
@@ -54,6 +56,12 @@ export default function App() {
   const [activePair, setActivePair] = useState<any>(null);
   const [pendingInvite, setPendingInvite] = useState<any>(null);
   const [temVersaoNova, setTemVersaoNova] = useState(false);
+  // Modo Ao Vivo: liveJoinCode renderiza LiveJoin FORA de toda a máquina de
+  // telas abaixo (convidado sem conta não pode esperar o boot/login). Já
+  // liveGameActive existe pra impedir o auto-update de recarregar no meio
+  // de uma pergunta — o convidado nunca passa por uma tela de TELAS_SEGURAS.
+  const [liveJoinCode, setLiveJoinCode] = useState<string | null>(null);
+  const [liveGameActive, setLiveGameActive] = useState(false);
 
   // ===== Atualização automática =====
   // Checa se saiu versão nova ao abrir, ao voltar para o app e a cada 15 min.
@@ -81,10 +89,10 @@ export default function App() {
   // ali jogaria fora as respostas da rodada. Assim que a pessoa volta para uma
   // tela sem trabalho em andamento, a atualização entra sozinha.
   useEffect(() => {
-    if (!temVersaoNova || !telaPermiteReload(tela)) return;
+    if (!temVersaoNova || !telaPermiteReload(tela) || liveGameActive) return;
     const t = setTimeout(recarregar, 400);
     return () => clearTimeout(t);
-  }, [temVersaoNova, tela]);
+  }, [temVersaoNova, tela, liveGameActive]);
 
   // Deep link ?dupla=<id>: guarda e limpa da URL (sobrevive ao login)
   useEffect(() => {
@@ -93,6 +101,34 @@ export default function App() {
     if (pairParam) localStorage.setItem('pendingPairInvite', pairParam);
     if (pairParam) window.history.replaceState({}, '', window.location.pathname);
   }, []);
+
+  // Deep link ?joinGame=<código>: guarda com timestamp (descarta após 6h —
+  // sem validade, quem escaneou o QR uma vez cairia na tela de entrada toda
+  // vez que abrisse o app depois) e limpa da URL. Ativa liveJoinCode direto
+  // (não só localStorage): é o que faz o próximo render pular a tela toda.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const joinParam = params.get('joinGame');
+    if (joinParam) {
+      const codigo = joinParam.toUpperCase();
+      localStorage.setItem('pendingLiveJoin', JSON.stringify({ code: codigo, ts: Date.now() }));
+      window.history.replaceState({}, '', window.location.pathname);
+      setLiveJoinCode(codigo);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem('pendingLiveJoin');
+      if (!raw) return;
+      const { code, ts } = JSON.parse(raw);
+      if (Date.now() - ts > 6 * 60 * 60 * 1000) { localStorage.removeItem('pendingLiveJoin'); return; }
+      setLiveJoinCode(code);
+    } catch {}
+  }, []);
+
+  const sairDoJogoAoVivo = () => {
+    localStorage.removeItem('pendingLiveJoin');
+    setLiveJoinCode(null);
+  };
 
   // Carrega a dupla ativa quando há usuário matriculado
   useEffect(() => {
@@ -605,6 +641,10 @@ export default function App() {
     setTela('home');
   };
 
+  // Convidado do Modo Ao Vivo: renderiza aqui, antes de qualquer gate de
+  // login/boot. Não toca em nada abaixo (perfil, lição, progresso).
+  if (liveJoinCode) return <LiveJoin code={liveJoinCode} onExit={sairDoJogoAoVivo} onActiveChange={setLiveGameActive} />;
+
   if (tela === 'splash') return <Splash />;
   if (tela === 'login') return <Login onLogin={handleLogin} />;
   if (!jogador || !licao) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',color:'#B9ACE6'}}>Carregando...</div>;
@@ -616,13 +656,14 @@ export default function App() {
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading} onRefresh={() => loadSeason(licao.trimestre, true)} />}
-      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
+      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onModoAoVivo={() => setTela('liveHost')} />}
+      {tela === 'liveHost' && <LiveHost licao={licao} jogador={jogador} onBack={() => setTela('admin')} onActiveChange={setLiveGameActive} />}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onSwitchTrack={handleSwitchTrack} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => setTela('home')} />}
       {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} prog={prog} weekRows={weekRows} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onRankingDuplas={() => loadLatestRanking('duplasSemana')} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}
 
-      {!['splash', 'login', 'quiz'].includes(tela) && !(tela === 'config' && !jogador.locationId) && (
+      {!['splash', 'login', 'quiz', 'liveHost'].includes(tela) && !(tela === 'config' && !jogador.locationId) && (
         <BottomNav
           active={tela}
           jogador={jogador}
