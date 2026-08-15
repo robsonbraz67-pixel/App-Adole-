@@ -1,6 +1,6 @@
 import { doc, setDoc, getDoc, getDocs, collection, query, where, serverTimestamp, onSnapshot, writeBatch, increment, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { gerarCodigoSala, pontosAoVivo } from '../utils';
+import { gerarCodigoSala, pontosAoVivo, embaralhar } from '../utils';
 import { calibrarRelogio } from './relogio';
 
 // ===== Seleção das perguntas da sala =====
@@ -10,14 +10,21 @@ import { calibrarRelogio } from './relogio';
 export const selecionarPerguntasSala = (licao: any, totalQuestions: number) => {
   const pool = (licao?.dias || []).flatMap((d: any) =>
     (d.perguntas || []).flatMap((q: any) => {
-      const opcoes = Array.isArray(q?.opcoes) ? q.opcoes.filter((o: any) => typeof o === 'string') : [];
-      if (opcoes.length < 2) return [];
-      const correta = typeof q.correta === 'number' && q.correta >= 0 && q.correta < opcoes.length ? q.correta : 0;
+      // Mesmo saneamento do quiz diário: opção vazia não vale (o botão sairia
+      // em branco) e a grade só desenha 4. Ver o comentário longo no Quiz,
+      // em components.tsx, para o porquê de cada regra.
+      const brutas = Array.isArray(q?.opcoes) ? q.opcoes : [];
+      const validas = brutas.filter((o: any) => typeof o === 'string' && o.trim().length > 0);
+      if (validas.length < 2) return [];
+      const textoCerto = brutas[typeof q.correta === 'number' ? q.correta : 0];
+      const idx = validas.indexOf(textoCerto);
+      const correta = idx >= 0 ? idx : 0;
+      const opcoes = validas.slice(0, 4);
+      if (correta >= opcoes.length) return [];
       return [{ id: q.id, pergunta: q.pergunta, opcoes, correta, explicacao: q.explicacao || '' }];
     })
   );
-  const embaralhado = [...pool].sort(() => Math.random() - 0.5);
-  return embaralhado.slice(0, Math.min(totalQuestions, 12));
+  return embaralhar(pool).slice(0, Math.min(totalQuestions, 12));
 };
 
 // ===== Criar sala =====

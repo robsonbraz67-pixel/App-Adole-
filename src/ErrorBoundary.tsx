@@ -17,7 +17,7 @@ import { BUILD_ID, buscarBuildPublicado, recarregar } from './version';
 // se já existe build novo publicado, recarrega sozinho, porque nesse caso o
 // erro provavelmente já está corrigido.
 type Props = { children: ReactNode };
-type State = { erro: Error | null; recarregando: boolean };
+type State = { erro: Error | null; recarregando: boolean; detalhe: string };
 
 export class ErrorBoundary extends ComponentBase {
   props!: Props;
@@ -25,7 +25,7 @@ export class ErrorBoundary extends ComponentBase {
 
   constructor(props: Props) {
     super(props);
-    this.state = { erro: null, recarregando: false };
+    this.state = { erro: null, recarregando: false, detalhe: '' };
   }
 
   static getDerivedStateFromError(erro: Error): Partial<State> {
@@ -34,6 +34,12 @@ export class ErrorBoundary extends ComponentBase {
 
   componentDidCatch(erro: Error, info: ErrorInfo) {
     console.error('Erro não tratado:', erro, info.componentStack);
+    // O console de um celular é inalcançável para quem está usando o app: dois
+    // alunos relataram esta tela e não havia como saber O QUE quebrou. Agora a
+    // mensagem fica visível na própria tela, para caber num print — é a
+    // diferença entre depurar por palpite e depurar com o erro na mão.
+    const linhaComponente = (info.componentStack || '').trim().split('\n')[0] || '';
+    this.setState({ detalhe: `${erro?.name || 'Erro'}: ${erro?.message || erro}\n${linhaComponente}`.trim() });
     // Versão nova no ar? Então a tela quebrada é código velho: atualiza.
     buscarBuildPublicado().then(publicado => {
       if (publicado && publicado !== BUILD_ID) {
@@ -61,6 +67,19 @@ export class ErrorBoundary extends ComponentBase {
           <button className="btn btn-gold" onClick={recarregar} style={{width:'auto', display:'inline-flex'}}>
             🔄 Recarregar
           </button>
+        )}
+        {!this.state.recarregando && this.state.detalhe && (
+          <div style={{marginTop:24, maxWidth:340, width:'100%'}}>
+            <div style={{fontSize:11, color:'var(--mut)', marginBottom:6}}>
+              Se continuar acontecendo, mande um print desta parte:
+            </div>
+            <pre style={{
+              fontSize:10, lineHeight:1.5, textAlign:'left', color:'var(--txt2)',
+              background:'var(--g3)', border:'1px solid var(--b3)', borderRadius:10,
+              padding:'10px 12px', whiteSpace:'pre-wrap', wordBreak:'break-word',
+              maxHeight:160, overflow:'auto', fontFamily:'ui-monospace,Menlo,monospace',
+            }}>{this.state.detalhe}</pre>
+          </div>
         )}
         <div style={{fontSize:10, color:'var(--mut)', marginTop:28, opacity:.7}}>versão {BUILD_ID}</div>
       </div>

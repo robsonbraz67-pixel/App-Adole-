@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getTrackLessons } from './data';
-import { gs, ss, uid, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome } from './utils';
+import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome } from './utils';
 
 // Desativado em 2026-07-25: a escola opera com UMA trilha e UM local. As duas
 // ferramentas continuam inteiras por baixo (modelo de dados, regras, convites
@@ -682,18 +682,43 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
     } catch { /* localStorage indisponível: segue sem marcar, sem quebrar o quiz */ }
   }, []);
 
-  // Uma pergunta malformada (sem opcoes, ou com 'correta' fora do intervalo)
-  // derrubava a tela inteira no meio do quiz — e o editor de conteúdo do Admin
-  // consegue gravar exatamente isso. Aqui a pergunta ruim é descartada em vez
-  // de quebrar a rodada de quem está respondendo.
+  // Uma pergunta malformada derrubava a tela inteira no meio do quiz — e o
+  // editor de conteúdo do Admin consegue gravar exatamente isso. Aqui a
+  // pergunta ruim é descartada em vez de quebrar a rodada de quem responde.
+  //
+  // Três defeitos que este saneamento passou a cobrir, encontrados apurando
+  // relatos de "pergunta corrompida":
+  //
+  //  - Opção VAZIA passava no filtro, porque '' também é string. O aluno via
+  //    botões em branco, e a "certa" virava a primeira vazia.
+  //  - Opções DUPLICADAS quebravam o rastreio da resposta certa: o código
+  //    procurava a alternativa pelo TEXTO depois de embaralhar, e o texto
+  //    repetido devolvia a posição errada — o aluno marcava a certa e era
+  //    contado como erro. Agora o embaralhamento é por ÍNDICE, então texto
+  //    repetido não confunde mais nada.
+  //  - Mais de 4 opções estouravam a tela (a grade só tem 4 estilos, e o
+  //    quinto índice era `undefined.cls`). Agora sobra corte em 4.
   const [shuffledPergs] = useState(() =>
     (dia.perguntas || []).flatMap((q: any) => {
-      const opcoes = Array.isArray(q?.opcoes) ? q.opcoes.filter((o: any) => typeof o === 'string') : [];
-      if (opcoes.length < 2) return [];
-      const idxCorreta = typeof q.correta === 'number' && q.correta >= 0 && q.correta < opcoes.length ? q.correta : 0;
-      const correctText = opcoes[idxCorreta];
-      const shuffled = [...opcoes].sort(() => Math.random() - 0.5);
-      return [{ ...q, opcoes: shuffled, correta: shuffled.indexOf(correctText) }];
+      const brutas = Array.isArray(q?.opcoes) ? q.opcoes : [];
+      const validas = brutas.filter((o: any) => typeof o === 'string' && o.trim().length > 0);
+      if (validas.length < 2) return [];
+      const idxCorretaOriginal = typeof q.correta === 'number' ? q.correta : 0;
+      // Índice da certa DEPOIS de tirar as inválidas: descartar uma opção
+      // antes dela deslocaria a resposta e marcaria a errada como certa.
+      const textoCerto = brutas[idxCorretaOriginal];
+      const idxNasValidas = validas.indexOf(textoCerto);
+      const corretaSegura = idxNasValidas >= 0 ? idxNasValidas : 0;
+
+      const opcoes = validas.slice(0, 4);
+      if (corretaSegura >= opcoes.length) return [];   // a certa foi cortada: pergunta inaproveitável
+
+      const ordem = embaralhar(opcoes.map((_: string, i: number) => i));
+      return [{
+        ...q,
+        opcoes: ordem.map((i: number) => opcoes[i]),
+        correta: ordem.indexOf(corretaSegura),
+      }];
     })
   );
   const pergs = shuffledPergs;
@@ -811,8 +836,8 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
               else ex = ' locked';
             }
             return (
-              <button key={i} className={`qbtn ${BTNS[i].cls}${ex}`} onClick={() => respond(i, undefined)} disabled={ans !== null}>
-                <span className="sym">{BTNS[i].sym}</span>
+              <button key={i} className={`qbtn ${BTNS[i]?.cls || 'qA'}${ex}`} onClick={() => respond(i, undefined)} disabled={ans !== null}>
+                <span className="sym">{BTNS[i]?.sym}</span>
                 <span style={{fontSize:13,lineHeight:1.3}}>{op}</span>
               </button>
             );
