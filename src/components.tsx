@@ -112,27 +112,34 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   };
 
   return (
-    <div style={{padding:'0 20px 100px',animation:'fadeIn .4s ease',minHeight:'100dvh',display:'flex',flexDirection:'column',justifyContent:'center'}}>
-      <div style={{textAlign:'center',padding:'32px 0 20px',borderBottom:'1px solid rgba(247,198,0,.15)',marginBottom:24}}>
-        <div style={{fontSize:52,marginBottom:10,animation:'bounce 3s ease-in-out infinite'}}>📖</div>
-        <div style={{fontSize:30,fontWeight:900,marginBottom:4}}>
-          <span style={{color:'var(--gold)'}}>Sabatina</span><span style={{color:'var(--teal)'}}>Quest</span>
-        </div>
-        <div style={{display:'inline-block',background:'rgba(247,198,0,.14)',border:'1.5px solid rgba(247,198,0,.32)',borderRadius:20,padding:'4px 14px',fontSize:13,fontWeight:800,color:'var(--gold)',letterSpacing:.5,marginTop:6,fontFamily:'Poppins,sans-serif'}}>
-          ✨ Acesso com Google
-        </div>
+    <div style={{padding:'0 24px 40px',animation:'fadeIn .4s ease',minHeight:'100dvh',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',textAlign:'center'}}>
+      <div className="sq-seal" style={{marginBottom:22}} aria-hidden="true">
+        <span className="sq-mono">SQ</span>
+        <span className="sq-gem" />
       </div>
 
-      <div style={{display:'flex',flexDirection:'column',gap:16,alignItems:'center'}}>
-        <button className={`btn btn-gold${loading ? ' btn-dis' : ''}`} onClick={goGoogle} style={{fontSize:19,marginBottom:4}}>
-          {loading ? 'Carregando...' : '🚀 ENTRAR COM GOOGLE'}
-        </button>
-        {err && <div style={{color:'#E31C3D',fontSize:14,fontWeight:800,textAlign:'center'}}>{err}</div>}
+      <div style={{fontSize:32,fontWeight:900,letterSpacing:'-.8px',fontFamily:'Poppins,sans-serif',marginBottom:6}}>
+        <span style={{color:'var(--gold)'}}>Sabatina</span><span style={{color:'var(--teal)'}}>Quest</span>
+      </div>
+      <div style={{fontSize:9.5,fontWeight:800,letterSpacing:3,textTransform:'uppercase',color:'var(--mut)',fontFamily:'Poppins,sans-serif',marginBottom:18}}>
+        Escola Sabatina Teen
+      </div>
+      <div style={{fontSize:14.5,lineHeight:1.7,color:'var(--txt2)',maxWidth:290,marginBottom:30}}>
+        Estude a lição todo dia, some XP com a turma e acompanhe sua ofensiva.
       </div>
 
-      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,color:'rgba(185,172,230,.55)',fontSize:13,marginTop:40}}>
-        <span>🔐</span>
-        <span>Login seguro via Firebase Authentication</span>
+      {/* Contraste invertido por tema: no escuro o botão é branco, no claro é
+          tinta. Nos dois casos ele é o elemento de maior contraste da tela —
+          é o único caminho daqui. */}
+      <button className={`btn btn-login${loading ? ' btn-dis' : ''}`} onClick={goGoogle} style={{maxWidth:340}}>
+        <span className="g-disc">G</span>
+        {loading ? 'Carregando...' : 'Entrar com Google'}
+      </button>
+
+      {err && <div style={{color:'var(--magenta)',fontSize:14,fontWeight:800,marginTop:14,maxWidth:340}}>{err}</div>}
+
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,color:'var(--mut)',fontSize:12,marginTop:32}}>
+        <span>🔐</span><span>Login seguro via Firebase Authentication</span>
       </div>
     </div>
   );
