@@ -7,6 +7,17 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#0A1230">
     <title>SabatinaQuest ✨</title>
+
+    <!-- Instalação como app.
+         Android/Chrome usa o manifest (precisa de ícone 192 e 512 e
+         display:standalone para oferecer "Instalar"). O iOS ignora o
+         manifest e lê estas metatags: sem o apple-touch-icon, o atalho
+         criado pelo Safari sai com um retrato da tela em vez da logo. -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+    <meta name="apple-mobile-web-app-title" content="SabatinaQuest">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Space Grotesk carrega só os pesos 500/700: é fonte de NÚMERO (XP,

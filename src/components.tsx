@@ -138,10 +138,101 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
 
       {err && <div style={{color:'var(--magenta)',fontSize:14,fontWeight:800,marginTop:14,maxWidth:340}}>{err}</div>}
 
+      {/* Também aqui, e não só no Perfil: a maior parte das pessoas abre o
+          app pelo link do WhatsApp e nunca chega às configurações. */}
+      <div style={{maxWidth:340,width:'100%',marginTop:22}}><InstalarApp /></div>
+
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,color:'var(--mut)',fontSize:12,marginTop:32}}>
         <span>🔐</span><span>Login seguro via Firebase Authentication</span>
       </div>
     </div>
+  );
+};
+
+/* ===== SALVAR COMO APP ===== */
+// As duas plataformas resolvem isso de formas incompatíveis:
+//
+//  Android/Chrome dispara `beforeinstallprompt`. Guardamos o evento e
+//  chamamos prompt() no clique — o navegador exige que a instalação parta
+//  de um gesto, então não dá para disparar sozinho.
+//
+//  iOS/Safari não expõe API nenhuma: instalar é sempre manual, pelo menu
+//  Compartilhar. O melhor que o app pode fazer é ENSINAR o caminho, por
+//  isso o botão abre instruções em vez de tentar instalar.
+//
+// Quem já instalou não vê nada: rodando em standalone o botão some.
+export const InstalarApp = () => {
+  const [evento, setEvento] = useState<any>(null);
+  const [mostrarIOS, setMostrarIOS] = useState(false);
+  const [instalado, setInstalado] = useState(false);
+
+  const ehIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+  useEffect(() => {
+    const jaEhApp = window.matchMedia('(display-mode: standalone)').matches
+      || (navigator as any).standalone === true;
+    setInstalado(jaEhApp);
+
+    const capturar = (e: any) => { e.preventDefault(); setEvento(e); };
+    const instalou = () => { setInstalado(true); setEvento(null); };
+    window.addEventListener('beforeinstallprompt', capturar);
+    window.addEventListener('appinstalled', instalou);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', capturar);
+      window.removeEventListener('appinstalled', instalou);
+    };
+  }, []);
+
+  if (instalado) return null;
+  // Sem evento e fora do iOS: o navegador não oferece instalação (Firefox,
+  // aba anônima, desktop sem suporte). Melhor não mostrar um botão que não
+  // faz nada.
+  if (!ehIOS && !evento) return null;
+
+  const clicar = async () => {
+    if (ehIOS) { setMostrarIOS(true); return; }
+    evento.prompt();
+    const escolha = await evento.userChoice.catch(() => null);
+    if (escolha?.outcome === 'accepted') setInstalado(true);
+    setEvento(null);   // o evento só pode ser usado uma vez
+  };
+
+  return (
+    <>
+      <button className="btn btn-gold" onClick={clicar} style={{marginTop:8}}>
+        📲 Salvar como app
+      </button>
+      <div style={{fontSize:11.5,color:'var(--mut)',textAlign:'center',marginTop:8,lineHeight:1.5}}>
+        Abre direto da tela de início, sem barra do navegador.
+      </div>
+
+      {mostrarIOS && (
+        <div
+          onClick={() => setMostrarIOS(false)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9998,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16}}
+        >
+          <div className="glass" onClick={e => e.stopPropagation()} style={{padding:'22px 20px',maxWidth:420,width:'100%',textAlign:'center'}}>
+            <div className="sq-seal" style={{width:64,height:64,borderRadius:20,margin:'0 auto 14px',animation:'none'}}>
+              <span className="sq-mono" style={{fontSize:26,letterSpacing:-2}}>SQ</span>
+              <span className="sq-gem" style={{width:9,height:9,right:8,bottom:8}} />
+            </div>
+            <div style={{fontWeight:900,fontSize:18,marginBottom:12,fontFamily:'Poppins,sans-serif'}}>Adicionar à Tela de Início</div>
+            <div style={{textAlign:'left',fontSize:14,lineHeight:1.7,color:'var(--txt2)'}}>
+              {/* Sem o glifo de Compartilhar da Apple: é caractere de uso
+                  privado e vira quadrado vazio em qualquer outro sistema.
+                  A descrição em palavras funciona em todos. */}
+              <div style={{marginBottom:8}}>1. Toque em <b>Compartilhar</b> na barra do Safari — o quadrado com a seta para cima.</div>
+              <div style={{marginBottom:8}}>2. Deslize e escolha <b>Adicionar à Tela de Início</b>.</div>
+              <div>3. Toque em <b>Adicionar</b>. Pronto — o ícone dourado aparece junto com seus outros apps.</div>
+            </div>
+            <div style={{fontSize:12,color:'var(--mut)',marginTop:14,lineHeight:1.5}}>
+              Precisa ser pelo Safari. Se você abriu por outro navegador ou por um link do Instagram, o menu não tem essa opção.
+            </div>
+            <button className="btn btn-ghost" onClick={() => setMostrarIOS(false)} style={{marginTop:16}}>Entendi</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
@@ -2861,8 +2952,13 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
           {savingSetup ? 'Salvando...' : '✅ SALVAR ALTERAÇÕES'}
         </button>
         
+        <div style={{marginTop: 28}}>
+          <div className="sec-title" style={{marginBottom:8}}>Instalar 📲</div>
+          <InstalarApp />
+        </div>
+
         <div style={{marginTop: 'auto', paddingTop: 40}}>
-           <button className="btn btn-ghost" onClick={onLogout} style={{color:'#FF6B6B', borderColor:'rgba(227,28,61,.3)', width:'100%'}}>🚪 Sair da conta (Logout)</button>
+           <button className="btn btn-ghost" onClick={onLogout} style={{color:'var(--magenta)', borderColor:'rgba(255,92,122,.35)', width:'100%'}}>🚪 Sair da conta (Logout)</button>
         </div>
       </div>
     </div>
