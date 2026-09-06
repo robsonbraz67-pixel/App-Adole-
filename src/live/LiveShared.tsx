@@ -149,8 +149,22 @@ export const Contagem = ({ n, pergunta }: { n: number; pergunta?: string }) => (
   </div>
 );
 
-const ALTURA_LINHA = 68;   // altura da linha + respiro; usada no posicionamento
+const ALTURA_LINHA = 74;   // altura da linha + respiro; usada no posicionamento
 const MS_SOMA = 1400;      // duração da contagem dos pontos da rodada
+const MEDALHAS = ['🥇', '🥈', '🥉'];
+
+// Faixa de contexto acima do placar. Sem ela a tela é só uma lista solta: não
+// dá para saber em que ponto da partida a turma está nem quanta gente resta.
+export const FaixaRodada = ({ indice, total, jogadores }: { indice?: number; total?: number; jogadores: number }) => (
+  <div className="live-faixa">
+    <span>
+      {typeof indice === 'number' && total
+        ? <>Pergunta <b className="num">{indice + 1}</b> de <b className="num">{total}</b></>
+        : 'Placar da sala'}
+    </span>
+    <span>👥 <b className="num">{jogadores}</b> jogador{jogadores !== 1 ? 'es' : ''}</span>
+  </div>
+);
 
 // Placar estilo Kahoot: as linhas COMEÇAM na posição da rodada anterior, os
 // pontos sobem contando, e a troca de posição acontece no instante em que um
@@ -165,6 +179,11 @@ export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar }: { jo
   // Pontuação com que cada um ENTROU nesta rodada. Guardada num ref e só
   // atualizada ao virar a rodada: é o ponto de partida da contagem.
   const anterioresRef = useRef<Record<string, number>>({});
+  // Posição com que cada um ENTROU nesta rodada, congelada no começo dela.
+  // Não dá para derivar de `anterioresRef` na hora de desenhar: ele é
+  // reescrito com os pontos NOVOS quando a contagem termina, que é
+  // exatamente o momento em que o "▲2" precisa aparecer.
+  const posAntesRef = useRef<Record<string, number>>({});
   const rodadaRef = useRef<any>(null);
   const [progresso, setProgresso] = useState(1);
 
@@ -173,6 +192,15 @@ export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar }: { jo
 
   useEffect(() => {
     const de = { ...anterioresRef.current };
+    // Só quem já estava na rodada anterior tem posição de partida — para
+    // quem entrou agora não existe "subiu": ele apareceu.
+    const antes: Record<string, number> = {};
+    jogadores
+      .filter(j => de[j.uid] !== undefined)
+      .map(j => ({ uid: j.uid, pts: de[j.uid] }))
+      .sort((a, b) => (b.pts - a.pts) || String(a.uid).localeCompare(String(b.uid)))
+      .forEach((j, i) => { antes[j.uid] = i; });
+    posAntesRef.current = antes;
     const inicio = performance.now();
     setProgresso(0);
     let raf = 0;
@@ -246,45 +274,66 @@ export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar }: { jo
   }, []);
 
   if (jogadores.length === 0) {
-    return <div style={{ textAlign: 'center', color: 'var(--mut)', padding: 20 }}>Ninguém entrou ainda.</div>;
+    return (
+      <div className="live-placar-vazio">
+        <div style={{ fontSize: 34 }}>🪑</div>
+        <div style={{ fontWeight: 800, color: 'var(--txt2)' }}>Ninguém entrou ainda</div>
+        <div style={{ fontSize: 13, color: 'var(--mut)' }}>O placar aparece assim que a turma marcar ponto.</div>
+      </div>
+    );
   }
 
   return (
-    <div style={{ padding: '4px 16px', position: 'relative', height: jogadores.length * ALTURA_LINHA }}>
-      {exibidos.map(j => (
-        <div
-          key={j.uid}
-          className="live-placar-row"
-          style={{
-            transform: `translateY(${posicoes[j.uid] * ALTURA_LINHA}px)`,
-            transition: posicionado ? undefined : 'none',
-            border: j.uid === meuUid ? '1.5px solid var(--gold)' : undefined,
-          }}
-        >
-          <div style={{ fontWeight: 900, color: 'var(--mut)', fontSize: 14, width: 22, textAlign: 'center' }}>{posicoes[j.uid] + 1}</div>
-          <Avatar avatar={j.avatar} size={36} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.nome}</span>
-              <Chama streak={j.streak} />
+    <div className="live-placar" style={{ height: jogadores.length * ALTURA_LINHA }}>
+      {exibidos.map(j => {
+        const pos = posicoes[j.uid];
+        const antes = posAntesRef.current[j.uid];
+        // "▲2" só depois que a contagem para: durante ela quem conta a
+        // história é o "+750", e os dois juntos na mesma linha viram poluição.
+        const subiu = antes !== undefined && progresso === 1 ? antes - pos : 0;
+        const classes = ['live-placar-row'];
+        if (pos < 3) classes.push(`r${pos + 1}`);
+        if (j.uid === meuUid) classes.push('eu');
+        return (
+          <div
+            key={j.uid}
+            className={classes.join(' ')}
+            style={{
+              transform: `translateY(${pos * ALTURA_LINHA}px)`,
+              transition: posicionado ? undefined : 'none',
+            }}
+          >
+            <div className="pos">{pos < 3 ? MEDALHAS[pos] : <span className="num">{pos + 1}º</span>}</div>
+            <Avatar avatar={j.avatar} size={40} ring={pos === 0} />
+            <div className="quem">
+              {/* Nada de crachá "você" aqui: com o nome, a chama e o "+750"
+                  disputando a mesma linha, o crachá espremia o nome até virar
+                  "V…". A borda dourada e o nome em dourado dizem o mesmo sem
+                  ocupar espaço. */}
+              <div className="nome">
+                <span className="txt">{j.nome}</span>
+                <Chama streak={j.streak} />
+              </div>
+              {/* A barra é a fatia do líder, não do total: é o que deixa ver
+                  de longe quem está colado no primeiro e quem ficou para trás. */}
+              <div className="barra"><div className="fill" style={{ width: `${(j.exibido / max) * 100}%` }} /></div>
             </div>
-            <div className="bar"><div className="bar-fill" style={{ width: `${(j.exibido / max) * 100}%` }} /></div>
+            {subiu > 0 && <div className="delta" title={`Subiu ${subiu} posição${subiu !== 1 ? 'ões' : ''}`}>▲{subiu}</div>}
+            {/* O "+750" some quando a contagem termina: a partir daí o número
+                da direita já conta a história toda. */}
+            {j.ganho > 0 && progresso < 1 && <div className="ganho">+{j.ganho}</div>}
+            <div className="pts num">{j.exibido}</div>
+            {onExpulsar && (
+              <button
+                className="expulsar"
+                onClick={() => onExpulsar(j)}
+                title={`Remover ${j.nome} da sala`}
+                aria-label={`Remover ${j.nome} da sala`}
+              >✕</button>
+            )}
           </div>
-          {onExpulsar && (
-            <button
-              onClick={() => onExpulsar(j)}
-              title={`Remover ${j.nome} da sala`}
-              style={{ background: 'none', border: 'none', color: 'var(--mut)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}
-            >✕</button>
-          )}
-          {/* O "+750" some quando a contagem termina: a partir daí o número
-              da esquerda já conta a história toda. */}
-          {j.ganho > 0 && progresso < 1 && (
-            <div style={{ fontWeight: 900, color: 'var(--teal)', fontSize: 13, whiteSpace: 'nowrap' }}>+{j.ganho}</div>
-          )}
-          <div style={{ fontWeight: 900, color: 'var(--gold)', fontSize: 15, minWidth: 44, textAlign: 'right' }}>{j.exibido}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };

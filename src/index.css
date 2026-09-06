@@ -468,11 +468,54 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 .live-contagem .dica{font-size:14px;color:var(--txt2);text-align:center;max-width:420px;line-height:1.4;opacity:.75}
 @keyframes contagemPulo{0%{transform:scale(1.7);opacity:0}45%{transform:scale(.94);opacity:1}100%{transform:scale(1)}}
 
-/* Linha do placar posicionada por translateY (ver Placar em LiveShared): é o
-   que permite ver uma passar pela outra. No fluxo normal elas saltariam. */
-.live-placar-row{position:absolute;left:16px;right:16px;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--g3);border:1.5px solid var(--b2);height:60px;transition:transform .55s cubic-bezier(.4,0,.2,1)}
-.live-placar-row .bar{flex:1;height:8px;border-radius:6px;background:var(--g5);overflow:hidden;margin-top:4px}
-.live-placar-row .bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--gold-dk),var(--gold))}
+/* ===== PLACAR ENTRE AS PERGUNTAS =====
+   Faixa de contexto + lista. A lista tem largura máxima porque a mesma tela
+   vai para o projetor: esticada de ponta a ponta num telão, o nome fica num
+   canto e a pontuação no outro, e ninguém liga um ao outro. */
+.live-faixa{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:720px;margin:0 auto;padding:12px 18px 10px;font-family:'Poppins',sans-serif;font-size:11.5px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:var(--mut)}
+.live-faixa b{color:var(--txt2);letter-spacing:0}
+.live-placar{position:relative;max-width:720px;margin:0 auto 24px;padding:0 16px}
+.live-placar-vazio{display:flex;flex-direction:column;align-items:center;gap:6px;padding:34px 20px;text-align:center}
+
+/* Linha posicionada por translateY (ver Placar em LiveShared): é o que
+   permite ver uma passar pela outra. No fluxo normal elas saltariam — e por
+   isso NENHUMA animação daqui pode mexer em transform. */
+.live-placar-row{position:absolute;left:16px;right:16px;display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:16px;background:var(--g2);border:1.5px solid var(--b2);height:64px;transition:transform .55s cubic-bezier(.4,0,.2,1),background .35s,border-color .35s,box-shadow .35s}
+.live-placar-row .pos{flex:none;width:32px;text-align:center;font-size:21px;line-height:1}
+.live-placar-row .pos .num{font-size:14px;font-weight:800;color:var(--mut)}
+.live-placar-row .quem{flex:1;min-width:0}
+.live-placar-row .nome{display:flex;align-items:center;gap:6px;font-family:'Poppins',sans-serif;font-weight:800;font-size:14.5px;line-height:1.25;color:var(--txt)}
+.live-placar-row .nome .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-placar-row .barra{height:7px;border-radius:6px;background:var(--g5);overflow:hidden;margin-top:6px}
+.live-placar-row .barra .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--blu-dk),var(--blu))}
+.live-placar-row .ganho{flex:none;font-weight:900;font-size:12.5px;color:var(--teal);background:rgba(56,224,176,.14);border:1px solid rgba(56,224,176,.32);border-radius:20px;padding:3px 9px;white-space:nowrap}
+.live-placar-row .delta{flex:none;font-weight:900;font-size:12px;color:var(--teal);white-space:nowrap}
+.live-placar-row .pts{flex:none;min-width:54px;text-align:right;font-weight:700;font-size:18px;color:var(--gold)}
+.live-placar-row .expulsar{flex:none;background:none;border:none;color:var(--mut);cursor:pointer;font-size:13px;padding:0 2px;opacity:.55;transition:opacity .2s,color .2s}
+.live-placar-row .expulsar:hover{opacity:1;color:var(--danger)}
+
+/* Pódio de ouro/prata/bronze reusando as MESMAS cores das bases .p1/.p2/.p3
+   do Ranking — quem já viu o ranking do app reconhece as três primeiras
+   posições aqui sem ler número nenhum. */
+.live-placar-row.r1{background:linear-gradient(135deg,rgba(255,201,60,.18),rgba(255,201,60,.04));border-color:rgba(255,201,60,.45);box-shadow:0 8px 24px rgba(255,201,60,.13)}
+/* Hex fixo, e não var(--gold): no tema claro o dourado das VARIÁVEIS é
+   escuro (#A87C00) para dar contraste como texto — numa barra cheia ele
+   vira marrom. Aqui vale o mesmo dourado vivo das bases do pódio. */
+.live-placar-row.r1 .barra .fill{background:linear-gradient(90deg,#E0A200,#FFC93C);box-shadow:0 0 12px rgba(255,201,60,.5)}
+.live-placar-row.r2{background:linear-gradient(135deg,rgba(195,206,238,.16),rgba(195,206,238,.03));border-color:rgba(195,206,238,.4)}
+.live-placar-row.r2 .barra .fill{background:linear-gradient(90deg,#93A4D6,#C3CEEE)}
+.live-placar-row.r3{background:linear-gradient(135deg,rgba(255,178,123,.15),rgba(255,178,123,.03));border-color:rgba(255,178,123,.4)}
+.live-placar-row.r3 .barra .fill{background:linear-gradient(90deg,#E08A4A,#FFB27B)}
+/* A própria linha do aluno: borda cheia e nome em dourado, não fundo — o
+   fundo já carrega a medalha, e trocá-lo apagaria a posição. */
+.live-placar-row.eu{border-width:2px;border-color:var(--gold)}
+.live-placar-row.eu .nome{color:var(--gold)}
+
+@media (max-width:380px){
+  .live-placar-row{gap:9px;padding:10px 11px}
+  .live-placar-row .pts{min-width:44px;font-size:16px}
+  .live-placar-row .ganho{padding:3px 7px;font-size:11.5px}
+}
 
 /* ===== INPUTS ===== */
 .inp{width:100%;padding:15px;border-radius:var(--rsm);background:var(--g3);border:2px solid var(--b4);color:var(--txt);font-family:'Poppins',sans-serif;font-size:18px;font-weight:700;outline:none;transition:border-color .2s,background .3s}

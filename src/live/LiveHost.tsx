@@ -8,7 +8,7 @@ import {
   revanche, buscarRelatorio, assinarContagemRespostas, atualizarPlacarSala,
 } from './liveGameApi';
 import {
-  BarraRespostas, Placar, LivePodium, Contagem, MS_CONTAGEM,
+  BarraRespostas, Placar, LivePodium, Contagem, MS_CONTAGEM, FaixaRodada,
   estiloOpcoes, decorridoNaPergunta, duracaoDaPergunta, Chama, SeloTipo,
 } from './LiveShared';
 import { agoraServidor } from './relogio';
@@ -961,6 +961,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
       <div className="live-screen">
         <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>🏆 Placar</div>{botaoMusica}</div>
         <div className="live-body">
+          <FaixaRodada indice={game.currentIndex} total={perguntas.length} jogadores={jogadores.length} />
           <Placar jogadores={jogadores} roundKey={game.currentIndex} comSom={musicaOn} onExpulsar={expulsar} />
         </div>
         {barraControles}

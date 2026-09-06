@@ -6,7 +6,7 @@ import {
   assinarMeuJogador, assinarMinhaResposta, responder, enviarFeedback,
 } from './liveGameApi';
 import {
-  BarraRespostas, Placar, LivePodium, Contagem, MS_CONTAGEM,
+  BarraRespostas, Placar, LivePodium, Contagem, MS_CONTAGEM, FaixaRodada,
   estiloOpcoes, decorridoNaPergunta, duracaoDaPergunta, Chama, SeloTipo,
 } from './LiveShared';
 import { Confetti } from '../components';
@@ -649,6 +649,7 @@ export const LiveJoin = ({ code, onExit, onActiveChange }: any) => {
     return (
       <div className="scr">
         <div className="hdr"><div style={{ fontWeight: 900, fontSize: 17, margin: '0 auto' }}>🏆 Placar</div></div>
+        <FaixaRodada indice={game.currentIndex} total={game.totalQuestions} jogadores={classificacao.length} />
         <Placar jogadores={classificacao} roundKey={game.currentIndex} meuUid={meuUid || undefined} />
       </div>
     );
