@@ -409,7 +409,10 @@ service cloud.firestore {
         // locationId no progresso é o que torna o ranking por local calculável
         // ao vivo pelo cliente (progress é público; users/{uid} de terceiro não
         // é). Só pode ser o local real do dono — a regra confere, não o cliente.
-        && (!data.keys().hasAny(['locationId']) || data.locationId == ownLocationId())
+        // A exceção do admin existe porque ele corrige o doc de OUTRA pessoa:
+        // ownLocationId() ali é o local DELE, e sem esta saída toda correção
+        // de aluno matriculado seria recusada.
+        && (!data.keys().hasAny(['locationId']) || data.locationId == ownLocationId() || isUserAdmin())
         && (!data.keys().hasAny(['trimestre']) || data.trimestre is string)
         && data.xp is number
         && data.streak is number
@@ -420,7 +423,16 @@ service cloud.firestore {
         && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time)
         && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool)
         && (!data.keys().hasAny(['isGuest']) || data.isGuest is bool)
-        && (!data.keys().hasAny(['isProfessor']) || data.isProfessor is bool);
+        && (!data.keys().hasAny(['isProfessor']) || data.isProfessor is bool)
+        // Auditoria de pontuação (painel do admin):
+        // 'liberados' = dias que o admin soltou para refazer valendo 100%, sem
+        // o desconto de quem faz fora da data.
+        // 'zeradoEm' = carimbo da última correção. O aparelho do aluno guarda
+        // o progresso no localStorage e no boot MESCLA local com servidor
+        // pegando o maior XP; sem este carimbo, o próximo login desfaria a
+        // correção em silêncio.
+        && (!data.keys().hasAny(['liberados']) || data.liberados is list)
+        && (!data.keys().hasAny(['zeradoEm']) || data.zeradoEm is number);
     }
 
     match /progress/{progressId} {
@@ -433,17 +445,23 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && progressId.split('_')[0] == incoming().userId
         && isOwner(incoming().userId)
-        && incoming().keys().hasOnly(['userId', 'week', 'track', 'trimestre', 'locationId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
+        && incoming().keys().hasOnly(['userId', 'week', 'track', 'trimestre', 'locationId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'liberados', 'zeradoEm', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));
 
       // 'track' entra em affectedKeys: docs legados não tinham esse campo e o
       // primeiro save depois desta mudança o adiciona — precisa ser permitido.
+      //
+      // O admin também escreve aqui, e só ele: é a auditoria de pontuação do
+      // painel (zerar um dia lançado errado, zerar a semana, liberar um dia
+      // para refazer valendo 100%). Sem esta linha a tela existe mas toda
+      // correção volta como "permissão negada". Continua valendo tudo o mais:
+      // userId e week são imutáveis, e o documento tem de seguir válido.
       allow update: if isAuthenticated()
-        && isOwner(existing().userId)
+        && (isOwner(existing().userId) || isUserAdmin())
         && incoming().userId == existing().userId
         && incoming().week == existing().week
-        && incoming().diff(existing()).affectedKeys().hasOnly(['track', 'trimestre', 'locationId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'updatedAt'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['track', 'trimestre', 'locationId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'liberados', 'zeradoEm', 'updatedAt'])
         && isValidProgress(incoming());
 
       allow delete: if false;

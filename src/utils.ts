@@ -43,7 +43,11 @@ const hiddenNamesNormalized = new Set(RANKING_HIDDEN_NAMES.map(normalizeName));
 
 export const isRankingHidden = (nome: string) => hiddenNamesNormalized.has(normalizeName(nome));
 
-export const getRecencyMult = (diaData: string) => {
+// `liberado`: o admin liberou ESTE dia para ser refeito sem punição de data
+// (ver adminLiberarDia em firebase.ts). Quem perdeu o dia por doença, viagem
+// ou erro do app refaz valendo 100%, em vez dos 75% de quem só atrasou.
+export const getRecencyMult = (diaData: string, liberado = false) => {
+  if (liberado) return 1.0;
   const hoje = new Date();
   const offset = hoje.getTimezoneOffset() * 60000;
   const hLocal = new Date(hoje.getTime() - offset);
@@ -72,14 +76,14 @@ export const getRecencyMult = (diaData: string) => {
   }
 };
 
-export const xpSpeed = (t: number, ok: boolean, diaData?: string) => {
+export const xpSpeed = (t: number, ok: boolean, diaData?: string, liberado = false) => {
   if (!ok) return 0;
 
   let scoreTempo = 100 - ((t / 40) * 25);
   if (scoreTempo < 75) scoreTempo = 75;
   if (scoreTempo > 100) scoreTempo = 100;
 
-  let mult = diaData ? getRecencyMult(diaData) : 1.0;
+  let mult = diaData ? getRecencyMult(diaData, liberado) : 1.0;
 
   return Math.round(scoreTempo * mult);
 };

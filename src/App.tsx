@@ -236,6 +236,36 @@ export default function App() {
   // Compatível com o cache antigo: teen (histórico de todos) mantém a chave
   // legada `prog_${semana}`; trilhas novas ganham a trilha na chave.
   const semKey = (l: any, track?: string) => 'prog_' + (track && track !== 'teen' ? track + '_' : '') + (l?.semana || 'w');
+  // Último carimbo de correção de admin que ESTE aparelho já honrou.
+  const zeraKey = (l: any, track?: string) => 'zerado_' + (track && track !== 'teen' ? track + '_' : '') + (l?.semana || 'w');
+
+  // Junta o progresso local com o do servidor. Normalmente MESCLA (ver
+  // mergeProgress): progresso que nunca sincronizou não pode ser apagado por
+  // um login. A exceção é a correção de admin — quando o doc do servidor traz
+  // um `zeradoEm` que este aparelho ainda não viu, o local é DESCARTADO. Sem
+  // isso a mescla pegaria o maior XP e a união dos dias, e o próximo login do
+  // aluno desfaria a correção em silêncio, sem ninguém entender por quê.
+  const conciliarProgresso = (local: any, dbProg: any, l: any, track?: string) => {
+    const carimbo = dbProg?.zeradoEm;
+    if (carimbo && gs(zeraKey(l, track), null) !== carimbo) {
+      ss(zeraKey(l, track), carimbo);
+      return {
+        corrigido: true,
+        base: {
+          xp: dbProg.xp || 0, streak: dbProg.streak || 0,
+          done: dbProg.done || [], history: dbProg.history || {},
+          liberados: dbProg.liberados || [],
+        },
+      };
+    }
+    const merged = mergeProgress(local, dbProg);
+    return {
+      corrigido: false,
+      base: merged
+        ? { xp: merged.xp, streak: merged.streak, done: merged.done || [], history: merged.history || {}, liberados: dbProg?.liberados || [] }
+        : null,
+    };
+  };
 
   useEffect(() => {
     if (inAppNotif) {
@@ -303,13 +333,15 @@ export default function App() {
             // terminou mas não chegou à nuvem (falha de rede, ou o bug de regra
             // que apagava toda gravação com locationId) seria APAGADO aqui no
             // próximo login, porque o servidor tinha a versão mais velha.
-            const merged = mergeProgress(p, dbProg);
-            if (merged) {
-              p = { xp: merged.xp, streak: merged.streak, done: merged.done || [], history: merged.history || {} };
+            const { base, corrigido } = conciliarProgresso(p, dbProg, l, track);
+            if (base) {
+              p = base;
               ss(semKey(l, track), p);
               // Servidor ficou pra trás do que o merge revelou? Sobe a versão
               // completa — é o que efetivamente RECUPERA o quiz perdido.
-              if (dbUser && (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0))) {
+              // Depois de uma correção de admin, não: subir aqui devolveria
+              // exatamente o que o admin acabou de tirar.
+              if (!corrigido && dbUser && (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0))) {
                 saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor, dbUser.locationId).catch(console.error);
               }
             }
@@ -383,11 +415,11 @@ export default function App() {
       // Mescla em vez de sobrescrever — mesmo motivo do boot: progresso local
       // não sincronizado (falha de rede, ou o bug de regra que travava toda
       // gravação com locationId) não pode ser apagado por login.
-      const merged = mergeProgress(p, dbProg);
-      if (merged) {
-        p = { xp: merged.xp, streak: merged.streak, done: merged.done || [], history: merged.history || {} };
+      const { base, corrigido } = conciliarProgresso(p, dbProg, l, j?.track);
+      if (base) {
+        p = base;
         ss(semKey(l, j?.track), p);
-        if (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0)) {
+        if (!corrigido && (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0))) {
           saveProgress(p, l.semana, j.id, j.nome, j.avatar, l.trimestre, j?.track || 'teen', !!j.isAdmin, !!j.isGuest, !!j.isProfessor, j.locationId).catch(console.error);
         }
       }
@@ -415,6 +447,9 @@ export default function App() {
     } catch(e) {}
 
     let readingXP = 0;
+    // Dia liberado pelo admin: refazer vale 100%, não os 75% de quem atrasou.
+    // A liberação é CONSUMIDA aqui — vale para uma volta, não para sempre.
+    const liberado = (prog.liberados || []).includes(diaAtual.id);
     const isRepeat = prog.done.includes(diaAtual.id);
     // Anti-fraude: reabrir o quiz do dia sem terminar (2ª tentativa em diante)
     // zera o XP daquele dia ao concluir — ver Quiz em components.tsx. A 1ª
@@ -424,7 +459,7 @@ export default function App() {
     if (punido) {
       res.xpTotal = 0;
     } else if (!isRepeat) {
-      readingXP = Math.round(100 * (dbLicaoData || diaAtual.data ? getRecencyMult(dbLicaoData || diaAtual.data) : 1.0));
+      readingXP = Math.round(100 * (dbLicaoData || diaAtual.data ? getRecencyMult(dbLicaoData || diaAtual.data, liberado) : 1.0));
       res.xpTotal += readingXP;
     }
 
@@ -437,6 +472,7 @@ export default function App() {
       xp: novoXP,
       streak: novoStreak,
       done: novaDone,
+      liberados: (prog.liberados || []).filter((d: number) => d !== diaAtual.id),
       history: { ...prog.history, [diaAtual.id]: {
          ...prog.history[diaAtual.id],
          xp: isRepeat ? (prog.history[diaAtual.id]?.xp || 0) : res.xpTotal,
@@ -697,7 +733,7 @@ export default function App() {
 
       {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(jogador?.track || 'teen', licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
-      {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
+      {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} liberado={(prog.liberados || []).includes(diaAtual.id)} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
       {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading} onRefresh={() => loadSeason(licao.trimestre, true)} />}
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onModoAoVivo={() => setTela('liveHost')} />}

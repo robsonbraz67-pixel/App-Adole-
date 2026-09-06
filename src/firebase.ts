@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { isRankingHidden, computeRealStreak, aggregateWeekRanking } from './utils';
 
 const firebaseConfig = {
@@ -265,7 +265,7 @@ const trackKey = (userId: string, week: string, track?: string) =>
 export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, track: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean, locationId?: string) => {
   const progId = trackKey(userId, week, track);
   const progRef = doc(db, 'progress', progId);
-  await setDoc(progRef, {
+  const corpo: any = {
     userId,
     week,
     track,
@@ -285,8 +285,23 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     // campos rejeitam documentos com chaves desconhecidas, o que quebrava o save de todos
     ...(isGuest ? { isGuest: true } : {}),
     ...(isProfessor ? { isProfessor: true } : {}),
+    // Dias liberados pelo admin para refazer sem punição de data. Enviado
+    // mesmo VAZIO: como o save é merge, mandar só quando tem item faria a
+    // liberação já usada continuar para sempre no servidor. Ausente só para
+    // progresso vindo de localStorage antigo, que nem conhece o campo.
+    ...(Array.isArray(prog.liberados) ? { liberados: prog.liberados } : {}),
     updatedAt: serverTimestamp()
-  }, { merge: true });
+  };
+  try {
+    await setDoc(progRef, corpo, { merge: true });
+  } catch {
+    // Mesma janela de deploy de sempre: se as regras publicadas ainda não
+    // conhecerem 'liberados', hasOnly() recusa o documento INTEIRO — e sem
+    // este refazer NENHUM aluno conseguiria salvar quiz. A liberação se perde
+    // até as regras subirem; o progresso, não.
+    const { liberados, ...semLiberados } = corpo;
+    await setDoc(progRef, semLiberados, { merge: true });
+  }
 };
 
 // Mescla dois docs de progresso SEM perder nada: une os dias concluídos,
@@ -353,6 +368,65 @@ export const getStudyNotes = async (userId: string, week: string, track: string)
 // marcar dias já feitos em semanas anteriores. Consulta só por userId: os
 // docs legados (histórico) não têm campo `track`, então filtrar por trilha
 // no servidor excluiria justamente o histórico.
+// ===== Auditoria e correção de pontuação (admin) =====
+// Sai tudo da coleção progress, que já é pública para o ranking: auditar um
+// aluno inteiro custa UMA consulta, não uma leitura por semana. Cada doc traz
+// a semana, o XP dela e o `history` dia a dia — que é onde mora a resposta de
+// "de onde veio esse número".
+export const getProgressoDoUsuario = async (userId: string) => {
+  const snap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId)));
+  return snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+};
+
+// Toda correção de admin carimba `zeradoEm`. O motivo: o aparelho do aluno
+// guarda o progresso no localStorage e, no boot, MESCLA local com servidor
+// pegando o maior XP e a união dos dias (ver mergeProgress). Sem um marcador,
+// o próximo login do aluno desfaria a correção em silêncio, e o admin não
+// teria como saber. O cliente compara este carimbo com o último que já
+// honrou; sendo diferente, descarta o local e adota o servidor.
+//
+// Devolve 'completo' ou 'parcial': se as regras publicadas ainda não
+// conhecerem os campos novos, hasOnly() recusa o update INTEIRO — então a
+// correção é refeita sem eles, e quem chamou precisa avisar que ela pode ser
+// desfeita pelo aparelho do aluno.
+type ResultadoCorrecao = 'completo' | 'parcial';
+const gravarCorrecao = async (progId: string, patch: any): Promise<ResultadoCorrecao> => {
+  const ref = doc(db, 'progress', progId);
+  try {
+    await updateDoc(ref, { ...patch, zeradoEm: Date.now(), updatedAt: serverTimestamp() });
+    return 'completo';
+  } catch {
+    const { liberados, ...semCamposNovos } = patch;
+    await updateDoc(ref, { ...semCamposNovos, updatedAt: serverTimestamp() });
+    return 'parcial';
+  }
+};
+
+// XP da semana é sempre a soma do histórico que sobrou — nunca um número
+// digitado à mão. Assim o total e o dia a dia não têm como divergir.
+const somarHistorico = (history: any) =>
+  Object.values(history || {}).reduce((t: number, e: any) => t + (Number(e?.xp) || 0), 0);
+
+// Zera UM dia. `streak` no doc de progresso é o contador de dias daquela
+// semana (ver handleDoneQuiz em App.tsx), então volta a ser done.length.
+// Com `liberar`, o dia entra em `liberados`: ao refazer, vale 100% em vez dos
+// 75% de quem atrasou.
+export const adminZerarDia = async (progId: string, atual: any, diaId: number, liberar: boolean) => {
+  const done = (atual.done || []).filter((d: number) => d !== diaId);
+  const history = { ...(atual.history || {}) };
+  delete history[diaId];
+  const liberados = liberar
+    ? Array.from(new Set([...(atual.liberados || []), diaId]))
+    : (atual.liberados || []).filter((d: number) => d !== diaId);
+  return gravarCorrecao(progId, {
+    done, history, xp: somarHistorico(history), streak: done.length,
+    ...(liberados.length ? { liberados } : {}),
+  });
+};
+
+export const adminZerarSemana = async (progId: string) =>
+  gravarCorrecao(progId, { done: [], history: {}, xp: 0, streak: 0, liberados: [] });
+
 export const getUserAllDone = async (userId: string, _track?: string): Promise<Record<string, number[]>> => {
   const snap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId)));
   const map: Record<string, number[]> = {};

@@ -79,7 +79,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -802,7 +802,7 @@ const EditDayModal = ({ dia, semana, track, onClose, onSaved }: any) => {
 };
 
 /* ===== QUIZ ===== */
-export const Quiz = ({ dia, onDone, onBack }: any) => {
+export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
   const [qi, setQi] = useState(0);
   const [ans, setAns] = useState<number | null>(null);
   const [resps, setResps] = useState<any[]>([]);
@@ -902,7 +902,7 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
     clearInterval(timerRef.current);
     const t = elT !== undefined ? elT : elapsed;
     const ok = idx === q.correta;
-    const xp = xpSpeed(t, ok, dia.data);
+    const xp = xpSpeed(t, ok, dia.data, !!liberado);
     setAns(idx);
     
     if (ok) {
@@ -2282,6 +2282,220 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
   );
 };
 
+/* ===== AUDITORIA DE PONTUAÇÃO (admin) ===== */
+// Responde três perguntas que antes só o console do Firestore respondia:
+// de onde veio o XP de um aluno (semana a semana e dia a dia), como tirar um
+// ponto lançado errado, e como deixar alguém refazer um dia sem levar a
+// punição de data — os 75% de quem faz fora da semana (ver getRecencyMult).
+//
+// Leitura: UMA consulta por aluno auditado. A coleção progress já é pública
+// para o ranking, então auditar não acrescenta permissão nenhuma; só as
+// correções é que exigem admin (a regra confere, não esta tela).
+const AuditoriaPontuacao = ({ users }: { users: any[] }) => {
+  const [busca, setBusca] = useState('');
+  const [alvo, setAlvo] = useState<any>(null);
+  const [linhas, setLinhas] = useState<any[] | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [semanaAberta, setSemanaAberta] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState('');
+
+  const encontrados = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    if (t.length < 2) return [];
+    return users
+      .filter(u => (u.nome || '').toLowerCase().includes(t) || (u.email || '').toLowerCase().includes(t))
+      .slice(0, 8);
+  }, [busca, users]);
+
+  const carregar = async (u: any) => {
+    setAlvo(u); setBusca(''); setCarregando(true); setLinhas(null); setAviso('');
+    try {
+      const docs = await getProgressoDoUsuario(u.id);
+      // Mais recente primeiro: a semana que o professor quer conferir é quase
+      // sempre a de agora. `week` é '2026-W26', então ordem alfabética serve.
+      docs.sort((a: any, b: any) => String(b.week).localeCompare(String(a.week)));
+      setLinhas(docs);
+    } catch {
+      setAviso('Não foi possível ler o progresso deste aluno.');
+    }
+    setCarregando(false);
+  };
+
+  // Metadados da lição para dar nome e data a cada dia. Se a trilha do aluno
+  // não estiver carregada neste aparelho, cai para "Dia N" em vez de sumir.
+  const licaoDe = (semana: string, track?: string) => {
+    try { return (getTrackLessons((track as any) || 'teen') as any[]).find(l => l.semana === semana) || null; }
+    catch { return null; }
+  };
+
+  const executar = async (rotulo: string, fn: () => Promise<'completo' | 'parcial'>) => {
+    if (ocupado || !window.confirm(rotulo)) return;
+    setOcupado(true); setAviso('');
+    try {
+      const r = await fn();
+      if (r === 'parcial') {
+        setAviso('Correção gravada, MAS as regras publicadas ainda não aceitam os campos novos: '
+          + 'o aparelho do aluno pode desfazer isso no próximo login. Publique o firestore.rules.');
+      }
+      if (alvo) await carregar(alvo);
+    } catch {
+      setAviso('A gravação foi recusada. Isso acontece enquanto o firestore.rules novo não estiver publicado.');
+    }
+    setOcupado(false);
+  };
+
+  const totalXp = (linhas || []).reduce((t, l: any) => t + (Number(l.xp) || 0), 0);
+  const totalDias = (linhas || []).reduce((t, l: any) => t + ((l.done || []).length), 0);
+
+  return (
+    <div style={{ background: 'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24 }}>
+      {!alvo ? (
+        <>
+          <input
+            className="inp"
+            style={{ fontSize: 14, padding: 11 }}
+            placeholder="Nome ou e-mail do aluno"
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+            {encontrados.map(u => (
+              <div
+                key={u.id}
+                onClick={() => carregar(u)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', background: 'var(--row-bg)', borderRadius: 10, cursor: 'pointer' }}
+              >
+                <span style={{ fontSize: 20 }}>{(u.avatar || '').length > 10 ? '🙂' : (u.avatar || '🙂')}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--txt2)' }}>{u.nome}</div>
+                  <div style={{ fontSize: 11, color: 'var(--mut)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
+                </div>
+              </div>
+            ))}
+            {busca.trim().length >= 2 && encontrados.length === 0 && (
+              <div style={{ fontSize: 12.5, color: 'var(--mut)', padding: '6px 2px' }}>Ninguém com esse nome.</div>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>{alvo.nome}</div>
+              <div className="num" style={{ fontSize: 11.5, color: 'var(--mut)' }}>
+                {totalXp} XP · {totalDias} dia{totalDias !== 1 ? 's' : ''} · {(linhas || []).length} semana{(linhas || []).length !== 1 ? 's' : ''}
+              </div>
+            </div>
+            <button
+              onClick={() => { setAlvo(null); setLinhas(null); setSemanaAberta(null); setAviso(''); }}
+              style={{ background: 'none', border: '1.5px solid var(--b3)', color: 'var(--mut)', borderRadius: 8, padding: '6px 10px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}
+            >← Trocar aluno</button>
+          </div>
+
+          {aviso && (
+            <div style={{ padding: '9px 11px', borderRadius: 10, border: '1.5px solid var(--gold)', background: 'rgba(247,198,0,.1)', color: 'var(--gold)', fontSize: 12, lineHeight: 1.45, marginBottom: 10 }}>
+              ⚠️ {aviso}
+            </div>
+          )}
+
+          {carregando ? <div style={{ color: 'var(--mut)', fontSize: 13 }}>Carregando...</div>
+           : !linhas?.length ? <div style={{ color: 'var(--mut)', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>Este aluno ainda não pontuou em nenhuma semana.</div>
+           : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {linhas.map((linha: any) => {
+                const licaoSem = licaoDe(linha.week, linha.track);
+                const aberta = semanaAberta === linha.id;
+                const done: number[] = linha.done || [];
+                const liberados: number[] = linha.liberados || [];
+                // Os dias mostrados vêm da lição quando ela é conhecida; senão,
+                // do próprio histórico — auditoria não pode depender de a
+                // trilha do aluno estar carregada neste aparelho.
+                const dias: any[] = licaoSem?.dias?.length
+                  ? licaoSem.dias
+                  : Object.keys(linha.history || {}).map(k => ({ id: Number(k), titulo: `Dia ${k}` }));
+                return (
+                  <div key={linha.id} style={{ background: 'var(--row-bg)', borderRadius: 10, overflow: 'hidden' }}>
+                    <div
+                      onClick={() => setSemanaAberta(aberta ? null : linha.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 11px', cursor: 'pointer' }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {licaoSem?.titulo || linha.week}
+                        </div>
+                        <div className="num" style={{ fontSize: 11, color: 'var(--mut)', marginTop: 2 }}>
+                          {linha.week}{linha.track && linha.track !== 'teen' ? ` · ${linha.track}` : ''} · {done.length} dia{done.length !== 1 ? 's' : ''}
+                          {liberados.length ? ` · ${liberados.length} liberado${liberados.length !== 1 ? 's' : ''}` : ''}
+                          {linha.zeradoEm ? ' · corrigido' : ''}
+                        </div>
+                      </div>
+                      <div className="num" style={{ fontSize: 15, fontWeight: 900, color: 'var(--gold)' }}>{linha.xp || 0}</div>
+                      <span style={{ fontSize: 11, color: 'var(--mut)' }}>{aberta ? '▲' : '▼'}</span>
+                    </div>
+
+                    {aberta && (
+                      <div style={{ padding: '0 11px 11px' }}>
+                        {dias.map((d: any) => {
+                          const h = (linha.history || {})[d.id] || (linha.history || {})[String(d.id)];
+                          const feito = done.includes(d.id);
+                          const liberado = liberados.includes(d.id);
+                          return (
+                            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderTop: '1px solid var(--b1)' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, lineHeight: 1.35, color: feito ? 'var(--txt2)' : 'var(--mut)' }}>
+                                  {feito ? '✅' : '⬜'} {d.titulo || `Dia ${d.id}`}
+                                  {liberado && <span style={{ color: 'var(--teal)', fontWeight: 800 }}> · liberado</span>}
+                                </div>
+                                <div className="num" style={{ fontSize: 10.5, color: 'var(--mut)', marginTop: 1 }}>
+                                  {d.data ? `${d.data} · ` : ''}
+                                  {h ? `${h.xp || 0} XP${typeof h.acertos === 'number' ? ` · ${h.acertos} acertos` : ''}${h.reiniciado ? ' · reiniciou o quiz' : ''}` : 'sem registro'}
+                                </div>
+                              </div>
+                              {feito && (
+                                <button
+                                  disabled={ocupado}
+                                  onClick={() => executar(
+                                    `Zerar "${d.titulo || `Dia ${d.id}`}" de ${alvo.nome}?\n\nO XP desse dia sai do ranking e o dia volta a valer ponto se ele refizer — com a punição de data normal.`,
+                                    () => adminZerarDia(linha.id, linha, d.id, false)
+                                  )}
+                                  style={{ background: 'rgba(227,28,61,.15)', color: 'var(--danger)', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 10.5, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}
+                                >Zerar</button>
+                              )}
+                              <button
+                                disabled={ocupado}
+                                onClick={() => executar(
+                                  feito
+                                    ? `Liberar "${d.titulo || `Dia ${d.id}`}" para ${alvo.nome} refazer?\n\nO XP desse dia é zerado e, ao refazer, ele vale 100% — sem o desconto de quem faz fora da data.`
+                                    : `Liberar "${d.titulo || `Dia ${d.id}`}" para ${alvo.nome} sem punição de data?\n\nAo fazer, vale 100%.`,
+                                  () => adminZerarDia(linha.id, linha, d.id, true)
+                                )}
+                                style={{ background: 'rgba(30,158,134,.15)', color: 'var(--teal)', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 10.5, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}
+                              >{feito ? 'Refazer 100%' : 'Liberar 100%'}</button>
+                            </div>
+                          );
+                        })}
+                        <button
+                          disabled={ocupado}
+                          onClick={() => executar(
+                            `Zerar a SEMANA inteira de ${alvo.nome}?\n\n${licaoSem?.titulo || linha.week}\nTodos os ${done.length} dia(s) e ${linha.xp || 0} XP saem do ranking.`,
+                            () => adminZerarSemana(linha.id)
+                          )}
+                          style={{ width: '100%', marginTop: 10, background: 'rgba(227,28,61,.12)', color: 'var(--danger)', border: '1.5px solid rgba(227,28,61,.35)', borderRadius: 8, padding: '8px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
+                        >🗑️ Zerar a semana inteira</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
@@ -2355,6 +2569,8 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
         alert('Erro ao atualizar usuário');
      }
   };
+
+  const [showAudit, setShowAudit] = useState(false);
 
   // Ofensiva real de todos (Firestore, independente de aparelho)
   const [streaks, setStreaks] = useState<Record<string, { streak: number }>>({});
@@ -2552,6 +2768,12 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
             </div>
           )}
         </div>
+
+        <div className="sec-title" style={{marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer'}} onClick={() => setShowAudit(s => !s)}>
+          <span>🔎 Auditoria de pontuação</span>
+          <span style={{fontSize:12, color:'var(--mut)'}}>{showAudit ? '▲ ocultar' : '▼ ver'}</span>
+        </div>
+        {showAudit && <AuditoriaPontuacao users={users} />}
 
         <div className="sec-title" style={{marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer'}} onClick={() => setShowLogs(s => !s)}>
           <span>🛠️ Logs técnicos de erro {errorLogs.length > 0 && `(${errorLogs.length})`}</span>
