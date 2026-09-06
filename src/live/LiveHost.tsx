@@ -8,7 +8,7 @@ import {
   revanche, buscarRelatorio, assinarContagemRespostas, atualizarPlacarSala,
 } from './liveGameApi';
 import {
-  BarraRespostas, Placar, LivePodium, Contagem, MS_CONTAGEM, FaixaRodada,
+  BarraRespostas, Placar, LivePodium, Contagem, MS_CONTAGEM, FaixaRodada, useTelao,
   estiloOpcoes, decorridoNaPergunta, duracaoDaPergunta, Chama, SeloTipo,
 } from './LiveShared';
 import { agoraServidor } from './relogio';
@@ -93,6 +93,11 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   const [tempoRestante, setTempoRestante] = useState(0);
   const [contagem, setContagem] = useState(0);   // 5..1 antes da pergunta; 0 = valendo
   const [musicaOn, setMusicaOn] = useState(true);
+  // Modo telão: só com a sala ABERTA e numa tela larga e deitada. A classe vai
+  // no <html> porque o que precisa ser desfeito (#root com 480/720px de
+  // largura máxima) está acima de qualquer componente — é o app inteiro que
+  // deixa de ser um celular e vira uma tela de projeção.
+  const telaLarga = useTelao();
   // Tema musical da partida: um conjunto de trilhas (espera, perguntas,
   // rodada final, pódio), não uma música solta — ver TEMAS em chiptune.ts.
   // Fica no localStorage porque é gosto do professor, não da sala.
@@ -179,6 +184,12 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     tocarMusicaFundo(trilhaDaVez);
     return () => pararMusicaFundo();
   }, [code, musicaOn, trilhaDaVez, emContagem]);
+
+  const telao = telaLarga && !!code;
+  useEffect(() => {
+    document.documentElement.classList.toggle('telao', telao);
+    return () => document.documentElement.classList.remove('telao');
+  }, [telao]);
 
   // Enquanto a turma entra pelo QR não há nada acontecendo na tela: é a hora
   // de montar o buffer de palmas, que é caro (ver prepararPodio).
@@ -821,7 +832,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
           <div style={{ fontWeight: 900, fontSize: 17 }}>Lobby</div>
           {botaoMusica}
         </div>
-        <div style={{ padding: '20px 16px 100px', textAlign: 'center' }}>
+        <div className="live-lobby">
           {avisoComando}
           {somBloqueado && (
             <div
@@ -831,18 +842,23 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
               🔈 O navegador bloqueou o som — toque aqui para liberar a música
             </div>
           )}
-          <div className="live-code">{code}</div>
-          <div style={{ fontSize: 13, color: 'var(--mut)', margin: '8px 0 18px' }}>Entre em {window.location.host} e digite o código, ou escaneie:</div>
-          <div style={{ background: '#fff', display: 'inline-block', padding: 12, borderRadius: 16, marginBottom: 22 }}>
-            <QRCodeSVG value={joinUrl} size={180} />
+          {/* Duas caixas: "como entrar" e "quem já entrou". No celular elas
+              seguem empilhadas; no telão viram as duas colunas do 16:9. */}
+          <div className="live-lobby-entrada">
+            <div className="live-code">{code}</div>
+            <div className="live-lobby-como">Entre em {window.location.host} e digite o código, ou escaneie:</div>
+            <div className="live-qr">
+              <QRCodeSVG value={joinUrl} size={telao ? 340 : 180} />
+            </div>
           </div>
+          <div className="live-lobby-turma">
           <div className="sec-title">{jogadores.length} jogador{jogadores.length !== 1 ? 'es' : ''} na sala</div>
           {/* Cada ficha tem um ✕: apelido impróprio no telão é o problema
               clássico de Kahoot em sala, e sem isto a única saída era
               cancelar a partida inteira. */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', margin: '10px 0 24px' }}>
+          <div className="live-lobby-fichas">
             {jogadores.map(j => (
-              <div key={j.uid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--g4)', borderRadius: 30, padding: '6px 8px 6px 12px', fontSize: 13, fontWeight: 700 }}>
+              <div key={j.uid} className="live-ficha">
                 {j.avatar?.length > 10 ? <img src={j.avatar} style={{ width: 20, height: 20, borderRadius: '50%' }} alt="" /> : j.avatar} {j.nome}
                 <button
                   onClick={() => expulsar(j)}
@@ -868,6 +884,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
             onClick={() => comPasso('iniciar', () => iniciarPergunta(code, 0, perguntas[0], duracaoEfetiva(perguntas[0])))}
             disabled={perguntas.length === 0 || !comando}
           >▶️ INICIAR</button>
+          </div>
         </div>
       </div>
     );
@@ -896,31 +913,29 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     const jaResponderam = respostasRecebidas;
     return (
       <div className="scr-full">
-        <div style={{ padding: '14px 20px', background: 'var(--hdr-bg)' }}>
+        <div className="live-q-topo">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 900, fontSize: 22 }}>{game.pausado ? '⏸️' : '⏱️'} {tempoRestante}s</span>
-            <div style={{ fontWeight: 800, color: 'var(--mut)', fontSize: 15 }}>{game.currentIndex + 1}/{perguntas.length}</div>
+            <span className="live-q-tempo">{game.pausado ? '⏸️' : '⏱️'} {tempoRestante}s</span>
+            <div className="live-q-passo">{game.currentIndex + 1}/{perguntas.length}</div>
             {botaoMusica}
           </div>
         </div>
-        <div style={{ padding: '18px 16px 0' }}>
+        <div className="live-q-cabeca">
           <SeloTipo tipo={tipoQ} multiplicador={multQ} />
-          <div style={{ background: 'var(--g5)', borderRadius: 18, padding: '24px 18px', textAlign: 'center', fontWeight: 800, fontSize: 20, lineHeight: 1.4, border: '1.5px solid rgba(247,198,0,.2)', minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {game.currentQuestion?.pergunta}
-          </div>
+          <div className="live-q-enunciado">{game.currentQuestion?.pergunta}</div>
         </div>
-        <div style={{ padding: '18px 16px', flex: 1 }}>
+        <div className="live-q-corpo">
           <div className={`quiz-grid${tipoQ === 'vf' ? ' vf' : ''}`}>
             {opcoes.map((op, i) => (
               <div key={i} className={`qbtn ${estilos[i]?.cls}`} style={{ cursor: 'default' }}>
                 <span className="sym">{estilos[i]?.sym}</span>
-                <span style={{ fontSize: 14, lineHeight: 1.3 }}>{op}</span>
+                <span>{op}</span>
               </div>
             ))}
           </div>
           {/* Contador de respostas: é o que diz ao professor se já pode
               avançar ou se ainda falta gente digitando. */}
-          <div style={{ textAlign: 'center', color: 'var(--mut)', marginTop: 18, fontSize: 13 }}>
+          <div className="live-q-contador">
             {game.pausado
               ? '⏸️ Partida pausada — ninguém pode responder agora.'
               : `${jaResponderam} de ${jogadores.length} já responderam`}
@@ -940,15 +955,15 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     return (
       <div className="live-screen">
         <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>{tipoR === 'enquete' ? '📊 Resultado' : 'Revelação'}</div>{botaoMusica}</div>
-        <div className="live-body" style={{ padding: '10px 16px 16px' }}>
-          <div style={{ fontWeight: 800, fontSize: 16, textAlign: 'center', marginBottom: 10 }}>{game.currentQuestion?.pergunta}</div>
-          <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--mut)', marginBottom: 4 }}>
+        <div className="live-body live-reveal">
+          <div className="live-reveal-pergunta">{game.currentQuestion?.pergunta}</div>
+          <div className="live-reveal-resumo">
             {tipoR === 'enquete'
               ? `${totalRespostas} resposta${totalRespostas !== 1 ? 's' : ''} — enquete não vale ponto`
               : `✅ ${acertaram} de ${totalRespostas} acertaram`}
           </div>
           <BarraRespostas opcoes={game.currentQuestion?.opcoes || []} counts={game.revealCounts || []} correctIndex={game.revealCorrectIndex} tipo={tipoR} />
-          {pergunta?.explicacao && <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--g3)', fontSize: 13, color: 'var(--txt2)', lineHeight: 1.5 }}>{pergunta.explicacao}</div>}
+          {pergunta?.explicacao && <div className="live-reveal-explica">{pergunta.explicacao}</div>}
         </div>
         {barraControles}
       </div>
@@ -962,7 +977,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
         <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>🏆 Placar</div>{botaoMusica}</div>
         <div className="live-body">
           <FaixaRodada indice={game.currentIndex} total={perguntas.length} jogadores={jogadores.length} />
-          <Placar jogadores={jogadores} roundKey={game.currentIndex} comSom={musicaOn} onExpulsar={expulsar} />
+          <Placar jogadores={jogadores} roundKey={game.currentIndex} comSom={musicaOn} onExpulsar={expulsar} telao={telao} />
         </div>
         {barraControles}
       </div>
@@ -975,7 +990,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
       <Confetti show={true} />
       <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>🏁 Fim de jogo</div>{botaoMusica}</div>
       <div style={{ padding: '10px 16px 100px' }}>
-        <LivePodium jogadores={jogadores} />
+        <LivePodium jogadores={jogadores} telao={telao} />
 
         {/* Relatório: o dado de todas as respostas já existia desde a primeira
             versão e nunca era lido de volta. É o que o professor leva para o

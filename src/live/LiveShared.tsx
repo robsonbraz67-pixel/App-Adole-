@@ -50,12 +50,9 @@ export const SeloTipo = ({ tipo, multiplicador }: { tipo?: string; multiplicador
   if (tipo !== 'enquete' && multiplicador === 0) selos.push({ txt: '🎈 Sem pontos', cor: 'var(--mut)' });
   if (!selos.length) return null;
   return (
-    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+    <div className="selos-tipo">
       {selos.map(s => (
-        <span key={s.txt} style={{
-          fontSize: 11.5, fontWeight: 800, color: s.cor, border: `1.5px solid ${s.cor}`,
-          borderRadius: 30, padding: '4px 12px', fontFamily: 'Poppins,sans-serif',
-        }}>{s.txt}</span>
+        <span key={s.txt} className="selo-tipo" style={{ color: s.cor, borderColor: s.cor }}>{s.txt}</span>
       ))}
     </div>
   );
@@ -117,7 +114,7 @@ export const BarraRespostas = ({ opcoes, counts, correctIndex, tipo }: { opcoes:
               <div className={`live-chart-bar ${estilos[i]?.cls}`} style={{ height: pct + '%' }} />
             </div>
             <div className="live-chart-label">
-              <span style={{ fontSize: 18 }}>{isCorrect ? '✅' : estilos[i]?.sym}</span>
+              <span className="sim">{isCorrect ? '✅' : estilos[i]?.sym}</span>
               <span className="txt">{op}</span>
             </div>
           </div>
@@ -149,7 +146,32 @@ export const Contagem = ({ n, pergunta }: { n: number; pergunta?: string }) => (
   </div>
 );
 
-const ALTURA_LINHA = 74;   // altura da linha + respiro; usada no posicionamento
+// ===== Tela do apresentador =====
+// Larga e deitada = projetor, TV ou notebook ligado no telão. O app inteiro é
+// desenhado para 480px de largura; nessa tela ele vira uma peça de projeção,
+// onde o que importa é ser lido do fundo da sala. No celular do professor a
+// consulta dá falso e nada muda.
+export const TELAO_QUERY = '(min-width: 900px) and (orientation: landscape)';
+export const useTelao = () => {
+  const [telao, setTelao] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.(TELAO_QUERY).matches
+  );
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia(TELAO_QUERY);
+    const aoMudar = (e: MediaQueryListEvent) => setTelao(e.matches);
+    setTelao(mq.matches);
+    mq.addEventListener('change', aoMudar);
+    return () => mq.removeEventListener('change', aoMudar);
+  }, []);
+  return telao;
+};
+
+// Altura da linha do placar. Precisa existir em JS (as linhas são posicionadas
+// por translateY, ver Placar) e bater com o CSS — por isso o valor mora aqui e
+// o CSS só define a altura visual da linha.
+const ALTURA_LINHA = 74;
+const ALTURA_LINHA_TELAO = 98;
 const MS_SOMA = 1400;      // duração da contagem dos pontos da rodada
 const MEDALHAS = ['🥇', '🥈', '🥉'];
 
@@ -175,7 +197,8 @@ export const FaixaRodada = ({ indice, total, jogadores }: { indice?: number; tot
 // Cada linha é posicionada por translateY em vez de entrar na ordem do fluxo:
 // no fluxo normal, reordenar faz os elementos saltarem de lugar, sem como
 // animar a passagem de um pelo outro.
-export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar }: { jogadores: any[]; roundKey: any; meuUid?: string; comSom?: boolean; onExpulsar?: (j: any) => void }) => {
+export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar, telao }: { jogadores: any[]; roundKey: any; meuUid?: string; comSom?: boolean; onExpulsar?: (j: any) => void; telao?: boolean }) => {
+
   // Pontuação com que cada um ENTROU nesta rodada. Guardada num ref e só
   // atualizada ao virar a rodada: é o ponto de partida da contagem.
   const anterioresRef = useRef<Record<string, number>>({});
@@ -273,6 +296,30 @@ export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar }: { jo
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // No telão a lista precisa CABER. Rolar um ranking no projetor obriga o
+  // professor a voltar para o teclado no meio da comemoração — e quem está no
+  // fim da lista nunca aparece. A linha encolhe até 56px para a turma inteira
+  // entrar de uma vez; só abaixo disso a lista volta a rolar.
+  const [alturaJanela, setAlturaJanela] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 800));
+  useEffect(() => {
+    if (!telao) return;
+    const aoRedimensionar = () => setAlturaJanela(window.innerHeight);
+    aoRedimensionar();
+    window.addEventListener('resize', aoRedimensionar);
+    return () => window.removeEventListener('resize', aoRedimensionar);
+  }, [telao]);
+  // 250px é o que cabeçalho, faixa de contexto e barra de controles ocupam.
+  // Se nem com a linha no mínimo a turma couber em uma coluna, o 16:9 tem
+  // largura sobrando: vira duas colunas, que é o que salva uma turma de 20.
+  const disponivel = Math.max(200, alturaJanela - 250);
+  const cabemEmUma = Math.max(1, Math.floor(disponivel / 56));
+  const duasColunas = telao && jogadores.length > cabemEmUma;
+  const porColuna = duasColunas ? Math.ceil(jogadores.length / 2) : jogadores.length;
+  const alturaLinhaTelao = Math.max(
+    56,
+    Math.min(ALTURA_LINHA_TELAO, Math.floor(disponivel / Math.max(1, porColuna)))
+  );
+
   if (jogadores.length === 0) {
     return (
       <div className="live-placar-vazio">
@@ -284,7 +331,10 @@ export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar }: { jo
   }
 
   return (
-    <div className="live-placar" style={{ height: jogadores.length * ALTURA_LINHA }}>
+    <div
+      className={`live-placar${duasColunas ? ' duas' : ''}`}
+      style={{ height: (telao ? porColuna * alturaLinhaTelao : jogadores.length * ALTURA_LINHA) }}
+    >
       {exibidos.map(j => {
         const pos = posicoes[j.uid];
         const antes = posAntesRef.current[j.uid];
@@ -299,12 +349,18 @@ export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar }: { jo
             key={j.uid}
             className={classes.join(' ')}
             style={{
-              transform: `translateY(${pos * ALTURA_LINHA}px)`,
+              // Em duas colunas o deslocamento horizontal é de 100% da PRÓPRIA
+              // largura mais o vão — assim as duas colunas fecham exatamente a
+              // largura do quadro, sem depender de conta em pixel.
+              transform: duasColunas
+                ? `translate(${Math.floor(pos / porColuna) ? 'calc(100% + 26px)' : '0px'}, ${(pos % porColuna) * alturaLinhaTelao}px)`
+                : `translateY(${pos * (telao ? alturaLinhaTelao : ALTURA_LINHA)}px)`,
               transition: posicionado ? undefined : 'none',
+              ...(telao ? { height: alturaLinhaTelao - 10 } : null),
             }}
           >
             <div className="pos">{pos < 3 ? MEDALHAS[pos] : <span className="num">{pos + 1}º</span>}</div>
-            <Avatar avatar={j.avatar} size={40} ring={pos === 0} />
+            <Avatar avatar={j.avatar} size={telao ? Math.max(30, Math.min(54, alturaLinhaTelao - 34)) : 40} ring={pos === 0} />
             <div className="quem">
               {/* Nada de crachá "você" aqui: com o nome, a chama e o "+750"
                   disputando a mesma linha, o crachá espremia o nome até virar
@@ -340,32 +396,33 @@ export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar }: { jo
 
 // Pódio final — mesma estrutura de .podium/.pod-col/.pod-base do Ranking,
 // só troca xp/dias por nome+pontuação da sala (efêmera, não é XP real).
-export const LivePodium = ({ jogadores }: { jogadores: any[] }) => {
+export const LivePodium = ({ jogadores, telao }: { jogadores: any[]; telao?: boolean }) => {
   if (jogadores.length < 1) return <div style={{ textAlign: 'center', color: 'var(--mut)', padding: 30 }}>Ninguém pontuou nesta sala.</div>;
   const [p1, p2, p3] = jogadores;
+  const g = (n: number) => (telao ? Math.round(n * 1.9) : n);
   return (
-    <div className="podium">
+    <div className={`podium${telao ? ' telao' : ''}`}>
       {p2 && (
-        <div className="pod-col">
-          <Avatar avatar={p2.avatar} size={44} />
-          <div style={{ fontWeight: 800, fontSize: 12, maxWidth: 74, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p2.nome}</div>
+        <div className="pod-col dois">
+          <Avatar avatar={p2.avatar} size={g(44)} />
+          <div className="pod-nome">{p2.nome}</div>
           <div className="pod-base p2">🥈</div>
-          <div style={{ fontWeight: 900, color: 'var(--gold)', fontSize: 12 }}>{p2.score} pts</div>
+          <div className="pod-pts">{p2.score} pts</div>
         </div>
       )}
-      <div className="pod-col">
-        <div style={{ fontSize: 20, animation: 'bounce 2s ease-in-out infinite' }}>👑</div>
-        <Avatar avatar={p1.avatar} size={62} ring />
-        <div style={{ fontWeight: 900, fontSize: 14, maxWidth: 86, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--gold)' }}>{p1.nome}</div>
+      <div className="pod-col um">
+        <div className="pod-coroa">👑</div>
+        <Avatar avatar={p1.avatar} size={g(62)} ring />
+        <div className="pod-nome">{p1.nome}</div>
         <div className="pod-base p1">🥇</div>
-        <div style={{ fontWeight: 900, color: 'var(--gold)', fontSize: 14 }}>{p1.score} pts</div>
+        <div className="pod-pts">{p1.score} pts</div>
       </div>
       {p3 && (
-        <div className="pod-col">
-          <Avatar avatar={p3.avatar} size={44} />
-          <div style={{ fontWeight: 800, fontSize: 11, maxWidth: 70, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p3.nome}</div>
+        <div className="pod-col tres">
+          <Avatar avatar={p3.avatar} size={g(44)} />
+          <div className="pod-nome">{p3.nome}</div>
           <div className="pod-base p3">🥉</div>
-          <div style={{ fontWeight: 900, color: 'var(--gold)', fontSize: 12 }}>{p3.score} pts</div>
+          <div className="pod-pts">{p3.score} pts</div>
         </div>
       )}
     </div>
