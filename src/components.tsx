@@ -79,7 +79,8 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes } from './firebase';
+import { signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
+import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -233,6 +234,57 @@ export const InstalarApp = () => {
         </div>
       )}
     </>
+  );
+};
+
+/* ===== REPORTAR PROBLEMA =====
+   Botão em Config (Perfil), disponível a qualquer momento — ao contrário do
+   relato direto da tela de erro (ErrorBoundary), este cobre "algo está
+   errado mas o app não travou" (som que não toca, ranking estranho etc.). */
+export const ReportarProblemaModal = ({ onClose }: { onClose: () => void }) => {
+  const [texto, setTexto] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+
+  const enviar = async () => {
+    if (!texto.trim()) { alert('Descreva o que aconteceu.'); return; }
+    setEnviando(true);
+    const ok = await reportarProblema(texto.trim());
+    setEnviando(false);
+    if (ok) setEnviado(true);
+    else alert('Não foi possível enviar agora. Tente de novo em instantes.');
+  };
+
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div className="glass" onClick={e => e.stopPropagation()} style={{padding:'22px 20px',maxWidth:380,width:'100%'}}>
+        {enviado ? (
+          <>
+            <div style={{fontSize:32,textAlign:'center',marginBottom:8}}>✅</div>
+            <div style={{textAlign:'center',fontWeight:900,fontSize:16,marginBottom:16}}>Relato enviado. Obrigado!</div>
+            <button className="btn btn-gold" onClick={onClose}>Fechar</button>
+          </>
+        ) : (
+          <>
+            <div style={{fontWeight:900,fontSize:16,marginBottom:10}}>🐞 Reportar um problema</div>
+            <div style={{fontSize:12,color:'var(--mut)',marginBottom:10,lineHeight:1.5}}>
+              Descreva o que aconteceu — a liderança recebe junto com informações técnicas do seu aparelho.
+            </div>
+            <textarea
+              value={texto}
+              onChange={e => setTexto(e.target.value)}
+              rows={4}
+              placeholder="Ex: o quiz travou na pergunta 3..."
+              style={{width:'100%',padding:10,borderRadius:10,background:'var(--input-bg)',color:'var(--txt)',border:'1px solid var(--input-border)',fontSize:14,resize:'vertical',marginBottom:12,fontFamily:'inherit'}}
+            />
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-ghost" onClick={onClose} style={{flex:1}}>Cancelar</button>
+              <button className="btn btn-gold" onClick={enviar} disabled={enviando} style={{flex:1}}>{enviando ? 'Enviando...' : 'Enviar'}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -726,7 +778,7 @@ const EditDayModal = ({ dia, semana, track, onClose, onSaved }: any) => {
 
         <div className="sec-title" style={{marginBottom:8}}>Perguntas do Quiz</div>
         {pergs.map((p: any, i: number) => (
-          <div key={p.id || i} style={{background:'rgba(0,0,0,.2)', borderRadius:10, padding:12, marginBottom:12}}>
+          <div key={p.id || i} style={{background:'var(--row-bg)', borderRadius:10, padding:12, marginBottom:12}}>
             <div style={{fontSize:12, color:'var(--mut)', fontWeight:800, marginBottom:6}}>Pergunta {i + 1}:</div>
             <input type="text" value={p.pergunta} onChange={e => updatePerg(i, 'pergunta', e.target.value)} style={{width:'100%', padding:'8px', borderRadius:6, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:13, marginBottom:8}} />
             {p.opcoes.map((o: string, oi: number) => (
@@ -942,8 +994,8 @@ export const Quiz = ({ dia, onDone, onBack }: any) => {
           })}
         </div>
         {ans !== null && (
-          <div style={{marginTop:14,padding:'12px 16px',borderRadius:14,background:ans === q.correta?'rgba(79,184,92,.15)':'rgba(227,28,61,.15)',border:`1.5px solid ${ans === q.correta?'#4FB85C':'#E31C3D'}`,animation:'popIn .3s ease'}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:4,color:ans === q.correta?'#4FB85C':'#E31C3D'}}>{ans === q.correta ? '✅ Correto!' : '❌ Incorreto!'}</div>
+          <div style={{marginTop:14,padding:'12px 16px',borderRadius:14,background:ans === q.correta?'rgba(79,184,92,.15)':'rgba(227,28,61,.15)',border:`1.5px solid ${ans === q.correta?'var(--success)':'#E31C3D'}`,animation:'popIn .3s ease'}}>
+            <div style={{fontWeight:800,fontSize:14,marginBottom:4,color:ans === q.correta?'var(--success)':'#E31C3D'}}>{ans === q.correta ? '✅ Correto!' : '❌ Incorreto!'}</div>
             <div style={{fontSize:13,color:'var(--txt2)',lineHeight:1.5}}>{q.explicacao}</div>
           </div>
         )}
@@ -1952,14 +2004,14 @@ export const Dupla = ({ jogador, licao, prog, weekRows, activePair, pendingInvit
           /* ===== Dupla ativa: feed do parceiro ===== */
           <>
             <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:16, padding:18, display:'flex', alignItems:'center', gap:14}}>
-              <div style={{width:56, height:56, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, background:'rgba(0,0,0,.2)', flexShrink:0}}>
+              <div style={{width:56, height:56, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30, background:'var(--row-bg)', flexShrink:0}}>
                 {partnerAvatar?.startsWith('data:') ? <img src={partnerAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/> : <span>{partnerAvatar || '👤'}</span>}
               </div>
               <div style={{flex:1, minWidth:0}}>
                 <div style={{fontSize:12, color:'var(--mut)', fontWeight:700}}>Sua dupla {PAIR_TYPE_LABELS[(pair.type as PairType)] || ''}</div>
                 <div style={{fontSize:18, fontWeight:900, color:'var(--txt2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{partnerName || 'Parceiro(a)'}</div>
               </div>
-              <button onClick={handleDesfazer} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>Desfazer</button>
+              <button onClick={handleDesfazer} style={{background:'rgba(227,28,61,.15)', color:'var(--danger)', border:'none', borderRadius:8, padding:'8px 12px', fontSize:12, fontWeight:800, cursor:'pointer'}}>Desfazer</button>
             </div>
 
             {/* Placar da dupla: mesma métrica do ranking de duplas */}
@@ -2184,7 +2236,7 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
               {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           ) : (
-            <div style={{padding:'8px', borderRadius:8, background:'rgba(0,0,0,.2)', color:'var(--txt2)', fontSize:13, fontWeight:700}}>{locName(teacherLocationId!)}</div>
+            <div style={{padding:'8px', borderRadius:8, background:'var(--row-bg)', color:'var(--txt2)', fontSize:13, fontWeight:700}}>{locName(teacherLocationId!)}</div>
           )}
         </div>
         <div>
@@ -2205,11 +2257,11 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
       ) : (
         <div style={{display:'flex', flexDirection:'column', gap:8, maxHeight:280, overflowY:'auto'}}>
           {codes.map(c => (
-            <div key={c.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'8px 10px', background:'rgba(0,0,0,.2)', borderRadius:8, opacity: c.active ? 1 : 0.55}}>
+            <div key={c.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'8px 10px', background:'var(--row-bg)', borderRadius:8, opacity: c.active ? 1 : 0.55}}>
               <div style={{minWidth:0}}>
                 <div style={{display:'flex', alignItems:'center', gap:8}}>
                   <span style={{fontFamily:'monospace', fontWeight:900, fontSize:15, color:'var(--gold)', letterSpacing:1}}>{c.code}</span>
-                  {!c.active && <span style={{fontSize:10, color:'#FF6B6B', fontWeight:800}}>REVOGADO</span>}
+                  {!c.active && <span style={{fontSize:10, color:'var(--danger)', fontWeight:800}}>REVOGADO</span>}
                 </div>
                 <div style={{fontSize:11, color:'var(--mut)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                   {locName(c.locationId)} · {TRACK_LABELS[(c.track as Track)] || c.track}
@@ -2217,10 +2269,10 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
               </div>
               <div style={{display:'flex', gap:6, flexShrink:0}}>
                 <button onClick={() => copiar(c.code)} title="Copiar" style={{background:'rgba(30,158,134,.2)', color:'var(--teal)', border:'none', borderRadius:6, padding:'6px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}>Copiar</button>
-                <button onClick={() => handleToggle(c.code, c.active)} style={{background: c.active ? 'rgba(247,198,0,.15)' : 'rgba(79,184,92,.2)', color: c.active ? '#F7C600' : '#4FB85C', border:'none', borderRadius:6, padding:'6px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                <button onClick={() => handleToggle(c.code, c.active)} style={{background: c.active ? 'rgba(247,198,0,.15)' : 'rgba(79,184,92,.2)', color: c.active ? '#F7C600' : 'var(--success)', border:'none', borderRadius:6, padding:'6px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                   {c.active ? 'Revogar' : 'Reativar'}
                 </button>
-                <button onClick={() => handleDelete(c.code)} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:6, padding:'6px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}>🗑️</button>
+                <button onClick={() => handleDelete(c.code)} style={{background:'rgba(227,28,61,.15)', color:'var(--danger)', border:'none', borderRadius:6, padding:'6px 8px', fontSize:11, fontWeight:800, cursor:'pointer'}}>🗑️</button>
               </div>
             </div>
           ))}
@@ -2311,6 +2363,42 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
     getAllUsersStreaks(getTrackLessons(jogador?.track)).then(setStreaks).catch(() => {});
   }, [licao?.trimestre]);
 
+  // Relatos manuais (botão "Reportar um problema" / tela de erro) + log
+  // automático de erro (ErrorBoundary + window.onerror/unhandledrejection).
+  const [relatos, setRelatos] = useState<any[]>([]);
+  const [loadingRelatos, setLoadingRelatos] = useState(true);
+  const [errorLogs, setErrorLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(true);
+  const [showLogs, setShowLogs] = useState(false);
+
+  useEffect(() => {
+    getRelatosUsuarios().then(setRelatos).catch(() => {}).finally(() => setLoadingRelatos(false));
+    getErrorLogs(50).then(setErrorLogs).catch(() => {}).finally(() => setLoadingLogs(false));
+  }, []);
+
+  const formatarData = (ts: any) => ts?.toDate ? ts.toDate().toLocaleString('pt-BR') : '';
+
+  const handleMarcarRelato = async (id: string, status: 'lido' | 'resolvido') => {
+    try {
+      await marcarRelatoStatus(id, status);
+      setRelatos(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+    } catch { alert('Erro ao atualizar relato'); }
+  };
+  const handleExcluirRelato = async (id: string) => {
+    if (!window.confirm('Excluir este relato?')) return;
+    try {
+      await excluirRelato(id);
+      setRelatos(prev => prev.filter(r => r.id !== id));
+    } catch { alert('Erro ao excluir relato'); }
+  };
+  const handleLimparLogs = async () => {
+    if (!window.confirm(`Excluir os ${errorLogs.length} logs carregados?`)) return;
+    try {
+      await Promise.all(errorLogs.map(l => excluirErrorLog(l.id)));
+      setErrorLogs([]);
+    } catch { alert('Erro ao limpar logs'); }
+  };
+
   const handleToggleGuest = async (userId: string, currentStatus: boolean) => {
      try {
         await toggleGuest(userId, !currentStatus);
@@ -2352,15 +2440,15 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
            {loadingUsers ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : (
               <div style={{display:'flex', flexDirection:'column', gap: 10, maxHeight: 250, overflowY:'auto'}}>
                 {[...users].sort((a,b) => (b.isAdmin?1:0) - (a.isAdmin?1:0)).map((u: any) => (
-                  <div key={u.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px', background:'rgba(0,0,0,.2)', borderRadius:8}}>
+                  <div key={u.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px', background:'var(--row-bg)', borderRadius:8}}>
                      <div style={{display:'flex', alignItems:'center', gap: 10}}>
                         <div style={{fontSize:20, width:28, height:28, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
                            {u.avatar?.length > 10 ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt="avatar"/> : <span>{u.avatar}</span>}
                         </div>
                         <div>
                            <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>
-                             {u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>} {u.isProfessor && <span style={{color:'var(--admin)', fontSize:12}}>🎓 Professor</span>} {u.isGuest && <span style={{color:'#888', fontSize:12}}>👁️ Convidado</span>}
-                             {streaks[u.id]?.streak > 0 && <span style={{color:'#FF9600', fontSize:12, marginLeft:4}}>🔥 {streaks[u.id].streak}</span>}
+                             {u.nome} {u.isAdmin && <span style={{color:'var(--gold)', fontSize:12}}>🛡️ Adm</span>} {u.isProfessor && <span style={{color:'var(--admin)', fontSize:12}}>🎓 Professor</span>} {u.isGuest && <span style={{color:'var(--mut)', fontSize:12}}>👁️ Convidado</span>}
+                             {streaks[u.id]?.streak > 0 && <span style={{color:'var(--flame)', fontSize:12, marginLeft:4}}>🔥 {streaks[u.id].streak}</span>}
                            </div>
                            <div style={{fontSize:11, color:'var(--mut)'}}>{u.email}</div>
                         </div>
@@ -2392,21 +2480,21 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
                        )}
                        <div style={{display:'flex', flexWrap:'wrap', gap: 6, justifyContent:'flex-end'}}>
                          {u.isAdmin ? (
-                           <button onClick={() => handleToggleAdmin(u.id, true)} style={{background:'rgba(227,28,61,.2)', color:'#FF6B6B', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                           <button onClick={() => handleToggleAdmin(u.id, true)} style={{background:'rgba(227,28,61,.2)', color:'var(--danger)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                               Remover Adm
                            </button>
                          ) : (
-                           <button onClick={() => handleToggleProfessor(u.id, !!u.isProfessor)} style={{background: u.isProfessor ? 'rgba(227,28,61,.2)' : 'rgba(124,79,224,.2)', color: u.isProfessor ? '#FF6B6B' : 'var(--admin)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                           <button onClick={() => handleToggleProfessor(u.id, !!u.isProfessor)} style={{background: u.isProfessor ? 'rgba(227,28,61,.2)' : 'rgba(124,79,224,.2)', color: u.isProfessor ? 'var(--danger)' : 'var(--admin)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                               {u.isProfessor ? 'Remover Professor' : '🎓 Tornar Professor'}
                            </button>
                          )}
-                         <button onClick={() => handleToggleGuest(u.id, !!u.isGuest)} style={{background: u.isGuest ? 'rgba(79,184,92,.2)' : 'rgba(136,136,136,.2)', color: u.isGuest ? '#4FB85C' : '#888', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                         <button onClick={() => handleToggleGuest(u.id, !!u.isGuest)} style={{background: u.isGuest ? 'rgba(79,184,92,.2)' : 'rgba(136,136,136,.2)', color: u.isGuest ? 'var(--success)' : 'var(--mut)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                             {u.isGuest ? '✅ Remover Convidado' : '👁️ Convidado'}
                          </button>
-                         <button onClick={() => handleBlockUser(u.id, !!u.bloqueado)} style={{background: u.bloqueado ? 'rgba(79,184,92,.2)' : 'rgba(247,198,0,.15)', color: u.bloqueado ? '#4FB85C' : '#F7C600', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                         <button onClick={() => handleBlockUser(u.id, !!u.bloqueado)} style={{background: u.bloqueado ? 'rgba(79,184,92,.2)' : 'rgba(247,198,0,.15)', color: u.bloqueado ? 'var(--success)' : '#F7C600', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                             {u.bloqueado ? '✅ Desbloquear' : '🚫 Bloquear'}
                          </button>
-                         <button onClick={() => handleDeleteUser(u.id, u.nome)} style={{background:'rgba(227,28,61,.15)', color:'#FF6B6B', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                         <button onClick={() => handleDeleteUser(u.id, u.nome)} style={{background:'rgba(227,28,61,.15)', color:'var(--danger)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
                             🗑️ Excluir
                          </button>
                        </div>
@@ -2428,6 +2516,75 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
           </>
         )}
 
+
+        <div className="sec-title" style={{marginBottom:8}}>
+          🐞 Relatos dos usuários {relatos.filter(r => r.status === 'novo').length > 0 && (
+            <span style={{color:'var(--gold)'}}>({relatos.filter(r => r.status === 'novo').length} novo{relatos.filter(r => r.status === 'novo').length > 1 ? 's' : ''})</span>
+          )}
+        </div>
+        <div style={{background:'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24}}>
+          {loadingRelatos ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div>
+           : relatos.length === 0 ? <div style={{color:'var(--mut)', fontSize:13, textAlign:'center', padding:'8px 0'}}>Nenhum relato ainda.</div>
+           : (
+            <div style={{display:'flex', flexDirection:'column', gap:8, maxHeight:320, overflowY:'auto'}}>
+              {relatos.map((r: any) => (
+                <div key={r.id} style={{padding:'10px', background:'var(--row-bg)', borderRadius:8, opacity: r.status === 'resolvido' ? 0.55 : 1}}>
+                  <div style={{display:'flex', justifyContent:'space-between', gap:8, marginBottom:4}}>
+                    <div style={{fontSize:13, fontWeight:800, color:'var(--txt2)'}}>{r.nome || 'Anônimo'} <span style={{fontWeight:400, color:'var(--mut)'}}>· {r.email || '—'}</span></div>
+                    <div style={{fontSize:10, color:'var(--mut)', whiteSpace:'nowrap'}}>{formatarData(r.criadoEm)}</div>
+                  </div>
+                  <div style={{fontSize:13, color:'var(--txt)', marginBottom:6, whiteSpace:'pre-wrap'}}>{r.mensagem}</div>
+                  {r.ultimoErro && (
+                    <pre style={{fontSize:10, color:'var(--txt2)', fontFamily:'ui-monospace,Menlo,monospace', background:'var(--row-bg-strong)', padding:'6px 8px', borderRadius:6, marginBottom:6, whiteSpace:'pre-wrap', maxHeight:80, overflow:'auto'}}>{r.ultimoErro}</pre>
+                  )}
+                  <div style={{fontSize:10, color:'var(--mut)', marginBottom:6}}>{r.tela ? `tela: ${r.tela} · ` : ''}v{r.buildId}</div>
+                  <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
+                    {r.status !== 'resolvido' && (
+                      <button onClick={() => handleMarcarRelato(r.id, 'resolvido')} style={{background:'rgba(79,184,92,.2)', color:'var(--success)', border:'none', borderRadius:6, padding:'5px 9px', fontSize:11, fontWeight:800, cursor:'pointer'}}>✅ Resolver</button>
+                    )}
+                    {r.status === 'novo' && (
+                      <button onClick={() => handleMarcarRelato(r.id, 'lido')} style={{background:'rgba(255,255,255,.08)', color:'var(--txt2)', border:'none', borderRadius:6, padding:'5px 9px', fontSize:11, fontWeight:800, cursor:'pointer'}}>👁️ Marcar lido</button>
+                    )}
+                    <button onClick={() => handleExcluirRelato(r.id)} style={{background:'rgba(227,28,61,.15)', color:'var(--danger)', border:'none', borderRadius:6, padding:'5px 9px', fontSize:11, fontWeight:800, cursor:'pointer'}}>🗑️ Excluir</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="sec-title" style={{marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer'}} onClick={() => setShowLogs(s => !s)}>
+          <span>🛠️ Logs técnicos de erro {errorLogs.length > 0 && `(${errorLogs.length})`}</span>
+          <span style={{fontSize:12, color:'var(--mut)'}}>{showLogs ? '▲ ocultar' : '▼ ver'}</span>
+        </div>
+        {showLogs && (
+          <div style={{background:'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24}}>
+            {loadingLogs ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div>
+             : errorLogs.length === 0 ? <div style={{color:'var(--mut)', fontSize:13, textAlign:'center', padding:'8px 0'}}>Nenhum erro registrado.</div>
+             : (
+              <>
+                <div style={{display:'flex', justifyContent:'flex-end', marginBottom:8}}>
+                  <button onClick={handleLimparLogs} style={{background:'rgba(227,28,61,.15)', color:'var(--danger)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>🗑️ Limpar {errorLogs.length}</button>
+                </div>
+                <div style={{display:'flex', flexDirection:'column', gap:8, maxHeight:320, overflowY:'auto'}}>
+                  {errorLogs.map((l: any) => (
+                    <div key={l.id} style={{padding:'8px 10px', background:'var(--row-bg)', borderRadius:8}}>
+                      <div style={{display:'flex', justifyContent:'space-between', gap:8}}>
+                        <div style={{fontSize:11, fontWeight:800, color:'var(--mut)'}}>{l.origem} · {l.tela || '—'} · v{l.buildId}</div>
+                        <div style={{fontSize:10, color:'var(--mut)', whiteSpace:'nowrap'}}>{formatarData(l.criadoEm)}</div>
+                      </div>
+                      <div style={{fontSize:12, color:'var(--txt2)', marginTop:4}}>{l.mensagem}</div>
+                      {l.detalhe && (
+                        <pre style={{fontSize:10, color:'var(--txt2)', background:'var(--row-bg-strong)', padding:'6px 8px', borderRadius:6, marginTop:4, whiteSpace:'pre-wrap', maxHeight:80, overflow:'auto', fontFamily:'ui-monospace,Menlo,monospace'}}>{l.detalhe}</pre>
+                      )}
+                      <div style={{fontSize:10, color:'var(--mut)', marginTop:4}}>{l.nome || 'anônimo'} {l.email ? `· ${l.email}` : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <div style={{marginTop:8,padding:16,background:'rgba(255,255,255,.03)',borderRadius:12}}>
           <div style={{fontWeight:800,color:'var(--mut)',fontSize:11,marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>Lição Atual</div>
@@ -2675,7 +2832,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                   Peça o código ao seu professor ou administrador. Ele define seu local e sua trilha automaticamente.
                 </div>
                 {redeemed ? (
-                  <div style={{fontSize:13, color:'var(--txt2)', background:'rgba(0,0,0,.2)', borderRadius:10, padding:'12px'}}>
+                  <div style={{fontSize:13, color:'var(--txt2)', background:'var(--row-bg)', borderRadius:10, padding:'12px'}}>
                     ✅ Código <strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{redeemed.code}</strong> aplicado.<br/>
                     <span style={{display:'block', marginTop:6}}>📍 <strong>{locations.find(l => l.id === redeemed.locationId)?.name || 'Local do convite'}</strong></span>
                     <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>
@@ -2706,7 +2863,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
               <div style={{marginBottom:14, padding:'12px 14px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)'}}>
                 <div style={{fontSize:13, fontWeight:800, color:'var(--teal)', marginBottom:8}}>🎟️ Tem um código de convite? (opcional)</div>
                 {redeemed ? (
-                  <div style={{fontSize:13, color:'var(--txt2)', background:'rgba(0,0,0,.2)', borderRadius:10, padding:'12px'}}>
+                  <div style={{fontSize:13, color:'var(--txt2)', background:'var(--row-bg)', borderRadius:10, padding:'12px'}}>
                     ✅ Código <strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{redeemed.code}</strong> aplicado.<br/>
                     <span style={{display:'block', marginTop:6}}>📍 <strong>{locations.find(l => l.id === redeemed.locationId)?.name || 'Local do convite'}</strong></span>
                     <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>
@@ -2784,14 +2941,14 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
             <div style={{flex: 1}}>
               <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} style={{width:'100%', background:'rgba(245,200,66,.1)', color:'var(--gold)', padding:'8px', marginBottom: 8}}>📸 Enviar Imagem</button>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
-              <div style={{fontSize: 11, color: '#B9ACE6', textAlign:'center', marginBottom: 4}}>OU DIGITE UM EMOJI</div>
+              <div style={{fontSize: 11, color: 'var(--mut)', textAlign:'center', marginBottom: 4}}>OU DIGITE UM EMOJI</div>
               <input type="text" value={avatar.length < 10 ? avatar : ''} onChange={e => setAvatar(e.target.value)} placeholder="Ex: 👾" style={{width: '100%', padding: '8px', borderRadius: 8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', textAlign:'center', outline:'none', transition:'background .3s'}} maxLength={2}/>
             </div>
           </div>
 
           <div style={{marginBottom: 20}}>
             <div style={{fontSize: 12, fontWeight: 700, color:'var(--mut)', marginBottom: 8, textTransform:'uppercase', letterSpacing:1}}>Sugestões de Emojis</div>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap: 8, background:'rgba(0,0,0,.2)', padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,.05)', maxHeight: 180, overflowY: 'auto'}}>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap: 8, background:'var(--row-bg)', padding: 12, borderRadius: 12, border: '1px solid var(--b3)', maxHeight: 180, overflowY: 'auto'}}>
               {['🦁', '🐯', '🦊', '🐺', '🐨', '🐼', '🦅', '🦉', '🐬', '🐙', '🦖', '👾', '🤖', '👑', '🌟', '⚡', '🔥', '🎯', '🚀', '🎮', '⚽', '🏆', '🎨', '🎸', '🎒', '📚', '🍕', '🍿', '🐶', '🐱', '🐭', '🐹', '🐰', '🐻', '🐻‍❄️', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦇', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🐢', '🐍', '🦕', '🦂', '🐠', '🐟', '🍔', '🍟', '🍩', '🍪', '🍫', '🍬'].map(emo => (
                 <button
                   key={emo}
@@ -2836,7 +2993,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                 <div style={{marginTop:8, padding:'10px 14px', borderRadius:10, background:'rgba(79,184,92,.12)', border:'1px solid rgba(79,184,92,.3)', display:'flex', alignItems:'center', gap:8}}>
                   <span>✅</span>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:12, fontWeight:700, color:'#4FB85C'}}>WhatsApp ativo</div>
+                    <div style={{fontSize:12, fontWeight:700, color:'var(--success)'}}>WhatsApp ativo</div>
                     <div style={{fontSize:11, color:'var(--mut)'}}>Você receberá lembretes diários de estudo às 8h.</div>
                   </div>
                   <button onMouseDown={e => { e.preventDefault(); setWhatsappOptIn(false); }} style={{background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:'4px 6px'}}>Desativar</button>
@@ -2847,7 +3004,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setWhatsappOptIn(true)}
-                  style={{display:'block', marginTop:8, padding:'12px', borderRadius:10, background:'rgba(79,184,92,.12)', border:'1px solid rgba(79,184,92,.25)', textAlign:'center', textDecoration:'none', color:'#4FB85C', fontSize:13, fontWeight:700}}
+                  style={{display:'block', marginTop:8, padding:'12px', borderRadius:10, background:'rgba(79,184,92,.12)', border:'1px solid rgba(79,184,92,.25)', textAlign:'center', textDecoration:'none', color:'var(--success)', fontSize:13, fontWeight:700}}
                 >
                   📱 Ativar lembretes WhatsApp
                   <div style={{fontSize:11, color:'var(--mut)', fontWeight:400, marginTop:3}}>Toque para confirmar no WhatsApp</div>
@@ -2880,7 +3037,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
              >
                🔔 HABILITAR NOTIFICAÇÕES
              </button>
-             <div style={{fontSize: 11, color: '#B9ACE6', marginTop: 8, textAlign:'center'}}>
+             <div style={{fontSize: 11, color: 'var(--mut)', marginTop: 8, textAlign:'center'}}>
                 Para iOS/iPhone: É necessário "Adicionar à Tela de Início" primeiro. Quando o app estiver fechado, os avisos chegarão pelo sistema do seu celular! Mas não se preocupe: novos avisos também aparecerão na tela quando você abrir o app.
              </div>
           </div>

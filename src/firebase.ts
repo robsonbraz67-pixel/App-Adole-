@@ -668,3 +668,33 @@ export const getAllUsersStreaks = async (licoes: any[]): Promise<Record<string, 
   }
   return resultado;
 };
+
+// ===== Painel Admin: logs de erro + relatos de usuário =====
+// Escrita (registrarErro/reportarProblema) mora em src/errorLog.ts, que roda
+// fora da árvore React (inclusive antes de qualquer login). Só a LEITURA/
+// gestão fica aqui, junto do resto das ferramentas do Admin.
+export const getErrorLogs = async (max = 50): Promise<any[]> => {
+  const snap = await getDocs(query(collection(db, 'errorLogs'), orderBy('criadoEm', 'desc'), limit(max)));
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list;
+};
+
+export const excluirErrorLog = async (id: string) => {
+  await deleteDoc(doc(db, 'errorLogs', id));
+};
+
+export const getRelatosUsuarios = async (): Promise<any[]> => {
+  const snap = await getDocs(query(collection(db, 'userReports'), orderBy('criadoEm', 'desc')));
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list;
+};
+
+export const marcarRelatoStatus = async (id: string, status: 'lido' | 'resolvido') => {
+  await setDoc(doc(db, 'userReports', id), { status }, { merge: true });
+};
+
+export const excluirRelato = async (id: string) => {
+  await deleteDoc(doc(db, 'userReports', id));
+};

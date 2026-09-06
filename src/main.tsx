@@ -2,7 +2,10 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import { ErrorBoundary } from './ErrorBoundary';
+import { instalarCapturaGlobalDeErros } from './errorLog';
 import './index.css';
+
+instalarCapturaGlobalDeErros();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

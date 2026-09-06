@@ -87,10 +87,39 @@ export const xpSpeed = (t: number, ok: boolean, diaData?: string) => {
 // ===== Modo Ao Vivo (Kahoot) =====
 // Pontuação daquela sala é efêmera — não usa xpSpeed nem toca XP/progresso.
 // Acertou vale de 500 a 1000, conforme a rapidez da resposta.
-export const pontosAoVivo = (tempoMs: number, correta: boolean, duracaoSec: number) => {
-  if (!correta) return 0;
+//
+// `multiplicador`: 0 = pergunta que não pontua (enquete), 1 = normal,
+// 2 = pontos em dobro. Aplicado depois do cálculo de velocidade, igual ao
+// Kahoot: dobrar cedo dobraria também o piso de 500.
+export const pontosAoVivo = (tempoMs: number, correta: boolean, duracaoSec: number, multiplicador = 1) => {
+  if (!correta || multiplicador <= 0) return 0;
   const frac = Math.min(1, Math.max(0, tempoMs / 1000 / duracaoSec));
-  return Math.round(Math.max(500, 1000 - frac * 500));
+  return Math.round(Math.max(500, 1000 - frac * 500) * multiplicador);
+};
+
+// Bônus por acertos seguidos — o "answer streak" do Kahoot, que é o que faz a
+// turma gritar quando alguém erra na quinta seguida. `streak` é a sequência
+// DEPOIS de contar o acerto atual: o 1º acerto não dá bônus, o 2º dá 100, e
+// assim por diante até o teto de 500 (a partir do 6º).
+//
+// Tabela em vez de fórmula de propósito: é assim que o Kahoot documenta, e
+// deixa o valor fácil de ajustar sem reler a conta.
+const BONUS_STREAK = [0, 0, 100, 200, 300, 400, 500];
+export const bonusSequencia = (streak: number) => {
+  if (!streak || streak < 2) return 0;
+  return BONUS_STREAK[Math.min(streak, BONUS_STREAK.length - 1)];
+};
+
+// Nomes sugeridos para quem entra como convidado. Existe por dois motivos:
+// tirar o atrito de "pensar num nome" (a turma inteira entra em 10 segundos) e
+// dar uma saída pronta quando alguém escolhe um apelido impróprio — o professor
+// expulsa e a pessoa volta com um destes.
+const ADJETIVOS = ['Veloz', 'Radiante', 'Destemido', 'Sábio', 'Alegre', 'Fiel', 'Corajoso', 'Sereno', 'Brilhante', 'Nobre'];
+const CRIATURAS = ['Leão', 'Águia', 'Cervo', 'Falcão', 'Golfinho', 'Lobo', 'Tigre', 'Coruja', 'Pantera', 'Raposa'];
+export const nomeSugerido = () => {
+  const a = ADJETIVOS[Math.floor(Math.random() * ADJETIVOS.length)];
+  const c = CRIATURAS[Math.floor(Math.random() * CRIATURAS.length)];
+  return `${c} ${a}`;
 };
 
 // Alfabeto sem caracteres ambíguos (sem 0/O, 1/I, etc.) — o código da sala é

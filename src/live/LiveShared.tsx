@@ -1,5 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { somTickPonto, somSubiuPosicao, somPlacarPronto } from './chiptune';
+import { agoraServidor } from './relogio';
+
+// ===== Tempo da pergunta, à prova de pausa =====
+// Host e celulares precisam contar EXATAMENTE o mesmo tempo, inclusive depois
+// de uma pausa. O truque: enquanto `pausado` é true, o "agora" congela no
+// instante em que a pausa começou (`faseIniciadaEm`, reescrito ao pausar).
+// Ao retomar, `msPausados` acumula quanto tempo ficou parado e é descontado —
+// então ninguém precisa recalcular prazo nenhum por conta própria.
+export const duracaoDaPergunta = (game: any) =>
+  Number(game?.duracaoAtualSec) || Number(game?.questionDurationSec) || 20;
+
+export const decorridoNaPergunta = (game: any) => {
+  const inicio = game?.questionStartedAt?.toMillis?.();
+  if (!inicio) return 0;
+  const agora = (game?.pausado && game?.faseIniciadaEm?.toMillis)
+    ? game.faseIniciadaEm.toMillis()
+    : agoraServidor();
+  return Math.max(0, agora - inicio - (Number(game?.msPausados) || 0));
+};
 
 // Mesma paleta/símbolos já usados no Quiz diário (components.tsx) — mantém
 // o Modo Ao Vivo visualmente consistente com o resto do app, em vez de
@@ -10,6 +29,48 @@ export const OPCOES_ESTILO = [
   { cls: 'qC', sym: '🔶' },
   { cls: 'qD', sym: '🟢' },
 ];
+
+// Verdadeiro/Falso usa só duas casas e símbolos próprios — é o que faz a
+// pergunta ser reconhecida de longe, no projetor, sem ler o enunciado.
+export const OPCOES_VF = [
+  { cls: 'qA', sym: '✔️' },
+  { cls: 'qB', sym: '✖️' },
+];
+
+export const estiloOpcoes = (tipo?: string) => (tipo === 'vf' ? OPCOES_VF : OPCOES_ESTILO);
+
+// Selo acima do enunciado dizendo o que esta pergunta é e quanto vale. Sem
+// ele, "enquete" e "pontos em dobro" seriam invisíveis: o aluno responderia
+// achando que vale o mesmo de sempre e reclamaria do placar depois.
+export const SeloTipo = ({ tipo, multiplicador }: { tipo?: string; multiplicador?: number }) => {
+  const selos: { txt: string; cor: string }[] = [];
+  if (tipo === 'vf') selos.push({ txt: '✔️✖️ Verdadeiro ou falso', cor: 'var(--blu)' });
+  if (tipo === 'enquete') selos.push({ txt: '📊 Enquete — não vale ponto', cor: 'var(--mut)' });
+  if (tipo !== 'enquete' && multiplicador === 2) selos.push({ txt: '⚡ Pontos em dobro', cor: 'var(--gold)' });
+  if (tipo !== 'enquete' && multiplicador === 0) selos.push({ txt: '🎈 Sem pontos', cor: 'var(--mut)' });
+  if (!selos.length) return null;
+  return (
+    <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+      {selos.map(s => (
+        <span key={s.txt} style={{
+          fontSize: 11.5, fontWeight: 800, color: s.cor, border: `1.5px solid ${s.cor}`,
+          borderRadius: 30, padding: '4px 12px', fontFamily: 'Poppins,sans-serif',
+        }}>{s.txt}</span>
+      ))}
+    </div>
+  );
+};
+
+// Chama da sequência de acertos. Só aparece a partir de 2 — uma sequência de
+// 1 é só "acertou", e mostrar 🔥1 na primeira pergunta esvazia o símbolo.
+export const Chama = ({ streak, tamanho = 13 }: { streak?: number; tamanho?: number }) => {
+  if (!streak || streak < 2) return null;
+  return (
+    <span className="live-streak" style={{ fontSize: tamanho }} title={`${streak} acertos seguidos`}>
+      🔥{streak}
+    </span>
+  );
+};
 
 const Avatar = ({ avatar, size, ring }: { avatar?: string; size: number; ring?: boolean }) => (
   <div style={{
@@ -28,10 +89,16 @@ const Avatar = ({ avatar, size, ring }: { avatar?: string; size: number; ring?: 
 // cinza. Cada barra nasce em 0 e recebe a altura final num setTimeout(~40ms)
 // — renderizando direto no valor final o navegador pinta de uma vez e não há
 // transição nenhuma (doc de origem).
-export const BarraRespostas = ({ opcoes, counts, correctIndex }: { opcoes: string[]; counts: number[]; correctIndex: number }) => {
+// `tipo === 'enquete'` desliga o conceito de certo/errado: numa sondagem
+// ninguém erra, então nenhuma barra é apagada em cinza nem ganha ✅ — todas
+// aparecem em cor cheia, que é o resultado que interessa ver.
+export const BarraRespostas = ({ opcoes, counts, correctIndex, tipo }: { opcoes: string[]; counts: number[]; correctIndex: number; tipo?: string }) => {
   const [cresceu, setCresceu] = useState(false);
   useEffect(() => { const t = setTimeout(() => setCresceu(true), 40); return () => clearTimeout(t); }, []);
   const max = Math.max(1, ...counts);
+  const enquete = tipo === 'enquete';
+  const estilos = estiloOpcoes(tipo);
+  const total = counts.reduce((s, n) => s + (n || 0), 0);
   return (
     <div className="live-chart">
       {opcoes.map((op, i) => {
@@ -39,15 +106,18 @@ export const BarraRespostas = ({ opcoes, counts, correctIndex }: { opcoes: strin
         // Altura é % do "trilho" (flex:1), não do bloco todo: sem esse trilho
         // entre o número e o rótulo, a barra cheia invade o texto de baixo.
         const pct = cresceu ? Math.max(n > 0 ? 6 : 0, (n / max) * 100) : 0;
-        const isCorrect = i === correctIndex;
+        const isCorrect = !enquete && i === correctIndex;
         return (
-          <div key={i} className={`live-chart-col${isCorrect ? ' certa' : ' errada'}`}>
-            <div className="live-chart-count">{n}</div>
+          <div key={i} className={`live-chart-col${enquete ? '' : isCorrect ? ' certa' : ' errada'}`}>
+            <div className="live-chart-count">
+              {n}
+              {enquete && total > 0 && <span style={{ fontSize: 10, opacity: .7 }}> · {Math.round((n / total) * 100)}%</span>}
+            </div>
             <div className="live-chart-track">
-              <div className={`live-chart-bar ${OPCOES_ESTILO[i]?.cls}`} style={{ height: pct + '%' }} />
+              <div className={`live-chart-bar ${estilos[i]?.cls}`} style={{ height: pct + '%' }} />
             </div>
             <div className="live-chart-label">
-              <span style={{ fontSize: 18 }}>{isCorrect ? '✅' : OPCOES_ESTILO[i]?.sym}</span>
+              <span style={{ fontSize: 18 }}>{isCorrect ? '✅' : estilos[i]?.sym}</span>
               <span className="txt">{op}</span>
             </div>
           </div>
@@ -91,7 +161,7 @@ const MS_SOMA = 1400;      // duração da contagem dos pontos da rodada
 // Cada linha é posicionada por translateY em vez de entrar na ordem do fluxo:
 // no fluxo normal, reordenar faz os elementos saltarem de lugar, sem como
 // animar a passagem de um pelo outro.
-export const Placar = ({ jogadores, roundKey, meuUid, comSom }: { jogadores: any[]; roundKey: any; meuUid?: string; comSom?: boolean }) => {
+export const Placar = ({ jogadores, roundKey, meuUid, comSom, onExpulsar }: { jogadores: any[]; roundKey: any; meuUid?: string; comSom?: boolean; onExpulsar?: (j: any) => void }) => {
   // Pontuação com que cada um ENTROU nesta rodada. Guardada num ref e só
   // atualizada ao virar a rodada: é o ponto de partida da contagem.
   const anterioresRef = useRef<Record<string, number>>({});
@@ -194,9 +264,19 @@ export const Placar = ({ jogadores, roundKey, meuUid, comSom }: { jogadores: any
           <div style={{ fontWeight: 900, color: 'var(--mut)', fontSize: 14, width: 22, textAlign: 'center' }}>{posicoes[j.uid] + 1}</div>
           <Avatar avatar={j.avatar} size={36} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.nome}</div>
+            <div style={{ fontWeight: 800, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.nome}</span>
+              <Chama streak={j.streak} />
+            </div>
             <div className="bar"><div className="bar-fill" style={{ width: `${(j.exibido / max) * 100}%` }} /></div>
           </div>
+          {onExpulsar && (
+            <button
+              onClick={() => onExpulsar(j)}
+              title={`Remover ${j.nome} da sala`}
+              style={{ background: 'none', border: 'none', color: 'var(--mut)', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}
+            >✕</button>
+          )}
           {/* O "+750" some quando a contagem termina: a partir daí o número
               da esquerda já conta a história toda. */}
           {j.ganho > 0 && progresso < 1 && (

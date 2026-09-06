@@ -4,14 +4,39 @@ import {
   criarSala, getSala, getSalaPrivada, assinarSala, assinarJogadores,
   iniciarPergunta, revelarPergunta, avancarParaPlacar, encerrarJogo,
   buscarRespostasPergunta, corrigirRespostas, selecionarPerguntasSala,
+  zerarSequenciaDeQuemFaltou, pausarJogo, retomarJogo, expulsarJogador,
+  revanche, buscarRelatorio, assinarContagemRespostas, atualizarPlacarSala,
 } from './liveGameApi';
-import { BarraRespostas, Placar, LivePodium, OPCOES_ESTILO, Contagem, MS_CONTAGEM } from './LiveShared';
+import {
+  BarraRespostas, Placar, LivePodium, Contagem, MS_CONTAGEM,
+  estiloOpcoes, decorridoNaPergunta, duracaoDaPergunta, Chama, SeloTipo,
+} from './LiveShared';
 import { agoraServidor } from './relogio';
 import { tocarMusicaFundo, pararMusicaFundo, prepararAudio, audioLiberado, somContagem, somVai, somGongo, somPodio, prepararPodio } from './chiptune';
 import { Confetti } from '../components';
 
-const DURACOES = [15, 20, 30];
-const QTDS = [5, 8, 10, 12];
+const DURACOES = [10, 15, 20, 30, 60];
+const QTDS = [5, 8, 10, 12, 16, 20];
+
+// Linha de opção liga/desliga do setup — o mesmo desenho para todas, para o
+// professor achar o interruptor no mesmo lugar sempre.
+const OpcaoPartida = ({ ligado, onToggle, titulo, descricao }: { ligado: boolean; onToggle: () => void; titulo: string; descricao: string }) => (
+  <div
+    onClick={onToggle}
+    style={{
+      display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+      padding: '12px 14px', borderRadius: 14,
+      border: `1.5px solid ${ligado ? 'var(--teal)' : 'var(--b3)'}`,
+      background: ligado ? 'rgba(30,158,134,.10)' : 'var(--row-bg)',
+    }}
+  >
+    <div style={{ fontSize: 18, lineHeight: 1.2 }}>{ligado ? '✅' : '⬜'}</div>
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 2, color: ligado ? 'var(--teal)' : 'var(--txt2)' }}>{titulo}</div>
+      <div style={{ fontSize: 12, color: 'var(--mut)', lineHeight: 1.45 }}>{descricao}</div>
+    </div>
+  </div>
+);
 
 export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   const [code, setCode] = useState<string | null>(null);
@@ -22,6 +47,48 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   const [duracao, setDuracao] = useState(20);
   const [criando, setCriando] = useState(false);
   const [erro, setErro] = useState('');
+  // Opções da partida (padrões iguais aos do Kahoot: alternativas embaralhadas
+  // ligado, pergunta no celular ligada).
+  const [embaralharOpcoes, setEmbaralharOpcoes] = useState(true);
+  const [soNoTelao, setSoNoTelao] = useState(false);
+  const [relatorio, setRelatorio] = useState<any>(null);
+  const [carregandoRelatorio, setCarregandoRelatorio] = useState(false);
+  const [verRelatorio, setVerRelatorio] = useState(false);
+  // Perguntas já sorteadas e editáveis ANTES de abrir a sala: é aqui que o
+  // professor tira uma que não quer, marca outra como enquete ou dobra os
+  // pontos da decisiva. Sem esta lista, esses recursos existiriam no motor
+  // mas não teriam como ser acionados.
+  const [pool, setPool] = useState<any[]>([]);
+  // Enquanto o professor não mexeu em nenhuma pergunta à mão, trocar "Nº de
+  // perguntas" ou "embaralhar" pode continuar resorteando sozinho — é o que
+  // "só funciona" sem precisar clicar em mais nada. Mas assim que ele marca
+  // uma enquete, dobra pontos ou remove uma pergunta, esses dois campos
+  // PARAM de resortear por conta própria: sem esta trava, mudar de 10 para
+  // 12 perguntas jogava fora toda edição feita até ali, em silêncio.
+  const poolEditadoRef = useRef(false);
+  useEffect(() => {
+    if (code || poolEditadoRef.current) return;
+    setPool(selecionarPerguntasSala(licao, totalQuestions, embaralharOpcoes));
+  }, [licao, totalQuestions, embaralharOpcoes, code]);
+
+  const ajustarPergunta = (i: number, patch: any) => {
+    poolEditadoRef.current = true;
+    setPool(ps => ps.map((p, k) => (k === i ? { ...p, ...patch } : p)));
+  };
+  const removerPergunta = (i: number) => {
+    poolEditadoRef.current = true;
+    setPool(ps => ps.filter((_, k) => k !== i));
+  };
+  // Tempo desta pergunta: cicla entre "padrão da sala" e as durações maiores.
+  // Uma pergunta difícil merece mais tempo sem esticar a partida inteira.
+  const ciclarTempo = (i: number, atual?: number) => {
+    const ciclo = [undefined, 30, 45, 60, 90];
+    const pos = ciclo.findIndex(v => v === atual);
+    ajustarPergunta(i, { duracaoSec: ciclo[(pos + 1) % ciclo.length] });
+  };
+
+  // Duração efetiva de uma pergunta: a dela, se o professor mudou, senão a da sala.
+  const duracaoEfetiva = (p: any) => Number(p?.duracaoSec) || Number(game?.questionDurationSec) || duracao;
   const [tempoRestante, setTempoRestante] = useState(0);
   const [contagem, setContagem] = useState(0);   // 5..1 antes da pergunta; 0 = valendo
   const [musicaOn, setMusicaOn] = useState(true);
@@ -81,6 +148,17 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   // de montar o buffer de palmas, que é caro (ver prepararPodio).
   useEffect(() => { if (code) prepararPodio(); }, [code]);
 
+  // Relatório da partida: uma leitura só, no fim, com todas as respostas —
+  // é o que transforma "a turma se divertiu" em "78% errou a pergunta 4".
+  useEffect(() => {
+    if (game?.phase !== 'ended' || !code || !perguntas.length || relatorio) return;
+    setCarregandoRelatorio(true);
+    buscarRelatorio(code, perguntas, jogadores)
+      .then(setRelatorio)
+      .catch(e => console.error('relatório', e))
+      .finally(() => setCarregandoRelatorio(false));
+  }, [game?.phase, code, perguntas.length]);
+
   // Festa do pódio: aplausos e estouros de confete, uma vez só por partida.
   const festaRef = useRef(false);
   useEffect(() => {
@@ -110,7 +188,13 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     (async () => {
       try {
         const sala = await getSala(salvo);
-        if (!sala || sala.hostId !== jogador.id || sala.phase === 'ended') {
+        // 'ended' também restaura — sem isto, um F5 bem na hora do pódio
+        // (comum: professor quer ver de novo, ou o celular só travou)
+        // derrubava a sala inteira: sem `code`, nem revanche nem relatório
+        // ficavam alcançáveis, e a turma continuava esperando na tela deles.
+        // Limitado a 2h para uma sala de dias atrás não "ressuscitar" à toa.
+        const terminouFaz = sala?.endedAt?.toMillis ? Date.now() - sala.endedAt.toMillis() : Infinity;
+        if (!sala || sala.hostId !== jogador.id || (sala.phase === 'ended' && terminouFaz > 2 * 60 * 60 * 1000)) {
           localStorage.removeItem('liveHostCode');
           return;
         }
@@ -132,14 +216,22 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     return () => onActiveChange?.(false);
   }, [code, game?.phase]);
 
+  // Quantos já responderam a pergunta corrente (só o host assina isto).
+  const [respostasRecebidas, setRespostasRecebidas] = useState(0);
+  useEffect(() => {
+    if (!code || game?.phase !== 'question' || typeof game?.currentIndex !== 'number') { setRespostasRecebidas(0); return; }
+    setRespostasRecebidas(0);
+    const unsub = assinarContagemRespostas(code, game.currentIndex, setRespostasRecebidas);
+    return () => unsub();
+  }, [code, game?.phase, game?.currentIndex]);
+
   const criarSalaHandler = async () => {
     setErro('');
     // Ainda dentro do clique: é a única janela em que o Safari deixa o
     // AudioContext sair de "suspended". Se isto ficasse só no useEffect que
     // toca a música, ela nunca começaria naquele navegador.
     prepararAudio();
-    const pool = selecionarPerguntasSala(licao, totalQuestions);
-    if (pool.length < 2) { setErro('Esta lição ainda não tem perguntas suficientes.'); return; }
+    if (pool.length < 2) { setErro('Escolha pelo menos 2 perguntas para a partida.'); return; }
     setCriando(true);
     gongoTocadoRef.current = false;             // sala nova, gongo de novo
     if (musicaOn) tocarMusicaFundo('lobby');    // ainda na mesma pilha do clique
@@ -147,7 +239,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
       const novoCodigo = await criarSala({
         hostId: jogador.id, hostName: jogador.nome, track: jogador.track || 'teen',
         semana: licao.semana, trimestre: licao.trimestre, licaoTitulo: licao.titulo,
-        perguntas: pool, questionDurationSec: duracao,
+        perguntas: pool, questionDurationSec: duracao, soNoTelao,
       });
       localStorage.setItem('liveHostCode', novoCodigo);
       setPerguntas(pool);
@@ -216,9 +308,34 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     if (!pergunta) return;
     const respostas = await buscarRespostasPergunta(code, idx);
     const uidsValidos = new Set<string>(jogadores.map((j: any) => j.uid));
-    await corrigirRespostas(code, pergunta.correta, game.questionDurationSec, respostas, uidsValidos, emCorrecaoRef.current);
+    const dur = duracaoDaPergunta(game);
+    const tipo = pergunta.tipo || 'quiz';
+    const mult = typeof pergunta.multiplicador === 'number' ? pergunta.multiplicador : 1;
+
+    const res = await corrigirRespostas(
+      code, pergunta.correta, dur, respostas, uidsValidos, emCorrecaoRef.current, jogadores, tipo, mult
+    );
+    // NÃO zera a sequência de quem "não respondeu" aqui: uma resposta certa
+    // enviada no último instante pode ainda estar propagando pela rede e não
+    // ter chegado a este `buscarRespostasPergunta` — zerar cedo demais rouba
+    // os 400/500 pontos de bônus de quem acertou certinho (era exatamente
+    // esse o bug: a correção seguinte, ao reconstruir o streak a partir do
+    // roster, lia o zero em vez da sequência real). Essa decisão fica pra
+    // `irParaPlacar`, o único ponto que roda SEMPRE antes de sair da
+    // revelação — dando tempo de qualquer resposta atrasada aparecer.
+    const ganhos = res?.ganhos || {};
+    const streaks = res?.streaks || {};
+    // Placar já com os pontos desta rodada: a assinatura de `livePlayers` só
+    // chega depois do lote, e a revelação precisa publicar a classificação
+    // ATUAL — é dela que sai o "você está em 3º" na tela do aluno.
+    const atualizados = jogadores.map((j: any) => ({
+      ...j,
+      score: (Number(j.score) || 0) + (ganhos[j.uid] || 0),
+      streak: streaks[j.uid] !== undefined ? streaks[j.uid] : (Number(j.streak) || 0),
+    }));
+
     const counts = pergunta.opcoes.map((_: any, i: number) => respostas.filter(r => r.data.opcaoEscolhida === i).length);
-    await revelarPergunta(code, pergunta.correta, pergunta.explicacao, counts);
+    await revelarPergunta(code, pergunta.correta, pergunta.explicacao, counts, atualizados);
   });
 
   // Wi-Fi de igreja atrasa respostas: sem esta segunda varredura, quem
@@ -233,22 +350,76 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     if (!pergunta) return;
     const respostas = await buscarRespostasPergunta(code, idx);
     const uidsValidos = new Set<string>(jogadores.map((j: any) => j.uid));
-    await corrigirRespostas(code, pergunta.correta, game.questionDurationSec, respostas, uidsValidos, emCorrecaoRef.current);
+    // Só corrige quem já apareceu — decidir quem "não respondeu" fica para
+    // irParaPlacar (ver comentário lá): esta varredura pode nem chegar a
+    // rodar, se o professor avançar rápido no manual, e não pode ser o único
+    // lugar que zera sequência de ninguém.
+    const res = await corrigirRespostas(
+      code, pergunta.correta, duracaoDaPergunta(game), respostas, uidsValidos, emCorrecaoRef.current,
+      jogadores, pergunta.tipo || 'quiz', typeof pergunta.multiplicador === 'number' ? pergunta.multiplicador : 1
+    );
+    // Corrigiu alguém de fato? O `placar` publicado na revelação é um retrato
+    // daquele instante — sem isto, quem respondeu atrasado (Wi-Fi de igreja)
+    // ficaria vendo a própria posição desatualizada até a fase de placar,
+    // vários segundos depois.
+    if (res?.ids?.length) {
+      const ganhos = res.ganhos || {};
+      const streaks = res.streaks || {};
+      const atualizados = jogadores.map((j: any) => ({
+        ...j,
+        score: (Number(j.score) || 0) + (ganhos[j.uid] || 0),
+        streak: streaks[j.uid] !== undefined ? streaks[j.uid] : (Number(j.streak) || 0),
+      }));
+      await atualizarPlacarSala(code, atualizados);
+    }
   };
 
   const irParaPlacar = () => comPasso(`placar_${game?.currentIndex}`, async () => {
-    if (!code || game?.phase !== 'reveal') return;
+    if (!code || !game || game.phase !== 'reveal') return;
+    const idx = game.currentIndex;
+    const pergunta = perguntas[idx];
+    let atualizados = jogadores;
+
+    if (pergunta) {
+      // Última chance de corrigir quem ainda estava chegando E o único ponto
+      // que decide quem de fato "não respondeu" — sempre roda antes de sair
+      // da revelação, ao contrário da varredura de 3.5s (que o professor
+      // pode pular avançando rápido no manual). Rodar corrigirRespostas de
+      // novo é seguro mesmo que nada tenha mudado: emCorrecaoRef.current já
+      // filtra quem foi corrigido antes.
+      const respostas = await buscarRespostasPergunta(code, idx);
+      const uidsValidos = new Set<string>(jogadores.map((j: any) => j.uid));
+      const tipo = pergunta.tipo || 'quiz';
+      const mult = typeof pergunta.multiplicador === 'number' ? pergunta.multiplicador : 1;
+      const res = await corrigirRespostas(
+        code, pergunta.correta, duracaoDaPergunta(game), respostas, uidsValidos, emCorrecaoRef.current,
+        jogadores, tipo, mult
+      );
+      const responderamFinal = new Set<string>(respostas.map(r => r.data.uid));
+      await zerarSequenciaDeQuemFaltou(code, jogadores, responderamFinal, tipo);
+
+      const ganhos = res?.ganhos || {};
+      const streaks = res?.streaks || {};
+      atualizados = jogadores.map((j: any) => {
+        const naoRespondeu = !responderamFinal.has(j.uid);
+        const streak = streaks[j.uid] !== undefined
+          ? streaks[j.uid]
+          : (naoRespondeu && tipo !== 'enquete' ? 0 : (Number(j.streak) || 0));
+        return { ...j, score: (Number(j.score) || 0) + (ganhos[j.uid] || 0), streak };
+      });
+    }
+
     // Manda a lista junto: o placar vai para dentro do doc da sala, que os
     // alunos já assinam, em vez de cada um reler `livePlayers` (ver
     // avancarParaPlacar — é a correção de cota).
-    await avancarParaPlacar(code, jogadores);
+    await avancarParaPlacar(code, atualizados);
   });
 
   const proximaOuEncerrar = () => comPasso(`proxima_${game?.currentIndex}`, async () => {
     if (!code || !game || game.phase !== 'placar') return;
     const proximoIdx = game.currentIndex + 1;
     emCorrecaoRef.current.clear();
-    if (proximoIdx < perguntas.length) await iniciarPergunta(code, proximoIdx, perguntas[proximoIdx]);
+    if (proximoIdx < perguntas.length) await iniciarPergunta(code, proximoIdx, perguntas[proximoIdx], duracaoEfetiva(perguntas[proximoIdx]));
     else await encerrarJogo(code, jogadores);
   });
 
@@ -274,6 +445,54 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     if (window.confirm(`Encerrar a partida agora?\n\n${aviso}\nO jogo vai direto para o pódio.`)) encerrarJogo(code, jogadores);
   };
 
+  // Pausa: congela o cronômetro para a turma discutir sem ninguém perder ponto
+  // por causa da conversa. O tempo parado é devolvido ao retomar.
+  // A duração da pausa é medida com UM relógio só — o local, do próprio
+  // aparelho que pausou — nunca misturando com `agoraServidor()` (que é
+  // Date.now() + desvio calibrado, uma estimativa independente). Cruzar os
+  // dois é o que fazia pausas rápidas encurtarem a pergunta em alguns
+  // milissegundos: cada lado carrega seu próprio ruído de calibração.
+  // O fallback (faseIniciadaEm do servidor) só entra se este aparelho não foi
+  // quem pausou — outra aba assumiu o comando, ou este recarregou no meio.
+  const pausaIniciadaEmRef = useRef<number | null>(null);
+  const alternarPausa = () => {
+    if (!code || !game || !comando) return;
+    if (game.pausado) {
+      const duracaoPausa = pausaIniciadaEmRef.current !== null
+        ? Date.now() - pausaIniciadaEmRef.current
+        : agoraServidor() - (game.faseIniciadaEm?.toMillis?.() ?? agoraServidor());
+      pausaIniciadaEmRef.current = null;
+      retomarJogo(code, Number(game.msPausados) || 0, duracaoPausa).catch(console.error);
+    } else {
+      pausaIniciadaEmRef.current = Date.now();
+      pausarJogo(code).catch(console.error);
+    }
+  };
+
+  const expulsar = async (j: any) => {
+    if (!code) return;
+    if (!window.confirm(`Remover "${j.nome}" da sala?\n\nA pontuação dele(a) se perde e, para voltar, precisa entrar de novo com o código.`)) return;
+    try { await expulsarJogador(code, j.uid); } catch { alert('Não foi possível remover agora.'); }
+  };
+
+  // Revanche: mesma turma, mesmas perguntas, todo mundo zerado — sem ninguém
+  // reescanear o QR. É o "play again" do Kahoot.
+  const jogarDeNovo = async () => {
+    if (!code || !game) return;
+    if (!window.confirm(`Jogar de novo com ${jogadores.length} jogador${jogadores.length !== 1 ? 'es' : ''}?\n\nAs mesmas perguntas voltam e a pontuação de todo mundo zera.`)) return;
+    try {
+      emCorrecaoRef.current.clear();
+      festaRef.current = false;
+      gongoTocadoRef.current = false;
+      setRelatorio(null);
+      setVerRelatorio(false);
+      await revanche(code, jogadores, Number(game.rodada) || 0);
+    } catch (e) {
+      console.error(e);
+      alert('Não foi possível reiniciar a partida.');
+    }
+  };
+
   // ===== Avanço automático, ancorado no relógio do servidor =====
   // Nenhuma trava de "já agendei esta fase": rearmar o setTimeout é
   // inofensivo quando o prazo vem do servidor, e uma trava manual travaria
@@ -282,11 +501,15 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   useEffect(() => {
     if (!game) return;
     if (game.phase === 'question' && game.questionStartedAt) {
-      if (!autoOn) return;
+      // Pausado não avança: o prazo volta a correr quando o professor retomar
+      // (o efeito roda de novo porque `pausado` está nas dependências).
+      if (!autoOn || game.pausado) return;
       // O prazo agora inclui a contagem regressiva: ela consome os primeiros
       // MS_CONTAGEM da fase, e só depois o cronômetro da pergunta começa.
+      // `msPausados` estica o prazo pelo tempo que a partida ficou parada.
       const inicio = game.questionStartedAt.toMillis();
-      const ms = inicio + MS_CONTAGEM + game.questionDurationSec * 1000 + 1500 - agoraServidor();
+      const parado = Number(game.msPausados) || 0;
+      const ms = inicio + parado + MS_CONTAGEM + duracaoDaPergunta(game) * 1000 + 1500 - agoraServidor();
       const t = setTimeout(() => acoesRef.current.revelar(), Math.max(0, ms));
       return () => clearTimeout(t);
     }
@@ -306,25 +529,27 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
       const t = setTimeout(() => acoesRef.current.proximaOuEncerrar(), Math.max(0, inicio + 6000 - agoraServidor()));
       return () => clearTimeout(t);
     }
-  }, [game?.phase, game?.currentIndex, game?.questionStartedAt, game?.faseIniciadaEm, autoOn]);
+  }, [game?.phase, game?.currentIndex, game?.questionStartedAt, game?.faseIniciadaEm, game?.pausado, game?.msPausados, autoOn]);
 
   // Cronômetro e contagem regressiva: só re-renderizam quando o segundo
   // exibido muda. Os dois saem do mesmo instante de servidor, então host e
   // celulares contam juntos.
   useEffect(() => {
     if (game?.phase !== 'question' || !game.questionStartedAt) { setContagem(0); return; }
-    const inicio = game.questionStartedAt.toMillis();
+    const dur = duracaoDaPergunta(game);
     const tick = () => {
-      const agora = agoraServidor();
-      const c = Math.max(0, Math.ceil((inicio + MS_CONTAGEM - agora) / 1000));
+      // decorridoNaPergunta já desconta o tempo pausado e congela enquanto a
+      // partida está parada — host e celulares chegam ao mesmo número.
+      const passou = decorridoNaPergunta(game);
+      const c = Math.max(0, Math.ceil((MS_CONTAGEM - passou) / 1000));
       setContagem(prev => (prev === c ? prev : c));
-      const r = Math.max(0, Math.ceil((inicio + MS_CONTAGEM + game.questionDurationSec * 1000 - agora) / 1000));
+      const r = Math.max(0, Math.ceil((MS_CONTAGEM + dur * 1000 - passou) / 1000));
       setTempoRestante(prev => (prev === r ? prev : r));
     };
     tick();
     const iv = setInterval(tick, 100);
     return () => clearInterval(iv);
-  }, [game?.phase, game?.questionStartedAt, game?.questionDurationSec]);
+  }, [game?.phase, game?.questionStartedAt, game?.questionDurationSec, game?.duracaoAtualSec, game?.pausado, game?.msPausados]);
 
   // Som da contagem, só no telão do host: 40 celulares apitando juntos
   // viraria bagunça (no Kahoot o som também é só da projeção). O ref evita
@@ -366,12 +591,88 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
             ))}
           </div>
           <div className="sec-title">Duração por pergunta</div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 22 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 22, flexWrap: 'wrap' }}>
             {DURACOES.map(s => (
-              <button key={s} onClick={() => setDuracao(s)} className="btn btn-ghost btn-sm" style={{ width: 'auto', flex: 1, background: duracao === s ? 'rgba(247,198,0,.15)' : undefined, borderColor: duracao === s ? 'var(--gold)' : undefined }}>{s}s</button>
+              <button key={s} onClick={() => setDuracao(s)} className="btn btn-ghost btn-sm" style={{ width: 'auto', flex: '1 0 56px', background: duracao === s ? 'rgba(247,198,0,.15)' : undefined, borderColor: duracao === s ? 'var(--gold)' : undefined }}>{s}s</button>
             ))}
           </div>
-          {erro && <div style={{ color: '#E31C3D', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>{erro}</div>}
+
+          <div className="sec-title">Opções da partida</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 22 }}>
+            <OpcaoPartida
+              ligado={embaralharOpcoes}
+              onToggle={() => setEmbaralharOpcoes(v => !v)}
+              titulo="🔀 Embaralhar as alternativas"
+              descricao="Quem já fez o quiz do dia não acerta só de decorar a posição da resposta."
+            />
+            <OpcaoPartida
+              ligado={soNoTelao}
+              onToggle={() => setSoNoTelao(v => !v)}
+              titulo="📽️ Pergunta só no telão"
+              descricao="No celular aparecem só os símbolos coloridos — a turma precisa olhar para a projeção."
+            />
+          </div>
+
+          <div className="sec-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>Perguntas sorteadas ({pool.length})</span>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => { poolEditadoRef.current = false; setPool(selecionarPerguntasSala(licao, totalQuestions, embaralharOpcoes)); }}
+              style={{ width: 'auto' }}
+              title="Sortear outro conjunto"
+            >🎲 Sortear de novo</button>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--mut)', margin: '6px 0 10px', lineHeight: 1.5 }}>
+            ⚡ dobra os pontos da pergunta · 📊 vira enquete (sem resposta certa e sem pontos) · ✕ tira da partida.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 22, maxHeight: 320, overflowY: 'auto' }}>
+            {pool.length === 0 && (
+              <div style={{ color: 'var(--mut)', fontSize: 13, textAlign: 'center', padding: 10 }}>
+                Esta lição ainda não tem perguntas válidas.
+              </div>
+            )}
+            {pool.map((p, i) => {
+              const enquete = p.tipo === 'enquete';
+              const dobro = p.multiplicador === 2;
+              return (
+                <div key={`${p.id}_${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--row-bg)', borderRadius: 10, padding: '9px 10px' }}>
+                  <span style={{ color: 'var(--mut)', fontSize: 12, width: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--txt2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.pergunta}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--mut)', marginTop: 2 }}>
+                      {p.tipo === 'vf' ? '✔️✖️ verdadeiro ou falso' : enquete ? '📊 enquete' : `${p.opcoes.length} alternativas`}
+                      {dobro && !enquete && ' · ⚡ pontos em dobro'}
+                      {p.duracaoSec ? ` · ⏱️ ${p.duracaoSec}s` : ''}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => ciclarTempo(i, p.duracaoSec)}
+                    title={p.duracaoSec ? `${p.duracaoSec}s nesta pergunta` : `Tempo da sala (${duracao}s)`}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, opacity: p.duracaoSec ? 1 : .35, padding: '0 2px' }}
+                  >⏱️</button>
+                  <button
+                    onClick={() => ajustarPergunta(i, { multiplicador: dobro ? 1 : 2, tipo: p.tipo === 'enquete' ? 'quiz' : p.tipo })}
+                    title={dobro ? 'Voltar aos pontos normais' : 'Pontos em dobro'}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, opacity: dobro ? 1 : .35, padding: '0 2px' }}
+                  >⚡</button>
+                  <button
+                    onClick={() => ajustarPergunta(i, enquete
+                      ? { tipo: p.opcoes.length === 2 ? 'vf' : 'quiz', multiplicador: 1 }
+                      : { tipo: 'enquete', multiplicador: 0 })}
+                    title={enquete ? 'Voltar a valer ponto' : 'Transformar em enquete'}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, opacity: enquete ? 1 : .35, padding: '0 2px' }}
+                  >📊</button>
+                  <button
+                    onClick={() => removerPergunta(i)}
+                    title="Tirar da partida"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: 'var(--mut)', padding: '0 2px' }}
+                  >✕</button>
+                </div>
+              );
+            })}
+          </div>
+
+          {erro && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>{erro}</div>}
           <button className="btn btn-gold" onClick={criarSalaHandler} disabled={criando}>{criando ? '⏳ Criando...' : '🎮 CRIAR SALA'}</button>
         </div>
       </div>
@@ -414,7 +715,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   // perdeu o comando avisa, em vez de simplesmente parar de responder aos
   // botões — o professor precisa saber qual janela está valendo.
   const avisoComando = !comando && (
-    <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #E31C3D', background: 'rgba(227,28,61,.12)', color: '#E31C3D', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>
+    <div style={{ margin: '10px 16px', padding: '10px 14px', borderRadius: 12, border: '1.5px solid var(--danger)', background: 'rgba(227,28,61,.12)', color: 'var(--danger)', fontSize: 13, fontWeight: 700, textAlign: 'center' }}>
       ⚠️ Esta aba perdeu o comando — a sala está sendo controlada por outra janela. Pode fechar esta.
     </div>
   );
@@ -422,6 +723,19 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   const barraControles = (
     <div className="live-controls">
       <button className="btn btn-gold" onClick={avancarManual} style={{ flex: 1 }} disabled={!comando}>{proximoPasso}</button>
+      {/* Pausa só faz sentido com a pergunta no ar — nas outras fases nada
+          está correndo contra o relógio. */}
+      {game.phase === 'question' && (
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={alternarPausa}
+          disabled={!comando}
+          style={{ width: 'auto', borderColor: game.pausado ? 'var(--gold)' : undefined, color: game.pausado ? 'var(--gold)' : 'var(--mut)' }}
+          title={game.pausado ? 'Retomar a partida' : 'Pausar o cronômetro'}
+        >
+          {game.pausado ? '▶️' : '⏸️'}
+        </button>
+      )}
       <button
         className="btn btn-ghost btn-sm"
         onClick={() => setAutoOn(v => !v)}
@@ -430,7 +744,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
       >
         {autoOn ? '🔁 Auto' : '✋ Manual'}
       </button>
-      <button className="btn btn-ghost btn-sm" onClick={encerrarManual} style={{ width: 'auto', borderColor: '#E31C3D', color: '#E31C3D' }}>⏹️</button>
+      <button className="btn btn-ghost btn-sm" onClick={encerrarManual} style={{ width: 'auto', borderColor: 'var(--danger)', color: 'var(--danger)' }}>⏹️</button>
     </div>
   );
 
@@ -459,10 +773,18 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
             <QRCodeSVG value={joinUrl} size={180} />
           </div>
           <div className="sec-title">{jogadores.length} jogador{jogadores.length !== 1 ? 'es' : ''} na sala</div>
+          {/* Cada ficha tem um ✕: apelido impróprio no telão é o problema
+              clássico de Kahoot em sala, e sem isto a única saída era
+              cancelar a partida inteira. */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', margin: '10px 0 24px' }}>
             {jogadores.map(j => (
-              <div key={j.uid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--g4)', borderRadius: 30, padding: '6px 12px', fontSize: 13, fontWeight: 700 }}>
+              <div key={j.uid} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--g4)', borderRadius: 30, padding: '6px 8px 6px 12px', fontSize: 13, fontWeight: 700 }}>
                 {j.avatar?.length > 10 ? <img src={j.avatar} style={{ width: 20, height: 20, borderRadius: '50%' }} alt="" /> : j.avatar} {j.nome}
+                <button
+                  onClick={() => expulsar(j)}
+                  title={`Remover ${j.nome}`}
+                  style={{ background: 'none', border: 'none', color: 'var(--mut)', cursor: 'pointer', fontSize: 13, padding: '0 4px', lineHeight: 1 }}
+                >✕</button>
               </div>
             ))}
           </div>
@@ -479,7 +801,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
           </div>
           <button
             className="btn btn-gold"
-            onClick={() => comPasso('iniciar', () => iniciarPergunta(code, 0, perguntas[0]))}
+            onClick={() => comPasso('iniciar', () => iniciarPergunta(code, 0, perguntas[0], duracaoEfetiva(perguntas[0])))}
             disabled={perguntas.length === 0 || !comando}
           >▶️ INICIAR</button>
         </div>
@@ -504,30 +826,41 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   // ===== Pergunta =====
   if (game.phase === 'question') {
     const opcoes: string[] = game.currentQuestion?.opcoes || [];
+    const tipoQ = game.currentQuestion?.tipo || 'quiz';
+    const multQ = game.currentQuestion?.multiplicador;
+    const estilos = estiloOpcoes(tipoQ);
+    const jaResponderam = respostasRecebidas;
     return (
       <div className="scr-full">
         <div style={{ padding: '14px 20px', background: 'var(--hdr-bg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 900, fontSize: 22 }}>⏱️ {tempoRestante}s</span>
+            <span style={{ fontWeight: 900, fontSize: 22 }}>{game.pausado ? '⏸️' : '⏱️'} {tempoRestante}s</span>
             <div style={{ fontWeight: 800, color: 'var(--mut)', fontSize: 15 }}>{game.currentIndex + 1}/{perguntas.length}</div>
             {botaoMusica}
           </div>
         </div>
         <div style={{ padding: '18px 16px 0' }}>
+          <SeloTipo tipo={tipoQ} multiplicador={multQ} />
           <div style={{ background: 'var(--g5)', borderRadius: 18, padding: '24px 18px', textAlign: 'center', fontWeight: 800, fontSize: 20, lineHeight: 1.4, border: '1.5px solid rgba(247,198,0,.2)', minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {game.currentQuestion?.pergunta}
           </div>
         </div>
         <div style={{ padding: '18px 16px', flex: 1 }}>
-          <div className="quiz-grid">
+          <div className={`quiz-grid${tipoQ === 'vf' ? ' vf' : ''}`}>
             {opcoes.map((op, i) => (
-              <div key={i} className={`qbtn ${OPCOES_ESTILO[i]?.cls}`} style={{ cursor: 'default' }}>
-                <span className="sym">{OPCOES_ESTILO[i]?.sym}</span>
+              <div key={i} className={`qbtn ${estilos[i]?.cls}`} style={{ cursor: 'default' }}>
+                <span className="sym">{estilos[i]?.sym}</span>
                 <span style={{ fontSize: 14, lineHeight: 1.3 }}>{op}</span>
               </div>
             ))}
           </div>
-          <div style={{ textAlign: 'center', color: 'var(--mut)', marginTop: 18, fontSize: 13 }}>Aguardando respostas dos jogadores...</div>
+          {/* Contador de respostas: é o que diz ao professor se já pode
+              avançar ou se ainda falta gente digitando. */}
+          <div style={{ textAlign: 'center', color: 'var(--mut)', marginTop: 18, fontSize: 13 }}>
+            {game.pausado
+              ? '⏸️ Partida pausada — ninguém pode responder agora.'
+              : `${jaResponderam} de ${jogadores.length} já responderam`}
+          </div>
         </div>
         {barraControles}
       </div>
@@ -537,17 +870,20 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   // ===== Revelação =====
   if (game.phase === 'reveal') {
     const pergunta = perguntas[game.currentIndex];
+    const tipoR = game.currentQuestion?.tipo || 'quiz';
     const totalRespostas = (game.revealCounts || []).reduce((s: number, n: number) => s + n, 0);
     const acertaram = (game.revealCounts || [])[game.revealCorrectIndex] || 0;
     return (
       <div className="live-screen">
-        <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>Revelação</div>{botaoMusica}</div>
+        <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>{tipoR === 'enquete' ? '📊 Resultado' : 'Revelação'}</div>{botaoMusica}</div>
         <div className="live-body" style={{ padding: '10px 16px 16px' }}>
           <div style={{ fontWeight: 800, fontSize: 16, textAlign: 'center', marginBottom: 10 }}>{game.currentQuestion?.pergunta}</div>
           <div style={{ textAlign: 'center', fontSize: 13, color: 'var(--mut)', marginBottom: 4 }}>
-            ✅ {acertaram} de {totalRespostas} acertaram
+            {tipoR === 'enquete'
+              ? `${totalRespostas} resposta${totalRespostas !== 1 ? 's' : ''} — enquete não vale ponto`
+              : `✅ ${acertaram} de ${totalRespostas} acertaram`}
           </div>
-          <BarraRespostas opcoes={game.currentQuestion?.opcoes || []} counts={game.revealCounts || []} correctIndex={game.revealCorrectIndex} />
+          <BarraRespostas opcoes={game.currentQuestion?.opcoes || []} counts={game.revealCounts || []} correctIndex={game.revealCorrectIndex} tipo={tipoR} />
           {pergunta?.explicacao && <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 14, background: 'var(--g3)', fontSize: 13, color: 'var(--txt2)', lineHeight: 1.5 }}>{pergunta.explicacao}</div>}
         </div>
         {barraControles}
@@ -561,7 +897,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
       <div className="live-screen">
         <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>🏆 Placar</div>{botaoMusica}</div>
         <div className="live-body">
-          <Placar jogadores={jogadores} roundKey={game.currentIndex} comSom={musicaOn} />
+          <Placar jogadores={jogadores} roundKey={game.currentIndex} comSom={musicaOn} onExpulsar={expulsar} />
         </div>
         {barraControles}
       </div>
@@ -575,10 +911,124 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
       <div className="hdr"><div style={{ width: 64 }} /><div style={{ fontWeight: 900, fontSize: 17 }}>🏁 Fim de jogo</div>{botaoMusica}</div>
       <div style={{ padding: '10px 16px 100px' }}>
         <LivePodium jogadores={jogadores} />
+
+        {/* Relatório: o dado de todas as respostas já existia desde a primeira
+            versão e nunca era lido de volta. É o que o professor leva para o
+            próximo encontro. */}
+        <div style={{ marginTop: 26 }}>
+          <div
+            onClick={() => setVerRelatorio(v => !v)}
+            className="sec-title"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: 8 }}
+          >
+            <span>📋 Relatório da partida</span>
+            <span style={{ fontSize: 12, color: 'var(--mut)' }}>{verRelatorio ? '▲ ocultar' : '▼ ver'}</span>
+          </div>
+          {verRelatorio && (
+            carregandoRelatorio ? (
+              <div style={{ color: 'var(--mut)', fontSize: 13, padding: 8 }}>Carregando...</div>
+            ) : !relatorio ? (
+              <div style={{ color: 'var(--mut)', fontSize: 13, padding: 8 }}>Nenhuma resposta registrada nesta partida.</div>
+            ) : (
+              <RelatorioPartida relatorio={relatorio} />
+            )
+          )}
+        </div>
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 24 }}>
-          <button className="btn btn-gold" onClick={encerrarESair}>🎮 Nova sala</button>
+          {jogadores.length > 0 && (
+            <button className="btn btn-gold" onClick={jogarDeNovo} disabled={!comando}>🔁 Jogar de novo (mesma turma)</button>
+          )}
+          <button className="btn btn-ghost" onClick={encerrarESair}>🎮 Nova sala</button>
           <button className="btn btn-ghost" onClick={onBack}>← Voltar ao Admin</button>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ===== Relatório da partida =====
+// Três leituras que o professor realmente usa: quanto a turma acertou no
+// geral, o que ela mais errou (para revisar), e quem ficou para trás (para
+// procurar depois). Nada de gráfico bonito sem uso.
+const RelatorioPartida = ({ relatorio }: { relatorio: any }) => {
+  const { porPergunta, porAluno, mediaTurma, maisDificeis, precisamAjuda, feedback } = relatorio;
+  return (
+    <div style={{ background: 'var(--panel-bg)', borderRadius: 14, padding: 14 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontSize: 30, fontWeight: 900, color: 'var(--gold)' }} className="num">{mediaTurma}%</div>
+          <div style={{ fontSize: 12, color: 'var(--mut)' }}>de acerto médio</div>
+        </div>
+        {feedback && (
+          <div style={{ flex: 1, textAlign: 'center', borderLeft: '1px solid var(--b3)' }}>
+            <div style={{ fontSize: 30, fontWeight: 900, color: 'var(--gold)' }} className="num">{feedback.mediaEstrelas}⭐</div>
+            <div style={{ fontSize: 12, color: 'var(--mut)' }}>
+              {feedback.aprenderam} de {feedback.respostas} disseram que aprenderam
+            </div>
+          </div>
+        )}
+      </div>
+
+      {maisDificeis.length > 0 && (
+        <>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>🔻 O que a turma mais errou</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            {maisDificeis.map((p: any) => (
+              <div key={p.idx} style={{ background: 'var(--row-bg)', borderRadius: 10, padding: '10px 12px' }}>
+                <div style={{ fontSize: 13, color: 'var(--txt2)', marginBottom: 4 }}>{p.idx + 1}. {p.pergunta}</div>
+                <div style={{ fontSize: 12, color: 'var(--mut)' }}>
+                  ✅ {p.acertos}/{p.responderam} acertaram · <b style={{ color: p.percentual < 50 ? 'var(--danger)' : 'var(--txt2)' }}>{p.percentual}%</b>
+                  {' · '}resposta certa: <b style={{ color: 'var(--success)' }}>{p.opcoes[p.correta]}</b>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {precisamAjuda.length > 0 && (
+        <>
+          <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>🤝 Podem precisar de reforço</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+            {precisamAjuda.map((a: any) => (
+              <span key={a.uid} style={{ background: 'var(--row-bg)', borderRadius: 30, padding: '5px 11px', fontSize: 12, fontWeight: 700 }}>
+                {a.nome} <span style={{ color: 'var(--mut)' }}>{a.percentual}%</span>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>📊 Pergunta a pergunta</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16, maxHeight: 260, overflowY: 'auto' }}>
+        {porPergunta.map((p: any) => (
+          <div key={p.idx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+            <span style={{ color: 'var(--mut)', width: 20, textAlign: 'right' }}>{p.idx + 1}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ color: 'var(--txt2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.pergunta}</div>
+              <div style={{ height: 5, background: 'var(--row-bg)', borderRadius: 3, marginTop: 3, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${p.percentual}%`, background: p.tipo === 'enquete' ? 'var(--blu)' : p.percentual >= 50 ? 'var(--success)' : 'var(--danger)' }} />
+              </div>
+            </div>
+            <span style={{ color: 'var(--mut)', minWidth: 34, textAlign: 'right' }}>
+              {p.tipo === 'enquete' ? '—' : `${p.percentual}%`}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>🧑‍🎓 Por aluno</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 240, overflowY: 'auto' }}>
+        {porAluno.map((a: any, i: number) => (
+          <div key={a.uid} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '5px 8px', background: 'var(--row-bg)', borderRadius: 8 }}>
+            <span style={{ color: 'var(--mut)', width: 18 }}>{i + 1}</span>
+            <span style={{ flex: 1, minWidth: 0, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.nome}</span>
+            <Chama streak={a.maxStreak} tamanho={11} />
+            <span style={{ color: 'var(--mut)' }}>{a.acertos}/{a.responderam}</span>
+            <span style={{ color: 'var(--gold)', fontWeight: 900, minWidth: 42, textAlign: 'right' }} className="num">{a.score}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

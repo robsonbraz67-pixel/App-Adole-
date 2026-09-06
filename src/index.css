@@ -40,6 +40,14 @@
   --txt: #F2F5FF;
   --txt2: #C3CEEE;
   --mut: #93A4D6;
+  /* Vermelho/verde/laranja de status (botão excluir, badge resolvido, chama
+     de ofensiva). Escolhidos originalmente só pensando no fundo escuro — no
+     claro, essa mesma cor pastel em cima de uma pastilha igualmente pastel
+     cai para ~2:1 de contraste (letra "sumindo" de verdade). O claro troca
+     para um tom mais saturado/escuro do MESMO matiz; o escuro fica intacto. */
+  --danger: #FF6B6B;
+  --success: #4FB85C;
+  --flame: #FF9600;
   --r: 22px;
   --rsm: 16px;
 
@@ -73,6 +81,16 @@
   --panel-border: rgba(255,255,255,.07);
   --input-bg: rgba(0,0,0,.25);
   --input-border: rgba(255,255,255,.08);
+
+  /* "Cartão" recuado dentro de um painel (linha de lista, avatar, caixa de
+     texto pré-formatado). rgba(0,0,0,*) fixo funciona bem aqui no escuro,
+     mas no claro empilha escurecimento sobre --mut (que já é escuro) e o
+     texto murcha (contraste ~3:1). --row-bg-strong troca de tom no claro
+     em vez de reusar --g3/--g4 (que no claro são o MESMO tom, só invertido
+     em relação ao escuro) para não mudar a estética "recuado/escuro" já
+     em produção — só corrige o contraste. */
+  --row-bg: rgba(0,0,0,.2);
+  --row-bg-strong: rgba(0,0,0,.25);
 }
 
 /* ===== AUTO LIGHT: sistema prefere claro e não há tema forçado ===== */
@@ -104,6 +122,9 @@
     --txt: #101838;
     --txt2: #4A5878;
     --mut: #5A6A96;
+    --danger: #C0203C;
+    --success: #0E7A34;
+    --flame: #8A6500;
 
     --g0: rgba(16,24,56,.03);
     --g1: rgba(16,24,56,.04);
@@ -135,6 +156,9 @@
     --panel-border: rgba(16,24,56,.09);
     --input-bg: rgba(16,24,56,.05);
     --input-border: rgba(16,24,56,.12);
+
+    --row-bg: rgba(16,24,56,.04);
+    --row-bg-strong: rgba(16,24,56,.06);
   }
 }
 
@@ -166,6 +190,9 @@
   --txt: #101838;
   --txt2: #4A5878;
   --mut: #5A6A96;
+  --danger: #C0203C;
+  --success: #0E7A34;
+  --flame: #8A6500;
 
   --g0: rgba(16,24,56,.03);
   --g1: rgba(16,24,56,.04);
@@ -197,6 +224,9 @@
   --panel-border: rgba(16,24,56,.09);
   --input-bg: rgba(16,24,56,.05);
   --input-border: rgba(16,24,56,.12);
+
+  --row-bg: rgba(16,24,56,.04);
+  --row-bg-strong: rgba(16,24,56,.06);
 }
 
 /* ===== RESET & BASE ===== */
@@ -356,6 +386,13 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 
 /* ===== QUIZ ===== */
 .quiz-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+/* Verdadeiro/falso ocupa a largura toda em duas faixas: com só duas opções na
+   grade 2x2 sobrava metade da tela vazia, e o alvo do dedo ficava pequeno à
+   toa numa pergunta que é justamente a mais rápida de responder. */
+.quiz-grid.vf{grid-template-columns:1fr}
+.quiz-grid.vf .qbtn{min-height:88px}
+/* Chama da sequência de acertos */
+.live-streak{font-family:'Space Grotesk','Poppins',sans-serif;font-weight:700;color:var(--flame);white-space:nowrap;flex-shrink:0}
 .qbtn{border-radius:22px;border:none;cursor:pointer;padding:18px 12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-family:'Poppins',sans-serif;font-weight:800;font-size:14px;color:#0A1230;min-height:112px;transition:transform .1s;text-align:center;line-height:1.3}
 .qbtn:active{transform:scale(.97)}
 .qbtn .sym{font-size:24px}

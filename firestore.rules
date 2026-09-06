@@ -487,10 +487,18 @@ service cloud.firestore {
     // aba Network antes do host revelar. Jogadores (inclusive convidados
     // anônimos) só precisam de isAuthenticated(); nunca de canManage().
     //
-    // Bloco idêntico ao publicado no LUM07 (mesmo projeto/banco Firestore
-    // compartilhado — ver .firebaserc/.env): as duas apps publicam regras
-    // para o MESMO banco, então este bloco tem que ficar em paridade com o
-    // de lá, senão o deploy de uma app sobrescreve a regra que a outra usa.
+    // Este bloco NASCEU idêntico ao publicado no LUM07 (mesmo projeto/banco
+    // Firestore compartilhado — ver .firebaserc/.env), mas divergiu de
+    // propósito: streak/pausa/tipos de pergunta/liveFeedback/etc. só existem
+    // aqui. Um deploy do LUM07 sobrescreve este bloco com a versão dele (sem
+    // esses campos) até que ele seja atualizado para incluí-los — por isso
+    // toda escrita de campo NOVO introduzido depois da divergência (streak/
+    // maxStreak, pausado/msPausados/duracaoAtualSec, tipo/multiplicador em
+    // currentQuestion) tenta gravar completo e refaz sem o campo se a regra
+    // recusar (ver o try/catch em entrarNaSala/iniciarPergunta/
+    // avancarParaPlacar/revelarPergunta/encerrarJogo em liveGameApi.ts) —
+    // assim a partida nunca trava, só perde o recurso até as regras
+    // republicarem.
     function isGameHost(code) {
       return isAuthenticated()
         && exists(/databases/$(database)/documents/liveGames/$(code))
@@ -508,21 +516,42 @@ service cloud.firestore {
     // reescreve sem o campo e o aluno volta a assinar livePlayers), então a
     // partida não trava — só volta a custar mais leitura.
     function isValidLiveGame(data) {
-      return data.keys().hasOnly(['code', 'hostId', 'hostName', 'track', 'semana', 'trimestre', 'licaoTitulo', 'totalQuestions', 'questionDurationSec', 'phase', 'currentIndex', 'currentQuestion', 'questionStartedAt', 'revealCorrectIndex', 'revealExplicacao', 'revealCounts', 'faseIniciadaEm', 'placar', 'createdAt', 'endedAt'])
+      return data.keys().hasOnly(['code', 'hostId', 'hostName', 'track', 'semana', 'trimestre', 'licaoTitulo', 'totalQuestions', 'questionDurationSec', 'phase', 'currentIndex', 'currentQuestion', 'questionStartedAt', 'revealCorrectIndex', 'revealExplicacao', 'revealCounts', 'faseIniciadaEm', 'placar', 'createdAt', 'endedAt', 'pausado', 'msPausados', 'soNoTelao', 'duracaoAtualSec', 'rodada'])
         && (!data.keys().hasAny(['placar']) || (data.placar is list && data.placar.size() <= 300))
         && data.code is string && data.code.size() > 0 && data.code.size() <= 12
         && data.hostId is string
         && data.hostName is string && data.hostName.size() <= 50
         && data.track in ['teen', 'youngAdult', 'adult']
         && data.semana is string
-        && data.totalQuestions is number && data.totalQuestions >= 0 && data.totalQuestions <= 12
+        && data.totalQuestions is number && data.totalQuestions >= 0 && data.totalQuestions <= 50
         && data.questionDurationSec is number && data.questionDurationSec > 0
         // 'reveal' = gráfico de quantos marcaram cada opção; 'placar' = ranking
         // entre uma pergunta e outra. As duas são passagens automáticas.
         && data.phase in ['lobby', 'question', 'reveal', 'placar', 'ended']
         && data.currentIndex is number
+        // Pausa: o host congela o cronômetro. `msPausados` acumula quanto tempo
+        // a pergunta ficou parada, e todo prazo (contagem, cronômetro, avanço
+        // automático) soma isso — assim host e celulares voltam sincronizados.
+        && (!data.keys().hasAny(['pausado']) || data.pausado is bool)
+        && (!data.keys().hasAny(['msPausados']) || (data.msPausados is number && data.msPausados >= 0))
+        // Modo "só no telão": a pergunta e o texto das opções NÃO vão para o
+        // celular (só os símbolos coloridos), obrigando a turma a olhar para
+        // a projeção — é o comportamento clássico do Kahoot em sala.
+        && (!data.keys().hasAny(['soNoTelao']) || data.soNoTelao is bool)
+        // Duração desta pergunta: `questionDurationSec` é imutável (padrão da
+        // sala); esta sobrepõe por pergunta sem quebrar aquela trava.
+        && (!data.keys().hasAny(['duracaoAtualSec']) || (data.duracaoAtualSec is number && data.duracaoAtualSec > 0 && data.duracaoAtualSec <= 300))
+        // Revanche: incrementa a cada "jogar de novo" na MESMA sala. Os
+        // clientes usam para zerar estado local sem precisar de sala nova.
+        && (!data.keys().hasAny(['rodada']) || (data.rodada is number && data.rodada >= 0))
         && (!data.keys().hasAny(['revealCounts']) || data.revealCounts == null || data.revealCounts is list)
-        && (!data.keys().hasAny(['currentQuestion']) || data.currentQuestion == null || (data.currentQuestion is map && data.currentQuestion.keys().hasOnly(['pergunta', 'opcoes'])));
+        // `tipo`: 'quiz' (múltipla escolha), 'vf' (verdadeiro/falso) ou
+        // 'enquete' (sem resposta certa, não pontua).
+        // `multiplicador`: 0 = não vale ponto, 1 = normal, 2 = pontos em dobro.
+        && (!data.keys().hasAny(['currentQuestion']) || data.currentQuestion == null || (data.currentQuestion is map
+              && data.currentQuestion.keys().hasOnly(['pergunta', 'opcoes', 'tipo', 'multiplicador'])
+              && (!data.currentQuestion.keys().hasAny(['tipo']) || data.currentQuestion.tipo in ['quiz', 'vf', 'enquete'])
+              && (!data.currentQuestion.keys().hasAny(['multiplicador']) || (data.currentQuestion.multiplicador is number && data.currentQuestion.multiplicador >= 0 && data.currentQuestion.multiplicador <= 2))));
     }
 
     match /liveGames/{code} {
@@ -568,12 +597,16 @@ service cloud.firestore {
     }
 
     function isValidLivePlayer(data) {
-      return data.keys().hasOnly(['code', 'uid', 'nome', 'avatar', 'isGuest', 'score', 'joinedAt'])
+      return data.keys().hasOnly(['code', 'uid', 'nome', 'avatar', 'isGuest', 'score', 'joinedAt', 'streak', 'maxStreak'])
         && data.code is string
         && data.uid is string
         && data.nome is string && data.nome.size() > 0 && data.nome.size() <= 50
         && data.avatar is string && data.avatar.size() <= 1048576
         && (!data.keys().hasAny(['isGuest']) || data.isGuest is bool)
+        // Sequência de acertos seguidos (o "answer streak" do Kahoot). Zera ao
+        // errar OU ao não responder — quem some do jogo perde a sequência.
+        && (!data.keys().hasAny(['streak']) || (data.streak is number && data.streak >= 0))
+        && (!data.keys().hasAny(['maxStreak']) || (data.maxStreak is number && data.maxStreak >= 0))
         && data.score is number;
     }
 
@@ -589,16 +622,18 @@ service cloud.firestore {
         && incoming().joinedAt == request.time
         && isValidLivePlayer(incoming());
 
-      // Só o host credita pontos (depois de conferir a resposta no gabarito privado).
+      // Só o host credita pontos e mexe na sequência (depois de conferir a
+      // resposta no gabarito privado). É por aqui também que a revanche zera
+      // todo mundo sem recriar os documentos — o jogador nunca se auto-pontua.
       allow update: if isGameHost(existing().code)
-        && incoming().diff(existing()).affectedKeys().hasOnly(['score'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['score', 'streak', 'maxStreak'])
         && isValidLivePlayer(incoming());
 
       allow delete: if isUserAdmin() || isGameHost(existing().code);
     }
 
     function isValidLiveAnswer(data) {
-      return data.keys().hasOnly(['code', 'uid', 'idx', 'opcaoEscolhida', 'answeredAt', 'tempoRespostaMs', 'graded', 'correta', 'pontos'])
+      return data.keys().hasOnly(['code', 'uid', 'idx', 'opcaoEscolhida', 'answeredAt', 'tempoRespostaMs', 'graded', 'correta', 'pontos', 'bonusStreak', 'streakDepois'])
         && data.code is string
         && data.uid is string
         && data.idx is number
@@ -606,11 +641,21 @@ service cloud.firestore {
         && data.tempoRespostaMs is number
         && data.graded is bool
         && (!data.keys().hasAny(['correta']) || data.correta is bool)
+        // Guardados separados de `pontos` para a tela do aluno mostrar a conta
+        // ("+850 e +200 de sequência") em vez de um número só sem explicação.
+        && (!data.keys().hasAny(['bonusStreak']) || data.bonusStreak is number)
+        && (!data.keys().hasAny(['streakDepois']) || data.streakDepois is number)
         && (!data.keys().hasAny(['pontos']) || data.pontos is number);
     }
 
     match /liveAnswers/{docId} {
-      allow get, list: if isAuthenticated();
+      // Só o próprio dono e o host leem uma resposta — antes disso, qualquer
+      // autenticado conseguia listar liveAnswers da pergunta corrente e ver o
+      // que os colegas marcaram antes de responder. `assinarMinhaResposta`
+      // (o jogador) sempre lê o PRÓPRIO doc; `buscarRespostasPergunta` (o
+      // host, para corrigir) é a única lista de verdade.
+      allow get: if isAuthenticated() && (resource.data.uid == request.auth.uid || isGameHost(resource.data.code));
+      allow list: if isGameHost(resource.data.code);
 
       // Só responde a pergunta CORRENTE da sala (phase='question', mesmo índice)
       // — impede responder perguntas futuras cujo texto já tenha chegado por
@@ -626,11 +671,88 @@ service cloud.firestore {
 
       // Só o host corrige (é o único com acesso ao gabarito em liveGamesPrivate).
       allow update: if isGameHost(existing().code)
-        && incoming().diff(existing()).affectedKeys().hasOnly(['graded', 'correta', 'pontos'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['graded', 'correta', 'pontos', 'bonusStreak', 'streakDepois'])
         && incoming().graded == true
         && isValidLiveAnswer(incoming());
 
       allow delete: if isUserAdmin() || isGameHost(existing().code);
+    }
+
+    // ===== Feedback do aluno no fim da partida =====
+    // Coleção própria (e não um campo em livePlayers) porque ali só o host
+    // escreve — aqui é o contrário: cada aluno escreve o SEU e ninguém lê o
+    // dos outros. Doc id composto impede responder duas vezes.
+    function isValidLiveFeedback(data) {
+      return data.keys().hasOnly(['code', 'uid', 'estrelas', 'aprendeu', 'criadoEm'])
+        && data.code is string && data.code.size() > 0 && data.code.size() <= 12
+        && data.uid is string
+        && data.estrelas is number && data.estrelas >= 1 && data.estrelas <= 5
+        && (!data.keys().hasAny(['aprendeu']) || data.aprendeu is bool)
+        && data.criadoEm == request.time;
+    }
+
+    match /liveFeedback/{docId} {
+      // Só quem gerencia lê — é devolutiva para o professor, não placar.
+      allow get, list: if canManage();
+      allow create: if isAuthenticated()
+        && docId == incoming().code + '_' + request.auth.uid
+        && incoming().uid == request.auth.uid
+        && isValidLiveFeedback(incoming());
+      // Imutável: a primeira resposta é a resposta.
+      allow update: if false;
+      allow delete: if isUserAdmin() || isGameHost(existing().code);
+    }
+
+    // ===== Log de erro (automático) e relatos de usuário (manuais) =====
+    // Nenhum dos dois pode ser lido/alterado por outro aluno: são caixa de
+    // entrada da liderança, não conteúdo do app. Campos opcionais aceitam
+    // null porque quem loga pode ainda não ter perfil carregado (erro logo
+    // no boot, antes de `jogador` existir).
+    function camposDiagnosticoValidos(data) {
+      return (!data.keys().hasAny(['userId']) || data.userId == null || data.userId is string)
+        && (!data.keys().hasAny(['nome']) || data.nome == null || data.nome is string)
+        && (!data.keys().hasAny(['email']) || data.email == null || data.email is string)
+        && (!data.keys().hasAny(['tela']) || data.tela == null || data.tela is string)
+        && data.buildId is string
+        && data.userAgent is string && data.userAgent.size() <= 500
+        && data.criadoEm == request.time;
+    }
+
+    function isValidErrorLog(data) {
+      return data.keys().hasAll(['origem', 'mensagem', 'buildId', 'userAgent', 'criadoEm'])
+        && data.keys().hasOnly(['userId', 'nome', 'email', 'tela', 'origem', 'mensagem', 'detalhe', 'url', 'buildId', 'userAgent', 'criadoEm'])
+        && data.origem in ['boundary', 'window', 'promise']
+        && data.mensagem is string && data.mensagem.size() <= 2000
+        && (!data.keys().hasAny(['detalhe']) || (data.detalhe is string && data.detalhe.size() <= 4000))
+        && (!data.keys().hasAny(['url']) || (data.url is string && data.url.size() <= 500))
+        && camposDiagnosticoValidos(data);
+    }
+
+    match /errorLogs/{id} {
+      // Só quem gerencia lê — é diagnóstico técnico, não dado de aluno comum.
+      allow get, list: if canManage();
+      allow create: if isAuthenticated() && isValidErrorLog(incoming());
+      allow update: if false;
+      allow delete: if isUserAdmin();
+    }
+
+    function isValidUserReport(data) {
+      return data.keys().hasAll(['mensagem', 'status', 'buildId', 'userAgent', 'criadoEm'])
+        && data.keys().hasOnly(['userId', 'nome', 'email', 'tela', 'mensagem', 'ultimoErro', 'status', 'buildId', 'userAgent', 'criadoEm'])
+        && data.mensagem is string && data.mensagem.size() > 0 && data.mensagem.size() <= 1000
+        && data.status == 'novo'
+        && (!data.keys().hasAny(['ultimoErro']) || (data.ultimoErro is string && data.ultimoErro.size() <= 2000))
+        && camposDiagnosticoValidos(data);
+    }
+
+    match /userReports/{id} {
+      allow get, list: if canManage();
+      allow create: if isAuthenticated() && isValidUserReport(incoming());
+      // Só a liderança move o status (lido/resolvido); o resto do relato é imutável.
+      allow update: if canManage()
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+        && incoming().status in ['novo', 'lido', 'resolvido'];
+      allow delete: if isUserAdmin();
     }
 
   }

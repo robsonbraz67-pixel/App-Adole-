@@ -8,6 +8,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 // tipados normalmente.
 const ComponentBase = Component as any;
 import { BUILD_ID, buscarBuildPublicado, recarregar } from './version';
+import { registrarErro, reportarProblema } from './errorLog';
 
 // Rede de segurança: sem isto, qualquer erro de render derruba a árvore inteira
 // e a pessoa fica olhando uma tela branca, sem saber o que fazer nem o que
@@ -17,7 +18,7 @@ import { BUILD_ID, buscarBuildPublicado, recarregar } from './version';
 // se já existe build novo publicado, recarrega sozinho, porque nesse caso o
 // erro provavelmente já está corrigido.
 type Props = { children: ReactNode };
-type State = { erro: Error | null; recarregando: boolean; detalhe: string };
+type State = { erro: Error | null; recarregando: boolean; detalhe: string; relato: string; enviandoRelato: boolean; relatoEnviado: boolean };
 
 export class ErrorBoundary extends ComponentBase {
   props!: Props;
@@ -25,7 +26,7 @@ export class ErrorBoundary extends ComponentBase {
 
   constructor(props: Props) {
     super(props);
-    this.state = { erro: null, recarregando: false, detalhe: '' };
+    this.state = { erro: null, recarregando: false, detalhe: '', relato: '', enviandoRelato: false, relatoEnviado: false };
   }
 
   static getDerivedStateFromError(erro: Error): Partial<State> {
@@ -39,7 +40,10 @@ export class ErrorBoundary extends ComponentBase {
     // mensagem fica visível na própria tela, para caber num print — é a
     // diferença entre depurar por palpite e depurar com o erro na mão.
     const linhaComponente = (info.componentStack || '').trim().split('\n')[0] || '';
-    this.setState({ detalhe: `${erro?.name || 'Erro'}: ${erro?.message || erro}\n${linhaComponente}`.trim() });
+    const detalhe = `${erro?.name || 'Erro'}: ${erro?.message || erro}\n${linhaComponente}`.trim();
+    this.setState({ detalhe });
+    // Log automático: se ninguém mandar print, ainda existe registro do que quebrou.
+    registrarErro('boundary', erro?.message || String(erro), `${detalhe}\n${info.componentStack || ''}`.trim());
     // Versão nova no ar? Então a tela quebrada é código velho: atualiza.
     buscarBuildPublicado().then(publicado => {
       if (publicado && publicado !== BUILD_ID) {
@@ -48,6 +52,13 @@ export class ErrorBoundary extends ComponentBase {
       }
     });
   }
+
+  enviarRelato = async () => {
+    this.setState({ enviandoRelato: true });
+    const ok = await reportarProblema(this.state.relato, this.state.detalhe);
+    this.setState({ enviandoRelato: false, relatoEnviado: ok });
+    if (!ok) alert('Não foi possível enviar agora. Tente de novo em instantes.');
+  };
 
   render() {
     if (!this.state.erro) return this.props.children;
@@ -79,6 +90,31 @@ export class ErrorBoundary extends ComponentBase {
               padding:'10px 12px', whiteSpace:'pre-wrap', wordBreak:'break-word',
               maxHeight:160, overflow:'auto', fontFamily:'ui-monospace,Menlo,monospace',
             }}>{this.state.detalhe}</pre>
+          </div>
+        )}
+        {!this.state.recarregando && (
+          <div style={{marginTop:20, maxWidth:340, width:'100%'}}>
+            {this.state.relatoEnviado ? (
+              <div style={{fontSize:13, color:'var(--txt2)'}}>✅ Relato enviado. Obrigado — isso já chegou para a equipe.</div>
+            ) : (
+              <>
+                <textarea
+                  value={this.state.relato}
+                  onChange={(e: any) => this.setState({ relato: e.target.value })}
+                  placeholder="O que você estava fazendo quando isso aconteceu? (opcional)"
+                  rows={3}
+                  style={{width:'100%', padding:10, borderRadius:10, background:'var(--input-bg,rgba(0,0,0,.2))', color:'var(--txt)', border:'1px solid var(--input-border,var(--b3))', fontSize:13, resize:'vertical', marginBottom:10, fontFamily:'inherit'}}
+                />
+                <button
+                  className="btn btn-ghost"
+                  disabled={this.state.enviandoRelato}
+                  onClick={this.enviarRelato}
+                  style={{width:'100%'}}
+                >
+                  {this.state.enviandoRelato ? 'Enviando...' : '📨 Relatar este erro para a equipe'}
+                </button>
+              </>
+            )}
           </div>
         )}
         <div style={{fontSize:10, color:'var(--mut)', marginTop:28, opacity:.7}}>versão {BUILD_ID}</div>

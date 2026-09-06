@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getTrackLessons, loadTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking } from './utils';
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
-import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla } from './components';
+import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, ReportarProblemaModal } from './components';
 import { BUILD_ID, buscarBuildPublicado, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
+import { setErroContexto } from './errorLog';
 // Sob demanda: o Modo Ao Vivo pesa ~62 KB (tela do host, do jogador, gerador
 // de QR e o sintetizador da trilha) e é usado no sábado, por uma pessoa. Com
 // import estático, TODO aluno baixava isso todo dia só para abrir a lição.
@@ -71,6 +72,14 @@ export default function App() {
   // de uma pergunta — o convidado nunca passa por uma tela de TELAS_SEGURAS.
   const [liveJoinCode, setLiveJoinCode] = useState<string | null>(null);
   const [liveGameActive, setLiveGameActive] = useState(false);
+  const [showReportFAB, setShowReportFAB] = useState(false);
+
+  // Log de erro e relato do usuário rodam fora da árvore React (ver
+  // errorLog.ts) e não têm como ler jogador/tela — empurra o contexto atual
+  // a cada mudança para os dois saberem quem/onde estava quando algo quebrou.
+  useEffect(() => {
+    setErroContexto({ userId: jogador?.id || null, nome: jogador?.nome || null, email: jogador?.email || null, tela });
+  }, [jogador?.id, jogador?.nome, jogador?.email, tela]);
 
   // ===== Atualização automática =====
   // Checa se saiu versão nova ao abrir, ao voltar para o app e a cada 15 min.
@@ -660,13 +669,32 @@ export default function App() {
 
   if (tela === 'splash') return <Splash />;
   if (tela === 'login') return <Login onLogin={handleLogin} />;
-  if (!jogador || !licao) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',color:'#B9ACE6'}}>Carregando...</div>;
+  if (!jogador || !licao) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',color:'var(--mut)'}}>Carregando...</div>;
 
   return (
     <>
       {/* Luz de fundo da identidade. Fica fora da máquina de telas para não
           remontar (e reiniciar a animação) a cada troca de tela. */}
       <div className="blobs" aria-hidden="true"><div className="blob b1" /><div className="blob b2" /><div className="blob b3" /></div>
+
+      {/* Botão flutuante de "reportar problema" — fica fora da máquina de
+          telas (como os blobs) para aparecer em todo módulo já logado, sem
+          remontar a cada troca de tela. Sobe acima da bot-nav quando ela
+          existe; nas telas sem nav (quiz/liveHost) fica na mesma altura. */}
+      <button
+        onClick={() => setShowReportFAB(true)}
+        aria-label="Reportar um problema"
+        title="Reportar um problema"
+        style={{
+          position:'fixed', right:14, bottom:'calc(96px + env(safe-area-inset-bottom))',
+          width:48, height:48, borderRadius:'50%', border:'1px solid var(--b3)',
+          background:'var(--panel-bg)', backdropFilter:'blur(12px)', WebkitBackdropFilter:'blur(12px)',
+          display:'flex', alignItems:'center', justifyContent:'center', fontSize:22,
+          boxShadow:'0 8px 22px rgba(0,0,0,.35)', zIndex:300, cursor:'pointer', padding:0,
+        }}
+      >🐞</button>
+      {showReportFAB && <ReportarProblemaModal onClose={() => setShowReportFAB(false)} />}
+
       {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(jogador?.track || 'teen', licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
