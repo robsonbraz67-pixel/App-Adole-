@@ -12,7 +12,8 @@ import {
   estiloOpcoes, decorridoNaPergunta, duracaoDaPergunta, Chama, SeloTipo,
 } from './LiveShared';
 import { agoraServidor } from './relogio';
-import { tocarMusicaFundo, pararMusicaFundo, prepararAudio, audioLiberado, somContagem, somVai, somGongo, somPodio, prepararPodio } from './chiptune';
+import { tocarMusicaFundo, pararMusicaFundo, prepararAudio, audioLiberado, somContagem, somVai, somGongo, somPodio, prepararPodio, TEMAS } from './chiptune';
+import type { Tema } from './chiptune';
 import { Confetti } from '../components';
 
 const DURACOES = [10, 15, 20, 30, 60];
@@ -92,6 +93,27 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   const [tempoRestante, setTempoRestante] = useState(0);
   const [contagem, setContagem] = useState(0);   // 5..1 antes da pergunta; 0 = valendo
   const [musicaOn, setMusicaOn] = useState(true);
+  // Tema musical da partida: um conjunto de trilhas (espera, perguntas,
+  // rodada final, pódio), não uma música solta — ver TEMAS em chiptune.ts.
+  // Fica no localStorage porque é gosto do professor, não da sala.
+  const [tema, setTema] = useState<Tema>(() => {
+    const salvo = localStorage.getItem('liveTema') as Tema | null;
+    return salvo && TEMAS[salvo] ? salvo : 'classico';
+  });
+  useEffect(() => { localStorage.setItem('liveTema', tema); }, [tema]);
+  // Prévia na tela de preparo: o professor escolhe a trilha ouvindo, não
+  // lendo o nome dela. Toca a música das PERGUNTAS, que é a assinatura do
+  // tema — é a que vai rodar quase a partida inteira.
+  const [previa, setPrevia] = useState(false);
+  useEffect(() => { if (code) setPrevia(false); }, [code]);
+  useEffect(() => {
+    if (code) return;                    // sala aberta: quem manda é a trilha da sala
+    if (previa) tocarMusicaFundo(TEMAS[tema].jogo);
+    else pararMusicaFundo();
+  }, [previa, tema, code]);
+  // Sair da tela pelo "Voltar" não passa por nenhum dos efeitos acima — sem
+  // isto a prévia continuaria tocando no resto do app.
+  useEffect(() => () => pararMusicaFundo(), []);
   // Modo automático: com ele ligado o jogo anda sozinho (pergunta → gráfico →
   // placar → próxima) e o professor fica de frente para a turma. Desligado,
   // nada avança sem o botão — útil quando a turma quer comentar cada questão.
@@ -130,19 +152,33 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     return () => canal.close();
   }, [code]);
 
-  // Música de fundo (chiptune original — ver chiptune.ts). A trilha de
-  // suspense vale a partida inteira, do lobby às perguntas: como ela não
-  // muda de fase para fase, não há corte de música a cada 6 segundos.
-  // Silêncio só durante a contagem regressiva — o gongo e os bipes precisam
+  // Música de fundo (chiptune original — ver chiptune.ts). A trilha das
+  // perguntas ATRAVESSA pergunta, gráfico e placar sem cortar: trocar por
+  // fase daria um corte de música a cada 6 segundos. Sobram três viradas na
+  // partida inteira — espera → perguntas → rodada final → pódio.
+  // Silêncio só durante a contagem regressiva: o gongo e os bipes precisam
   // de espaço, e o corte é por si só o aviso de que vai começar.
-  // No pódio a trilha vira a animada: é o único momento em que a troca de
-  // música não corta nada — ela marca o fim da partida.
   const emContagem = game?.phase === 'question' && contagem > 0;
+  // A última pergunta ganha a trilha de tensão do tema: é uma troca só, num
+  // momento em que a virada de música é o próprio aviso de "rodada final".
+  const naRodadaFinal = perguntas.length > 0
+    && typeof game?.currentIndex === 'number'
+    && game.currentIndex >= perguntas.length - 1;
+  // Qual trilha vale AGORA. Calculada fora do efeito porque os botões de
+  // ligar o som também precisam dela: ligar a música no meio das perguntas
+  // tem de trazer a música das perguntas de volta, não a da espera.
+  const trilhaDaVez = (() => {
+    const set = TEMAS[tema];
+    const fase = game?.phase;
+    if (fase === 'ended') return set.podio;
+    if (!fase || fase === 'lobby') return set.lobby;
+    return naRodadaFinal ? set.final : set.jogo;
+  })();
   useEffect(() => {
     if (!code || !musicaOn || emContagem) { pararMusicaFundo(); return; }
-    tocarMusicaFundo(game?.phase === 'ended' ? 'jogo' : 'lobby');
+    tocarMusicaFundo(trilhaDaVez);
     return () => pararMusicaFundo();
-  }, [code, musicaOn, game?.phase, emContagem]);
+  }, [code, musicaOn, trilhaDaVez, emContagem]);
 
   // Enquanto a turma entra pelo QR não há nada acontecendo na tela: é a hora
   // de montar o buffer de palmas, que é caro (ver prepararPodio).
@@ -234,7 +270,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     if (pool.length < 2) { setErro('Escolha pelo menos 2 perguntas para a partida.'); return; }
     setCriando(true);
     gongoTocadoRef.current = false;             // sala nova, gongo de novo
-    if (musicaOn) tocarMusicaFundo('lobby');    // ainda na mesma pilha do clique
+    if (musicaOn) tocarMusicaFundo(TEMAS[tema].lobby);   // sala nova: sempre a da espera, ainda na pilha do clique
     try {
       const novoCodigo = await criarSala({
         hostId: jogador.id, hostName: jogador.nome, track: jogador.track || 'teen',
@@ -597,6 +633,34 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
             ))}
           </div>
 
+          <div className="sec-title">Trilha sonora</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+            {(Object.keys(TEMAS) as Tema[]).map(k => (
+              <button
+                key={k}
+                onClick={() => setTema(k)}
+                className="btn btn-ghost btn-sm"
+                style={{ width: 'auto', flex: '1 0 100px', background: tema === k ? 'rgba(247,198,0,.15)' : undefined, borderColor: tema === k ? 'var(--gold)' : undefined }}
+              >{TEMAS[k].emoji} {TEMAS[k].nome}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
+            <div style={{ flex: 1, fontSize: 12, color: 'var(--mut)', lineHeight: 1.45 }}>{TEMAS[tema].resumo}</div>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ width: 'auto', flex: 'none' }}
+              onClick={() => {
+                // Dentro do clique, como no botão de música: é a única janela
+                // em que o Safari deixa o áudio sair de "suspended".
+                prepararAudio();
+                const ligar = !previa;
+                setPrevia(ligar);
+                if (ligar) tocarMusicaFundo(TEMAS[tema].jogo);
+                else pararMusicaFundo();
+              }}
+            >{previa ? '⏹ Parar' : '🎧 Ouvir'}</button>
+          </div>
+
           <div className="sec-title">Opções da partida</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 22 }}>
             <OpcaoPartida
@@ -692,7 +756,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
         prepararAudio();
         const ligar = !musicaOn;
         setMusicaOn(ligar);
-        if (ligar) tocarMusicaFundo('lobby');
+        if (ligar) tocarMusicaFundo(trilhaDaVez);
         else pararMusicaFundo();
       }}
       style={{ width: 'auto', borderColor: somBloqueado ? 'var(--gold)' : undefined }}
@@ -761,7 +825,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
           {avisoComando}
           {somBloqueado && (
             <div
-              onClick={() => { prepararAudio(); tocarMusicaFundo('lobby'); }}
+              onClick={() => { prepararAudio(); tocarMusicaFundo(trilhaDaVez); }}
               style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 12, border: '1.5px solid var(--gold)', background: 'rgba(247,198,0,.1)', color: 'var(--gold)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
             >
               🔈 O navegador bloqueou o som — toque aqui para liberar a música
