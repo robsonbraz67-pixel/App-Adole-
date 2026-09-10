@@ -34,7 +34,7 @@ jobs:
           cache: npm
 
       # O emulador do Firestore roda em Java
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -69,6 +69,23 @@ jobs:
 
       # Usa o firebase-tools fixado no package.json, não @latest: o deploy de
       # regras não pode mudar de comportamento sozinho quando sai versão nova.
+      #
+      # ⚠️ DÍVIDA CONHECIDA: `--token` está DEPRECADO no firebase-tools e vai
+      # sumir numa versão maior — quando sumir, este passo quebra e nenhuma
+      # regra sobe mais. A migração é para conta de serviço, e só falta o
+      # segredo (hoje o repositório tem apenas FIREBASE_TOKEN):
+      #
+      #   1. Firebase Console > Configurações > Contas de serviço > gerar chave
+      #   2. gh secret set FIREBASE_SERVICE_ACCOUNT < chave.json
+      #   3. trocar o passo abaixo por um que escreva a chave em
+      #      $RUNNER_TEMP/sa.json, aponte GOOGLE_APPLICATION_CREDENTIALS para
+      #      ela e chame o deploy com --project gen-lang-client-0268878137
+      #      (sem --token).
+      #
+      # Não foi trocado agora porque este é o caminho que publica regras:
+      # fazer a troca sem o segredo existir deixaria o repositório sem como
+      # publicar nada.
+      #
       # Índices junto das regras: uma consulta sem índice falha em PRODUÇÃO
       # (não degrada, falha), então o índice precisa existir antes do código
       # que consulta. Publicar os dois pelo mesmo caminho evita a ordem errada.
