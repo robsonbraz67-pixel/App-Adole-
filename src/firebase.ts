@@ -327,7 +327,8 @@ export const adminCarimbarTurma = async (
   turmaId: string,
   usuarios: string[],
   progressos: { id: string; userId: string }[],
-  aoAvancar?: (etapa: 'perfis' | 'progresso', feitos: number, total: number) => void,
+  aoAvancar?: (etapa: 'perfis' | 'progresso' | 'igreja', feitos: number, total: number) => void,
+  igreja?: { locationId: string; usuarios: string[] },
 ) => {
   const rPerfis = await carimbarEmLotes(
     usuarios.map(id => ({ id, colecao: 'users', patch: { turmaId } })),
@@ -346,9 +347,22 @@ export const adminCarimbarTurma = async (
     (f, t) => aoAvancar?.('progresso', f, t),
   );
 
+  // A igreja que faltava no perfil. Vem da turma, que é quem define — e só
+  // para quem está SEM: perfil com outra igreja é conflito para humano olhar.
+  //
+  // O progresso desses alunos se conserta sozinho: backfill-ranking-data roda
+  // de hora em hora e carimba locationId nos docs de quem tem um no perfil.
+  const rIgreja = igreja?.usuarios.length
+    ? await carimbarEmLotes(
+        igreja.usuarios.map(id => ({ id, colecao: 'users', patch: { locationId: igreja.locationId } })),
+        (f, t) => aoAvancar?.('igreja', f, t),
+      )
+    : { feitos: 0, falhas: [] as { id: string; erro: string }[] };
+
   return {
     perfis: rPerfis,
     progresso: rProgresso,
+    igreja: rIgreja,
     progressoAdiadoPorFalhaNoPerfil: progressos.length - seguros.length,
   };
 };

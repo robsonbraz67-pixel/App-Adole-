@@ -68,6 +68,20 @@ export const planejarBackfill = ({ usuarios, progressos, turma, incluirSemIgreja
     ...usuarios.filter(u => u.turmaId === turma.id).map(u => u.id),
   ]);
 
+  // A turma define a igreja (ver Anexo A do plano: o perfil herda as duas).
+  // Quem está na turma sem `locationId` no perfil fica fora de tudo que é
+  // recortado por igreja — a escalação de duplas, por exemplo. Só PREENCHE o
+  // que falta: perfil apontando para OUTRA igreja é conflito de dado, e
+  // sobrescrever escondeira o problema em vez de resolvê-lo.
+  const igrejaFaltando: { id: string; nome: string }[] = [];
+  let igrejaDivergente = 0;
+  for (const u of usuarios) {
+    const entra = u.turmaId === turma.id || elegiveis.some(e => e.id === u.id);
+    if (!entra) continue;
+    if (!u.locationId) igrejaFaltando.push({ id: u.id, nome: u.nome || u.email || u.id });
+    else if (u.locationId !== turma.locationId) igrejaDivergente++;
+  }
+
   const progContagem = { total: progressos.length, jaNestaTurma: 0, emOutraTurma: 0, deOutroDono: 0, outraTrilha: 0, elegiveis: 0 };
   const progElegiveis: { id: string; userId: string }[] = [];
 
@@ -82,5 +96,5 @@ export const planejarBackfill = ({ usuarios, progressos, turma, incluirSemIgreja
     progElegiveis.push({ id: p.id, userId: p.userId });
   }
 
-  return { contagem, elegiveis, progContagem, progElegiveis };
+  return { contagem, elegiveis, progContagem, progElegiveis, igrejaFaltando, igrejaDivergente };
 };

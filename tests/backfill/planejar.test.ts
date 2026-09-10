@@ -91,6 +91,62 @@ describe('planejarBackfill — quem entra na turma', () => {
   });
 });
 
+describe('planejarBackfill — a igreja que falta no perfil', () => {
+  // A turma define a igreja (Anexo A do plano). Quem está na turma sem
+  // locationId fica de fora de tudo que é recortado por igreja — a escalação
+  // de duplas, por exemplo.
+  it('aponta quem está na turma sem igreja', () => {
+    const r = planejarBackfill({
+      usuarios: [{ id: 'a1', nome: 'Ana', track: 'teen', turmaId: 'turmaA' }],
+      progressos: [],
+      turma,
+    });
+    expect(r.igrejaFaltando.map(u => u.id)).toEqual(['a1']);
+  });
+
+  it('aponta também quem está entrando agora sem igreja', () => {
+    const r = planejarBackfill({
+      usuarios: [{ id: 'a1', nome: 'Ana', track: 'teen' }],
+      progressos: [],
+      turma,
+      incluirSemIgreja: true,
+    });
+    expect(r.contagem.elegiveis).toBe(1);
+    expect(r.igrejaFaltando.map(u => u.id)).toEqual(['a1']);
+  });
+
+  it('não mexe em quem já tem a igreja certa', () => {
+    const r = planejarBackfill({
+      usuarios: [{ id: 'a1', locationId: 'igreja1', track: 'teen', turmaId: 'turmaA' }],
+      progressos: [],
+      turma,
+    });
+    expect(r.igrejaFaltando).toEqual([]);
+    expect(r.igrejaDivergente).toBe(0);
+  });
+
+  // Perfil apontando para outra igreja é conflito de dado: sobrescrever
+  // esconderia o problema. Conta, relata, não toca.
+  it('conta, mas não toca, em perfil apontando para outra igreja', () => {
+    const r = planejarBackfill({
+      usuarios: [{ id: 'a1', locationId: 'igreja2', track: 'teen', turmaId: 'turmaA' }],
+      progressos: [],
+      turma,
+    });
+    expect(r.igrejaFaltando).toEqual([]);
+    expect(r.igrejaDivergente).toBe(1);
+  });
+
+  it('ignora quem não é da turma', () => {
+    const r = planejarBackfill({
+      usuarios: [{ id: 'a1', track: 'teen', turmaId: 'outraTurma' }],
+      progressos: [],
+      turma,
+    });
+    expect(r.igrejaFaltando).toEqual([]);
+  });
+});
+
 describe('planejarBackfill — qual progresso é carimbado', () => {
   it('carimba o progresso de quem acabou de entrar', () => {
     const r = planejarBackfill({

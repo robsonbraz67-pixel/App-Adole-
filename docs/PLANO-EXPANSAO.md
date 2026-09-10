@@ -349,6 +349,26 @@ desabilitado: a idempotência está confirmada em produção, não só nos teste
 `MULTI_*` continuam `false`, e o app publicado nem tem o painel — o que existe
 é o dado, pronto para a Fase 4 usar.
 
+### A igreja que faltava em 5 perfis (2026-09-10)
+
+Cinco alunos entraram na turma pelo carimbo mas continuavam **sem `locationId`**
+no perfil — eram os que estavam "sem igreja" antes, incluídos por decisão do
+usuário. Isso os deixava de fora de tudo que é recortado por igreja, como a
+escalação de duplas (`listenToPairRoster` consulta por `locationId`).
+
+O conserto entrou no mesmo ensaio/carimbo, porque é a mesma regra do modelo: a
+turma define a igreja, e o perfil herda (Anexo A). O ensaio agora nomeia quem
+está sem, e o carimbo preenche — **só onde falta**. Perfil apontando para uma
+igreja *diferente* da turma é contado e relatado, mas não tocado: é conflito de
+dado, e sobrescrever esconderia o problema.
+
+Aplicado: andre santana, Erica Fernanda Souza, Ágatha Sofia, Juan Vazquez e
+Davi Rodor. Conferido depois de recarregar — o servidor não tem mais ninguém da
+turma sem igreja.
+
+O progresso deles se conserta sozinho: `backfill-ranking-data` roda de hora em
+hora e carimba `locationId` nos documentos de quem tem um no perfil.
+
 ### Dois executores para a mesma decisão
 
 A decisão de quem entra na turma mora em `src/backfillTurmas.ts`, pura e

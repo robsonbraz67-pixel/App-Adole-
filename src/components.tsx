@@ -2196,12 +2196,13 @@ export const Dupla = ({ jogador, licao, prog, weekRows, activePair, pendingInvit
 // Custo: uma leitura da coleção `turmas` (pequena por natureza) ao abrir. A
 // contagem de alunos e os nomes dos professores saem da lista de usuários que
 // o Admin já carregou — nenhuma consulta a mais.
-const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosCarimbados }: {
+const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosCarimbados, onIgrejaPreenchida }: {
   jogador: any;
   locations: { id: string; name: string }[];
   users: any[];
   onLocationCreated: (loc: { id: string; name: string }) => void;
   onUsuariosCarimbados: (ids: string[], turmaId: string) => void;
+  onIgrejaPreenchida: (ids: string[], locationId: string) => void;
 }) => {
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -2415,10 +2416,11 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
 
   const handleCarimbar = async (t: Turma) => {
     if (!ensaio || ensaio.turmaId !== t.id) return;
-    const { contagem, elegiveis, progElegiveis } = ensaio.plano;
-    if (!contagem.elegiveis && !progElegiveis.length) return alert('Não há nada a carimbar.');
+    const { contagem, elegiveis, progElegiveis, igrejaFaltando } = ensaio.plano;
+    if (!contagem.elegiveis && !progElegiveis.length && !igrejaFaltando.length) return alert('Não há nada a carimbar.');
     if (!window.confirm(
       `Carimbar a turma "${t.nome}" em ${contagem.elegiveis} perfil(is) e ${progElegiveis.length} documento(s) de progresso?\n\n` +
+      (igrejaFaltando.length ? `Também preenche a igreja da turma em ${igrejaFaltando.length} perfil(is) que estão sem.\n\n` : '') +
       'Isto escreve nos dados reais. Ninguém é tirado de outra turma e nada é apagado — o campo só é acrescentado a quem está sem ele.'
     )) return;
 
@@ -2429,26 +2431,36 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
         t.id,
         elegiveis.map((e: any) => e.id),
         progElegiveis,
-        (etapa, feitos, total) => setAndamento(`${etapa === 'perfis' ? 'Perfis' : 'Progresso'}: ${feitos}/${total}`),
+        (etapa, feitos, total) => setAndamento(
+          `${etapa === 'perfis' ? 'Perfis' : etapa === 'igreja' ? 'Igreja no perfil' : 'Progresso'}: ${feitos}/${total}`,
+        ),
+        { locationId: t.locationId, usuarios: (ensaio.plano.igrejaFaltando || []).map((u: any) => u.id) },
       );
 
       // O painel (contagem de alunos) e o ensaio seguinte precisam enxergar o
       // que acabou de ser escrito, senão o segundo ensaio repetiria a lista.
       const idsOk = elegiveis.map((e: any) => e.id).filter((id: string) => !r.perfis.falhas.some(f => f.id === id));
       onUsuariosCarimbados(idsOk, t.id);
+      // A igreja também: sem isto o ensaio seguinte repetiria a mesma lista,
+      // porque leria o estado velho em vez do que acabou de ser gravado.
+      const igrejaOk = (ensaio.plano.igrejaFaltando || [])
+        .map((u: any) => u.id)
+        .filter((id: string) => !r.igreja.falhas.some(f => f.id === id));
+      if (igrejaOk.length) onIgrejaPreenchida(igrejaOk, t.locationId);
       setProgressos(prev => (prev || []).map(p => (
         progElegiveis.some((q: any) => q.id === p.id) && !r.progresso.falhas.some(f => f.id === p.id)
           ? { ...p, turmaId: t.id } : p
       )));
 
-      const falhas = r.perfis.falhas.length + r.progresso.falhas.length;
+      const falhas = r.perfis.falhas.length + r.progresso.falhas.length + r.igreja.falhas.length;
       setResultado({
         turmaId: t.id,
         texto: `Carimbados ${r.perfis.feitos} perfil(is) e ${r.progresso.feitos} documento(s) de progresso.`
+          + (r.igreja.feitos ? ` A igreja da turma entrou em ${r.igreja.feitos} perfil(is) que estavam sem.` : '')
           + (falhas ? ` ${falhas} recusado(s) pela regra — ver o console para os ids.` : '')
           + (r.progressoAdiadoPorFalhaNoPerfil ? ` ${r.progressoAdiadoPorFalhaNoPerfil} progresso(s) ficaram de fora porque o perfil do dono falhou.` : ''),
       });
-      if (falhas) console.warn('Backfill de turmas — recusados:', [...r.perfis.falhas, ...r.progresso.falhas]);
+      if (falhas) console.warn('Backfill de turmas — recusados:', [...r.perfis.falhas, ...r.progresso.falhas, ...r.igreja.falhas]);
       setEnsaio(null);
     } catch (e: any) {
       alert(e?.message || 'Erro ao carimbar.');
@@ -2617,6 +2629,16 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                           {' '}· {ensaio.plano.contagem.convidados} convidado(s) do Ao Vivo
                           {ensaio.plano.progContagem.outraTrilha > 0 && ` · ${ensaio.plano.progContagem.outraTrilha} progresso(s) de outra trilha`}
                         </div>
+                        {(ensaio.plano.igrejaFaltando?.length > 0 || ensaio.plano.igrejaDivergente > 0) && (
+                          <div style={{fontSize:11, color:'var(--txt2)', marginTop:8, lineHeight:1.6}}>
+                            {ensaio.plano.igrejaFaltando.length > 0 && (
+                              <>🏛️ <strong>{ensaio.plano.igrejaFaltando.length}</strong> perfil(is) desta turma estão <strong>sem igreja</strong> e vão receber a da turma: {ensaio.plano.igrejaFaltando.slice(0, 6).map((u: any) => u.nome).join(', ')}{ensaio.plano.igrejaFaltando.length > 6 ? '…' : ''}<br/></>
+                            )}
+                            {ensaio.plano.igrejaDivergente > 0 && (
+                              <>⚠️ {ensaio.plano.igrejaDivergente} perfil(is) apontam para uma igreja <strong>diferente</strong> da turma. Não são tocados — é conflito de dado, e sobrescrever esconderia o problema.</>
+                            )}
+                          </div>
+                        )}
                         {ensaio.plano.contagem.semIgreja > 0 && (
                           <label style={{display:'flex', alignItems:'center', gap:6, fontSize:11, color:'var(--mut)', marginTop:8, cursor:'pointer'}}>
                             <input type="checkbox" checked={incluirSemIgreja} onChange={e => { setIncluirSemIgreja(e.target.checked); handleEnsaio(t, e.target.checked); }} />
@@ -2629,7 +2651,7 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                           </div>
                         )}
                         <div style={{display:'flex', gap:6, marginTop:10}}>
-                          <button onClick={() => handleCarimbar(t)} disabled={ocupado || (!ensaio.plano.contagem.elegiveis && !ensaio.plano.progElegiveis.length)}
+                          <button onClick={() => handleCarimbar(t)} disabled={ocupado || (!ensaio.plano.contagem.elegiveis && !ensaio.plano.progElegiveis.length && !ensaio.plano.igrejaFaltando.length)}
                             className={`btn btn-gold ${ocupado ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px'}}>
                             {ocupado ? 'Carimbando...' : '✅ Aplicar o carimbo'}
                           </button>
@@ -3538,6 +3560,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
                 users={users}
                 onLocationCreated={loc => setLocations(prev => [...prev, loc].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')))}
                 onUsuariosCarimbados={(ids, turmaId) => setUsers(prev => prev.map(u => ids.includes(u.id) ? { ...u, turmaId } : u))}
+                onIgrejaPreenchida={(ids, locationId) => setUsers(prev => prev.map(u => ids.includes(u.id) ? { ...u, locationId } : u))}
               />
             )}
           </>
