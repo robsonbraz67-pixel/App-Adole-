@@ -1,6 +1,6 @@
 import { describe, it, beforeAll, afterAll, beforeEach } from 'vitest';
 import { assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { setup, teardown, limpar, comoUsuario, semearAluno, semearProfessor, SUPER_ADMIN_EMAIL } from './helpers';
+import { setup, teardown, limpar, comoUsuario, semearAluno, semearAdmin, semearProfessor, semearTurma, SUPER_ADMIN_EMAIL } from './helpers';
 
 // users/{uid} é o documento mais sensível do app: é onde moram isAdmin,
 // isProfessor, locationId e track. Toda escalada de privilégio passa por
@@ -101,6 +101,83 @@ describe('users — criação e edição do próprio perfil', () => {
         isAdmin: true,
       }),
     );
+  });
+});
+
+// ===== Fase 1: trilha juvenil e vínculo com turma =====
+describe('users — trilha juvenil e turmaId', () => {
+  beforeAll(() => setup('perfil'));
+  afterAll(teardown);
+  beforeEach(limpar);
+
+  // #31
+  it('juvenil é uma trilha válida', async () => {
+    const db = comoUsuario('aluno1');
+
+    await assertSucceeds(
+      db.doc('users/aluno1').set({
+        id: 'aluno1', nome: 'Fulano', avatar: '🦁', email: 'aluno1@teste.com',
+        track: 'juvenil',
+      }),
+    );
+  });
+
+  // #32 — o enum continua fechado: alargar não é abrir.
+  it('trilha inventada continua recusada', async () => {
+    const db = comoUsuario('aluno1');
+
+    await assertFails(
+      db.doc('users/aluno1').set({
+        id: 'aluno1', nome: 'Fulano', avatar: '🦁', email: 'aluno1@teste.com',
+        track: 'infantil',
+      }),
+    );
+  });
+
+  // #34 — a matrícula da Fase 4 depende de o próprio aluno conseguir gravar
+  // o turmaId quando ainda não tem nenhum.
+  it('aluno define o próprio turmaId quando ainda não tem', async () => {
+    await semearAluno('aluno1');
+    await semearTurma('turma1');
+    const db = comoUsuario('aluno1');
+
+    await assertSucceeds(db.doc('users/aluno1').update({ turmaId: 'turma1' }));
+  });
+
+  // #46 — mesma proteção que o locationId já tem: sem ela, bastaria inventar
+  // um turmaId para o progresso (que precisa bater com ownTurmaId()) carimbar
+  // aquela turma e o aluno aparecer no ranking de outra igreja.
+  it('aluno não se matricula em turma que não existe', async () => {
+    await semearAluno('aluno1');
+    const db = comoUsuario('aluno1');
+
+    await assertFails(db.doc('users/aluno1').update({ turmaId: 'turmaInventada' }));
+  });
+
+  // #35 — mesma trava do locationId: definido uma vez, só admin troca.
+  it('aluno não troca o próprio turmaId depois de definido', async () => {
+    await semearAluno('aluno1', { turmaId: 'turma1' });
+    const db = comoUsuario('aluno1');
+
+    await assertFails(db.doc('users/aluno1').update({ turmaId: 'turma2' }));
+  });
+
+  // Nem quem gerencia se muda de turma sozinho: trocar alguém de turma é ato
+  // administrativo, e passa pelo branch de admin do update.
+  it('professor também não troca a própria turma sozinho', async () => {
+    await semearProfessor('professor1', { turmaId: 'turma1' });
+    const db = comoUsuario('professor1');
+
+    await assertFails(db.doc('users/professor1').update({ turmaId: 'turma2' }));
+  });
+
+  // #36 — é assim que o admin corrige uma matrícula errada.
+  it('admin troca o turmaId de um aluno', async () => {
+    await semearAluno('aluno1', { turmaId: 'turma1' });
+    await semearAdmin('admin1');
+    const db = comoUsuario('admin1');
+
+    await assertSucceeds(db.doc('users/aluno1').update({ turmaId: 'turma2' }));
   });
 });
 

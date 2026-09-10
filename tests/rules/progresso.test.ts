@@ -81,6 +81,45 @@ describe('progress', () => {
     );
   });
 
+  // #33 — a trilha nova precisa funcionar no caminho mais quente do app.
+  it('aluno grava progresso na trilha juvenil', async () => {
+    await semearAluno('aluno1', { track: 'juvenil' });
+    const db = comoUsuario('aluno1');
+
+    await assertSucceeds(
+      db.doc(`progress/aluno1_juvenil_${SEMANA}`).set(
+        progressoValido('aluno1', { track: 'juvenil' }),
+      ),
+    );
+  });
+
+  // #34 (lado do progresso) — turmaId carimbado tem de ser a turma REAL do
+  // dono; é o que vai tornar o ranking por turma calculável sem ler
+  // users/{uid} de terceiro.
+  it('aluno grava o próprio progresso com o turmaId da própria turma', async () => {
+    await semearAluno('aluno1', { turmaId: 'turma1' });
+    const db = comoUsuario('aluno1');
+
+    await assertSucceeds(
+      db.doc(`progress/aluno1_${SEMANA}`).set(
+        progressoValido('aluno1', { turmaId: 'turma1' }),
+      ),
+    );
+  });
+
+  // #37 — sem esta trava, o aluno se carimbaria na turma de outra igreja e
+  // apareceria no ranking dela.
+  it('aluno não grava progresso com turmaId de outra turma', async () => {
+    await semearAluno('aluno1', { turmaId: 'turma1' });
+    const db = comoUsuario('aluno1');
+
+    await assertFails(
+      db.doc(`progress/aluno1_${SEMANA}`).set(
+        progressoValido('aluno1', { turmaId: 'turma2' }),
+      ),
+    );
+  });
+
   // #18 — nem o admin apaga um doc de progress (allow delete: if false).
   // Corrigir é sempre zerar campos (ver #6), nunca remover o documento.
   it('ninguém apaga um documento de progresso — nem admin', async () => {

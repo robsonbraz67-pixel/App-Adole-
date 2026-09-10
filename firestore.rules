@@ -58,19 +58,28 @@ service cloud.firestore {
         && (!data.keys().hasAny(['telefone']) || (data.telefone is string && data.telefone.size() <= 20))
         && (!data.keys().hasAny(['whatsappOptIn']) || data.whatsappOptIn is bool)
         && (!data.keys().hasAny(['manualNotification']) || data.manualNotification is map)
-        && (!data.keys().hasAny(['track']) || data.track in ['teen', 'youngAdult', 'adult'])
+        && (!data.keys().hasAny(['track']) || data.track in ['teen', 'juvenil', 'youngAdult', 'adult'])
         && (!data.keys().hasAny(['locationId']) || (data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200))
+        // turmaId (Fase 1): opcional para não invalidar NENHUM usuário atual —
+        // todos estão sem o campo até o backfill da Fase 2. A partir dela, é a
+        // turma que passa a definir local e trilha; aqui só se aceita o campo.
+        && (!data.keys().hasAny(['turmaId']) || (data.turmaId is string && data.turmaId.size() > 0 && data.turmaId.size() <= 200))
         && (!data.keys().hasAny(['inviteCode']) || (data.inviteCode is string && data.inviteCode.size() <= 40));
     }
 
-    // Uma vez definidos pelo próprio usuário no cadastro, locationId só pode
-    // ser trocado por admin (ver bloco de update abaixo) — impede que o
-    // usuário se mova de local sozinho depois de escolher. A trilha segue a
-    // mesma trava para alunos comuns, mas admin/professor podem alternar a
-    // própria trilha livremente (uso próprio: testar/acompanhar outras
-    // trilhas sem precisar de outro admin para liberar).
+    // Uma vez definidos pelo próprio usuário no cadastro, locationId e turmaId
+    // só podem ser trocados por admin (ver bloco de update abaixo) — impede que
+    // o usuário se mova de local ou de turma sozinho depois de escolher. A
+    // trilha segue a mesma trava para alunos comuns, mas admin/professor podem
+    // alternar a própria trilha livremente (uso próprio: testar/acompanhar
+    // outras trilhas sem precisar de outro admin para liberar).
+    //
+    // turmaId NÃO tem a saída do canManage(): trocar alguém de turma é ato
+    // administrativo mesmo para quem gerencia, e passa pelo branch de admin do
+    // update (que exige isUserAdmin()), nunca por este.
     function ownerLocationTrackUnchanged() {
       return (!existing().keys().hasAny(['locationId']) || incoming().locationId == existing().locationId)
+        && (!existing().keys().hasAny(['turmaId']) || incoming().turmaId == existing().turmaId)
         && (canManage() || !existing().keys().hasAny(['track']) || incoming().track == existing().track);
     }
 
@@ -115,26 +124,47 @@ service cloud.firestore {
         || exists(/databases/$(database)/documents/studyLocations/$(incoming().locationId));
     }
 
+    // Mesma proteção do locationId, aplicada à turma: o dono só se matricula
+    // numa turma que EXISTE de verdade. Sem isto, bastaria gravar um turmaId
+    // qualquer no próprio perfil para que o progresso (que a regra obriga a
+    // bater com ownTurmaId()) passasse a carimbar aquela turma — e o aluno
+    // apareceria no ranking de uma turma de outra igreja.
+    function ownerSettingNewTurma() {
+      return !existing().keys().hasAny(['turmaId']) && incoming().keys().hasAny(['turmaId']);
+    }
+    function ownerTurmaAllowedOnUpdate() {
+      return !ownerSettingNewTurma()
+        || isUserAdmin()
+        || exists(/databases/$(database)/documents/turmas/$(incoming().turmaId));
+    }
+    function ownerTurmaAllowedOnCreate() {
+      return !incoming().keys().hasAny(['turmaId'])
+        || isUserAdmin()
+        || exists(/databases/$(database)/documents/turmas/$(incoming().turmaId));
+    }
+
     match /users/{userId} {
       allow get, list: if isOwner(userId) || canManage();
 
       allow create: if isOwner(userId)
         && incoming().id == userId
-        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId', 'inviteCode'])
+        && incoming().keys().hasOnly(['id', 'nome', 'turma', 'avatar', 'email', 'criadoEm', 'isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId', 'turmaId', 'inviteCode'])
         && (!incoming().keys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && ownerLocationAllowedOnCreate()
+        && ownerTurmaAllowedOnCreate()
         && isValidUser(incoming());
 
       allow update: if (isOwner(userId)
-        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId', 'inviteCode'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'turma', 'avatar', 'isAdmin', 'criadoEm', 'telefone', 'whatsappOptIn', 'manualNotification', 'track', 'locationId', 'turmaId', 'inviteCode'])
         && incoming().id == existing().id
         && incoming().email == existing().email
         && (!incoming().diff(existing()).affectedKeys().hasAny(['isAdmin']) || incoming().email.lower() == 'robsonbraz67@gmail.com')
         && ownerLocationTrackUnchanged()
         && ownerLocationAllowedOnUpdate()
+        && ownerTurmaAllowedOnUpdate()
         && isValidUser(incoming())) || (
         isUserAdmin()
-        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'locationId', 'track'])
+        && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'locationId', 'turmaId', 'track'])
         && isValidUser(incoming()));
 
       allow delete: if isUserAdmin();
@@ -166,6 +196,39 @@ service cloud.firestore {
       allow delete: if isUserAdmin();
     }
 
+    // ===== Turmas (Fase 1) =====
+    // A turma é o escopo primário da expansão: ela pertence a uma igreja
+    // (locationId) e define a trilha; o aluno herda as duas ao se matricular.
+    // Nada no app escreve aqui ainda — o painel chega na Fase 2. A regra sobe
+    // antes porque hasOnly() recusa o documento INTEIRO ao ver chave que não
+    // conhece, então o campo precisa ser aceito antes do código que o grava.
+    function isValidTurma(data) {
+      return data.keys().hasOnly(['locationId', 'track', 'nome', 'professores', 'active', 'createdBy', 'createdAt', 'updatedAt'])
+        && data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200
+        && data.track in ['teen', 'juvenil', 'youngAdult', 'adult']
+        && data.nome is string && data.nome.size() > 0 && data.nome.size() <= 80
+        // Lista de uids: permite mais de um professor por turma sem doc extra.
+        && data.professores is list && data.professores.size() <= 20
+        && data.active is bool
+        && data.createdBy is string;
+    }
+
+    match /turmas/{turmaId} {
+      // Todo autenticado lê: o aluno precisa ver a turma para se matricular, e
+      // o nome dela aparece no ranking. O conteúdo é administrativo, não pessoal.
+      allow get, list: if isAuthenticated();
+
+      // Só admin por enquanto. O professor gerenciar a PRÓPRIA turma é a Fase 3,
+      // e sobe junto com os testes do que ele passa a NÃO poder fazer.
+      allow create, update: if isUserAdmin() && isValidTurma(incoming());
+
+      // Turma se ARQUIVA (active: false), nunca se exclui: os documentos de
+      // progresso carregam turmaId, e apagar a turma deixaria esse histórico
+      // órfão — o ranking da campanha ficaria com buracos sem ninguém entender
+      // por quê. A decisão fica travada aqui, não só na documentação.
+      allow delete: if false;
+    }
+
     function isValidTeacherAssignment(data) {
       return data.keys().hasOnly(['locationId', 'assignedBy', 'assignedAt'])
         && data.locationId is string && data.locationId.size() > 0
@@ -185,10 +248,12 @@ service cloud.firestore {
     }
 
     function isValidInviteCode(data) {
-      return data.keys().hasOnly(['code', 'locationId', 'track', 'active', 'createdBy', 'createdAt'])
+      return data.keys().hasOnly(['code', 'locationId', 'turmaId', 'track', 'active', 'createdBy', 'createdAt'])
         && data.code is string && data.code.size() >= 4 && data.code.size() <= 40
         && data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200
-        && data.track in ['teen', 'youngAdult', 'adult']
+        // Opcional: os códigos já emitidos não têm turma, e continuam válidos.
+        && (!data.keys().hasAny(['turmaId']) || (data.turmaId is string && data.turmaId.size() > 0 && data.turmaId.size() <= 200))
+        && data.track in ['teen', 'juvenil', 'youngAdult', 'adult']
         && data.active is bool
         && data.createdBy is string;
     }
@@ -236,6 +301,50 @@ service cloud.firestore {
       allow delete: if isUserAdmin() || (isProfessor() && existing().createdBy == request.auth.uid);
     }
 
+    // ===== Convite de professor (Fase 1) =====
+    // Diferente de inviteCodes (que matricula ALUNO numa trilha): resgatar este
+    // aqui torna a pessoa professora de UMA turma. Como concede poder, é mais
+    // fechado que o convite de aluno em dois pontos: só admin emite, e nem
+    // professor pode listar (list é exclusivo de admin).
+    //
+    // O RESGATE — marcar usedBy/usedAt e desativar — é a Fase 3, e sobe junto
+    // com os testes do painel do professor. Aqui só existe a emissão.
+    function isValidTeacherInvite(data) {
+      return data.keys().hasOnly(['code', 'locationId', 'turmaId', 'active', 'createdBy', 'createdAt', 'expiresAt', 'usedBy', 'usedAt'])
+        && data.code is string && data.code.size() >= 4 && data.code.size() <= 40
+        && data.locationId is string && data.locationId.size() > 0 && data.locationId.size() <= 200
+        && data.turmaId is string && data.turmaId.size() > 0 && data.turmaId.size() <= 200
+        && data.active is bool
+        && data.createdBy is string
+        // Validade obrigatória: convite que dá poder não fica valendo para
+        // sempre num grupo de WhatsApp (mesma escolha de pairInvites).
+        && data.expiresAt is timestamp
+        && (!data.keys().hasAny(['usedBy']) || (data.usedBy is string && data.usedBy.size() <= 200));
+    }
+
+    match /teacherInvites/{codeId} {
+      // Resgate: precisa saber o código exato (== doc id), como em inviteCodes.
+      allow get: if isAuthenticated();
+      // list só admin — nem professor enumera os convites de professor.
+      allow list: if isUserAdmin();
+
+      allow create: if isUserAdmin()
+        && codeId == incoming().code
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().active == true
+        && !incoming().keys().hasAny(['usedBy', 'usedAt'])
+        && exists(/databases/$(database)/documents/turmas/$(incoming().turmaId))
+        && isValidTeacherInvite(incoming());
+
+      // Só revogar/reativar por enquanto; o resgate entra na Fase 3.
+      allow update: if isUserAdmin()
+        && incoming().diff(existing()).affectedKeys().hasOnly(['active'])
+        && isValidTeacherInvite(incoming());
+
+      allow delete: if isUserAdmin();
+    }
+
     // ===== Estudo em Dupla (Etapa 4) =====
     // Local+trilha do usuário autenticado batem com os passados? (escopo social)
     function myLocationTrackMatches(loc, trk) {
@@ -249,7 +358,7 @@ service cloud.firestore {
         && data.createdByName is string && data.createdByName.size() <= 50
         && data.createdByAvatar is string && data.createdByAvatar.size() <= 1048576
         && data.locationId is string && data.locationId.size() > 0
-        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.track in ['teen', 'juvenil', 'youngAdult', 'adult']
         && data.type in ['family', 'couple', 'friend']
         && data.status in ['pending', 'accepted', 'expired']
         && data.expiresAt is timestamp;
@@ -293,7 +402,7 @@ service cloud.firestore {
         && data.userA is string && data.userB is string
         && data.members[0] == data.userA && data.members[1] == data.userB
         && data.userA != data.userB
-        && data.locationId is string && data.track in ['teen', 'youngAdult', 'adult']
+        && data.locationId is string && data.track in ['teen', 'juvenil', 'youngAdult', 'adult']
         && data.type in ['family', 'couple', 'friend']
         && data.active is bool
         && data.sharesA is map && data.sharesB is map;
@@ -353,7 +462,7 @@ service cloud.firestore {
         && data.aNome is string && data.bNome is string
         && data.aAvatar is string && data.bAvatar is string
         && data.locationId is string && data.locationId.size() > 0
-        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.track in ['teen', 'juvenil', 'youngAdult', 'adult']
         && data.active is bool;
     }
 
@@ -401,11 +510,19 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('locationId', '');
     }
 
+    // Turma do DONO do progresso (Fase 1). Mesmo papel de ownLocationId(): é o
+    // que permite validar o turmaId gravado no progresso sem confiar no
+    // cliente. Sem isto, um aluno carimbaria o progresso com a turma de outra
+    // igreja e apareceria no ranking dela.
+    function ownTurmaId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('turmaId', '');
+    }
+
     function isValidProgress(data) {
       return data.keys().hasAll(['userId', 'week', 'xp', 'streak', 'nome', 'avatar'])
         && data.userId is string
         && data.week is string && data.week.size() > 0 && data.week.size() <= 20
-        && (!data.keys().hasAny(['track']) || data.track in ['teen', 'youngAdult', 'adult'])
+        && (!data.keys().hasAny(['track']) || data.track in ['teen', 'juvenil', 'youngAdult', 'adult'])
         // locationId no progresso é o que torna o ranking por local calculável
         // ao vivo pelo cliente (progress é público; users/{uid} de terceiro não
         // é). Só pode ser o local real do dono — a regra confere, não o cliente.
@@ -413,6 +530,11 @@ service cloud.firestore {
         // ownLocationId() ali é o local DELE, e sem esta saída toda correção
         // de aluno matriculado seria recusada.
         && (!data.keys().hasAny(['locationId']) || data.locationId == ownLocationId() || isUserAdmin())
+        // turmaId (Fase 1): é o que vai tornar o ranking por turma calculável
+        // sem ler users/{uid} de terceiro — e o que o torna barato (ver o custo
+        // de leitura na Fase 4 do plano). Mesma trava do locationId, mesma
+        // exceção de admin, que escreve no doc dos outros ao corrigir.
+        && (!data.keys().hasAny(['turmaId']) || data.turmaId == ownTurmaId() || isUserAdmin())
         && (!data.keys().hasAny(['trimestre']) || data.trimestre is string)
         && data.xp is number
         && data.streak is number
@@ -445,7 +567,7 @@ service cloud.firestore {
       allow create: if isAuthenticated()
         && progressId.split('_')[0] == incoming().userId
         && isOwner(incoming().userId)
-        && incoming().keys().hasOnly(['userId', 'week', 'track', 'trimestre', 'locationId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'liberados', 'zeradoEm', 'updatedAt'])
+        && incoming().keys().hasOnly(['userId', 'week', 'track', 'trimestre', 'locationId', 'turmaId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'liberados', 'zeradoEm', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));
 
@@ -461,7 +583,7 @@ service cloud.firestore {
         && (isOwner(existing().userId) || isUserAdmin())
         && incoming().userId == existing().userId
         && incoming().week == existing().week
-        && incoming().diff(existing()).affectedKeys().hasOnly(['track', 'trimestre', 'locationId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'liberados', 'zeradoEm', 'updatedAt'])
+        && incoming().diff(existing()).affectedKeys().hasOnly(['track', 'trimestre', 'locationId', 'turmaId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'liberados', 'zeradoEm', 'updatedAt'])
         && isValidProgress(incoming());
 
       allow delete: if false;
@@ -478,7 +600,7 @@ service cloud.firestore {
         && docId.split('_')[0] == incoming().userId
         && incoming().keys().hasOnly(['userId', 'week', 'track', 'notes', 'updatedAt'])
         && incoming().week is string && incoming().week.size() <= 20
-        && (!incoming().keys().hasAny(['track']) || incoming().track in ['teen', 'youngAdult', 'adult'])
+        && (!incoming().keys().hasAny(['track']) || incoming().track in ['teen', 'juvenil', 'youngAdult', 'adult'])
         && incoming().notes is map
         && incoming().updatedAt == request.time;
       allow delete: if isAuthenticated() && docId.split('_')[0] == request.auth.uid;
@@ -539,7 +661,7 @@ service cloud.firestore {
         && data.code is string && data.code.size() > 0 && data.code.size() <= 12
         && data.hostId is string
         && data.hostName is string && data.hostName.size() <= 50
-        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.track in ['teen', 'juvenil', 'youngAdult', 'adult']
         && data.semana is string
         && data.totalQuestions is number && data.totalQuestions >= 0 && data.totalQuestions <= 50
         && data.questionDurationSec is number && data.questionDurationSec > 0

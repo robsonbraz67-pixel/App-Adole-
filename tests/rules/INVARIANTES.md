@@ -106,6 +106,50 @@ delas já foram bugs corrigidos.
 
 ---
 
+## Tier 5 — Fase 1: trilha juvenil, turmaId, turmas e convite de professor
+
+Campos e coleções introduzidos pela Fase 1 do plano de expansão. Nada no app
+escreve neles ainda — estes testes existem para que a regra esteja provada
+**antes** do código que vai usá-la (Princípio 1 do plano).
+
+| # | Invariante | Regra | Esperado | Estado |
+|---|---|---|---|---|
+| 31 | `juvenil` é trilha válida em `users` | 61 | ✅ | ✔️ feito |
+| 32 | Trilha inventada continua recusada em `users` | 61 | ❌ | ✔️ feito |
+| 33 | Aluno grava progresso na trilha `juvenil` | 409 | ✅ | ✔️ feito |
+| 34 | Aluno define o próprio `turmaId` quando ainda não tem | 129 | ✅ | ✔️ feito |
+| 35 | Aluno **não** troca o próprio `turmaId` depois de definido | 74 | ❌ | ✔️ feito |
+| 36 | Admin troca o `turmaId` de um aluno | 139 | ✅ | ✔️ feito |
+| 37 | Progresso **não** aceita `turmaId` diferente do real do dono | 419 | ❌ | ✔️ feito |
+| 38 | Qualquer autenticado lê `turmas` (matrícula e ranking dependem) | 174 | ✅ | ✔️ feito |
+| 39 | Aluno comum **não** cria turma | 175 | ❌ | ✔️ feito |
+| 40 | Admin cria turma | 175 | ✅ | ✔️ feito |
+| 41 | Ninguém apaga turma — nem admin (arquiva-se) | 179 | ❌ | ✔️ feito |
+| 42 | Aluno **não** lista `teacherInvites` | 262 | ❌ | ✔️ feito |
+| 43 | Aluno lê um `teacherInvite` pelo código exato (resgate) | 261 | ✅ | ✔️ feito |
+| 44 | Aluno comum **não** cria convite de professor | 264 | ❌ | ✔️ feito |
+| 45 | Admin cria convite de professor | 264 | ✅ | ✔️ feito |
+| 46 | Aluno **não** se matricula em turma que não existe | 135-144 | ❌ | ✔️ feito |
+
+> **#35 e #37 são a mesma trava do `locationId`, aplicada à turma.** Sem #35 o
+> aluno se mudaria de turma sozinho; sem #37 ele gravaria progresso carimbado
+> com a turma de outro e apareceria no ranking dela. As duas seguem o padrão
+> que já protege o local — inclusive a exceção do admin, que corrige o doc dos
+> outros.
+
+> **#41 trava a decisão do plano na própria regra**, em vez de deixá-la só na
+> documentação: turma se arquiva (`active: false`), nunca se exclui, senão o
+> progresso que carrega aquele `turmaId` vira histórico órfão.
+
+> **#46 fecha um buraco encontrado revisando o diff da Fase 1**, não pela lista
+> original: #37 obriga o progresso a bater com o `turmaId` do perfil, mas nada
+> obrigava o *perfil* a apontar para uma turma real. Sem #46, bastava gravar
+> um `turmaId` inventado (ou de outra igreja) no próprio perfil para que o
+> progresso o carimbasse legitimamente — e o aluno entrasse no ranking de uma
+> turma que não é a dele. É a mesma proteção que o `locationId` já tinha.
+
+---
+
 ## Organização atual
 
 Um arquivo por área:

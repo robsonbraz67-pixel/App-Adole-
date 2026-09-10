@@ -79,6 +79,20 @@ export const semearProfessor = (uid: string, extra: Record<string, unknown> = {}
 export const semearDoc = (path: string, data: Record<string, unknown>) =>
   semear(async db => { await db.doc(path).set(data); });
 
+// Turma (Fase 1). Vários testes precisam de uma turma que EXISTA de verdade:
+// a regra exige exists(turmas/{id}) tanto para o aluno se matricular quanto
+// para o admin emitir convite de professor.
+export const semearTurma = (turmaId: string, extra: Record<string, unknown> = {}) =>
+  semearDoc(`turmas/${turmaId}`, {
+    locationId: 'igreja1',
+    track: 'juvenil',
+    nome: 'Turma de teste',
+    professores: [],
+    active: true,
+    createdBy: 'admin1',
+    ...extra,
+  });
+
 // Usado em várias regras para decidir quem é o super admin fixo do sistema
 // (components.tsx define o mesmo valor). Os contextos de teste usam
 // `${uid}@teste.com` por padrão, que nunca colide com este.
