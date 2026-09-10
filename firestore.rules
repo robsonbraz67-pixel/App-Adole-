@@ -165,6 +165,21 @@ service cloud.firestore {
         && isValidUser(incoming())) || (
         isUserAdmin()
         && incoming().diff(existing()).affectedKeys().hasAny(['isAdmin', 'isProfessor', 'isGuest', 'bloqueado', 'locationId', 'turmaId', 'track'])
+        && isValidUser(incoming())) || (
+        // RESGATE DE CONVITE DE PROFESSOR (Fase 3) — a única auto-promoção do
+        // sistema, e por isso a mais estreita: só o próprio dono, só estes três
+        // campos, e só depois de ter QUEIMADO um convite que aponta para a
+        // turma que ele está gravando (ver teacherInviteBurnedByMe). Sem isso,
+        // bastaria um update no próprio perfil para virar professor.
+        //
+        // isAdmin fica de fora de propósito: convite de professor nunca vira
+        // admin, nem por acidente de digitação em algum lugar do cliente.
+        isOwner(userId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['isProfessor', 'turmaId', 'inviteCode'])
+        && incoming().isProfessor == true
+        && incoming().id == existing().id
+        && incoming().email == existing().email
+        && teacherInviteBurnedByMe()
         && isValidUser(incoming()));
 
       allow delete: if isUserAdmin();
@@ -218,9 +233,27 @@ service cloud.firestore {
       // o nome dela aparece no ranking. O conteúdo é administrativo, não pessoal.
       allow get, list: if isAuthenticated();
 
-      // Só admin por enquanto. O professor gerenciar a PRÓPRIA turma é a Fase 3,
-      // e sobe junto com os testes do que ele passa a NÃO poder fazer.
-      allow create, update: if isUserAdmin() && isValidTurma(incoming());
+      allow create: if isUserAdmin() && isValidTurma(incoming());
+
+      allow update: if (isUserAdmin() && isValidTurma(incoming()))
+        // O professor da turma pode renomear a PRÓPRIA turma — e só isso.
+        // Igreja e trilha ficam de fora porque mudá-las moveria os alunos de
+        // escopo sem ninguém pedir; a lista de professores fica de fora para
+        // que um professor não consiga tirar outro.
+        || (isProfessor()
+          && (request.auth.uid in existing().professores)
+          && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'updatedAt'])
+          && isValidTurma(incoming()))
+        // Quem acabou de resgatar um convite entra na lista da própria turma.
+        // Só pode ACRESCENTAR a si mesmo: hasAll() garante que ninguém sai, e
+        // size() + 1 garante que só um nome entra — o dele.
+        || (isProfessor()
+          && ownTurmaId() == turmaId
+          && incoming().diff(existing()).affectedKeys().hasOnly(['professores', 'updatedAt'])
+          && incoming().professores.hasAll(existing().professores)
+          && incoming().professores.size() == existing().professores.size() + 1
+          && (request.auth.uid in incoming().professores)
+          && isValidTurma(incoming()));
 
       // Turma se ARQUIVA (active: false), nunca se exclui: os documentos de
       // progresso carregam turmaId, e apagar a turma deixaria esse histórico
@@ -273,6 +306,13 @@ service cloud.firestore {
         && myTeacherLocation() == locationId;
     }
 
+    // Caminho novo da Fase 3: o professor emite convite para a PRÓPRIA turma,
+    // sem depender de teacherAssignments. O antigo continua valendo — quem já
+    // tinha local atribuído não perde nada.
+    function professorOwnsTurma(turmaId) {
+      return isProfessor() && ownTurmaId() == turmaId;
+    }
+
     match /inviteCodes/{codeId} {
       // Resgate: precisa saber o código exato (== doc id). list só p/ quem gerencia,
       // pra ninguém enumerar todos os códigos do sistema.
@@ -285,7 +325,9 @@ service cloud.firestore {
         && incoming().createdBy == request.auth.uid
         && incoming().createdAt == request.time
         && incoming().active == true
-        && (isUserAdmin() || professorCanIssueFor(incoming().locationId));
+        && (isUserAdmin()
+          || professorCanIssueFor(incoming().locationId)
+          || (incoming().keys().hasAny(['turmaId']) && professorOwnsTurma(incoming().turmaId)));
 
       // Revogar/reativar: admin qualquer um, professor só os que ele criou.
       // Só o campo 'active' pode mudar — local/trilha/código são imutáveis.
@@ -337,12 +379,42 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/turmas/$(incoming().turmaId))
         && isValidTeacherInvite(incoming());
 
-      // Só revogar/reativar por enquanto; o resgate entra na Fase 3.
-      allow update: if isUserAdmin()
+      // Admin revoga/reativa: só o campo 'active' muda.
+      allow update: if (isUserAdmin()
         && incoming().diff(existing()).affectedKeys().hasOnly(['active'])
-        && isValidTeacherInvite(incoming());
+        && isValidTeacherInvite(incoming()))
+        // RESGATE (Fase 3). Queimar o convite é o PRIMEIRO passo do resgate, não
+        // o último: esta escrita é um compare-and-set num único documento, então
+        // se duas pessoas abrirem o mesmo link ao mesmo tempo, exatamente uma
+        // ganha. Só depois disso o perfil pode virar professor — e a regra de
+        // users confere `usedBy == quem está escrevendo`. Invertida (perfil
+        // primeiro, convite depois), a janela entre as duas escritas promoveria
+        // as duas pessoas.
+        //
+        // Se a segunda metade falhar, o convite fica queimado e ninguém foi
+        // promovido: erra para o lado de conceder poder de menos.
+        || (isAuthenticated()
+          && existing().active == true
+          && !existing().keys().hasAny(['usedBy'])
+          && existing().expiresAt > request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['active', 'usedBy', 'usedAt'])
+          && incoming().active == false
+          && incoming().usedBy == request.auth.uid
+          && incoming().usedAt == request.time
+          && isValidTeacherInvite(incoming()));
 
       allow delete: if isUserAdmin();
+    }
+
+    // O convite que ESTA pessoa acabou de queimar aponta para a turma que ela
+    // está gravando no próprio perfil? É o que autoriza alguém a se marcar
+    // professor — a única auto-promoção que existe no sistema.
+    function teacherInviteBurnedByMe() {
+      return incoming().keys().hasAny(['inviteCode'])
+        && incoming().inviteCode is string
+        && exists(/databases/$(database)/documents/teacherInvites/$(incoming().inviteCode))
+        && get(/databases/$(database)/documents/teacherInvites/$(incoming().inviteCode)).data.get('usedBy', '') == request.auth.uid
+        && get(/databases/$(database)/documents/teacherInvites/$(incoming().inviteCode)).data.turmaId == incoming().turmaId;
     }
 
     // ===== Estudo em Dupla (Etapa 4) =====

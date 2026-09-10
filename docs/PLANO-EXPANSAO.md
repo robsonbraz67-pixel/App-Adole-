@@ -414,6 +414,44 @@ o ensaio os conta separadamente para a decisão ser consciente.
 **Entrega:** professor entra por link e gerencia só a turma dele.
 **Modelo:** Opus 5 na fase inteira.
 
+### A fase se parte em duas metades, com riscos opostos
+
+**3a — só acrescenta.** Convite de professor (emitir, revogar, resgatar), o
+professor entrando na própria turma e emitindo convite de aluno para ela.
+Ninguém perde permissão; rollback é `git revert`.
+
+**3b — remove permissão.** Professor deixa de ver todos os alunos e todos os
+logs. Aqui mora o risco, e por um detalhe do Firestore: `allow list` é
+tudo-ou-nada contra a **consulta**, não por documento. Se a regra passar a
+exigir `turmaId == o meu` e o painel continuar pedindo todos os usuários, a
+consulta inteira falha — professor real travado. Por isso o painel do professor
+tem de vir **antes** da regra estreitar, e não depois.
+
+Isso também corrige uma promessa que o plano fazia e não se sustentava: "flag
+para false devolve o comportamento global na hora, sem deploy de regras". Não
+devolve — regra estreitada é servidor, e flag é cliente. O que a flag protege é
+a UI; desfazer a regra exige revert e publicação.
+
+### Estado da 3a (2026-09-10): escrita e testada; **não publicada**
+
+Regras: resgate do convite (queimar o convite é o PRIMEIRO passo, um
+compare-and-set num só documento — se duas pessoas abrem o mesmo link, uma
+ganha; e a regra de `users` exige que o convite tenha sido queimado *por quem
+está escrevendo*, o que fecha a corrida); auto-promoção limitada a
+`isProfessor`, `turmaId` e `inviteCode`, com `isAdmin` fora de propósito;
+professor renomeia a própria turma, entra sozinho na lista de professores sem
+poder tirar ninguém, e emite convite de aluno para a própria turma.
+
+Código: o admin gera e revoga o convite dentro da linha da turma; quem já tem
+conta resgata pelo Perfil, num campo recolhido atrás de "🎓 Tenho um convite de
+professor".
+
+21 testes novos (85/85 no total), metade deles sobre o que **não** pode: sem
+convite não vira professor, convite dos outros não serve, convite não queimado
+não serve, convite de uma turma não abre outra, e o resgate não dá `isAdmin`
+junto. Validado no sentido negativo: afrouxando a checagem de "queimado por
+mim", os dois testes correspondentes falham e os demais seguem passando.
+
 ### Por que é a mais arriscada
 
 É a **única** mudança que remove permissão de quem já tem. Hoje `isProfessor` é

@@ -427,6 +427,107 @@ export const getInviteCodeByCode = async (code: string): Promise<{ code: string;
   return snap.exists() ? snap.data() as any : null;
 };
 
+// ===== Convite de professor (Fase 3) =====
+// Diferente do convite de aluno: resgatar este aqui TORNA a pessoa professora
+// de uma turma. Como concede poder, é mais fechado — só admin emite, ninguém
+// além dele lista, e a validade é obrigatória.
+
+const TEACHER_PREFIX = 'PROF';
+const VALIDADE_PADRAO_DIAS = 7;
+
+export const generateTeacherInvite = async (
+  turma: { id: string; locationId: string },
+  createdBy: string,
+  dias = VALIDADE_PADRAO_DIAS,
+): Promise<string> => {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = `${TEACHER_PREFIX}-${randomCodeSuffix()}`;
+    const ref = doc(db, 'teacherInvites', code);
+    if ((await getDoc(ref)).exists()) continue;
+    await setDoc(ref, {
+      code,
+      locationId: turma.locationId,
+      turmaId: turma.id,
+      active: true,
+      createdBy,
+      createdAt: serverTimestamp(),
+      // Validade obrigatória: convite que dá poder não fica valendo para
+      // sempre num grupo de WhatsApp.
+      expiresAt: Timestamp.fromMillis(Date.now() + dias * 24 * 60 * 60 * 1000),
+    });
+    return code;
+  }
+  throw new Error('Não foi possível gerar um código único. Tente novamente.');
+};
+
+export const getTeacherInvitesByTurma = async (turmaId: string): Promise<any[]> => {
+  const snap = await getDocs(query(collection(db, 'teacherInvites'), where('turmaId', '==', turmaId)));
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list.sort((a, b) => (a.createdAt?.seconds || 0) < (b.createdAt?.seconds || 0) ? 1 : -1);
+};
+
+export const setTeacherInviteActive = async (code: string, active: boolean) => {
+  await updateDoc(doc(db, 'teacherInvites', code), { active });
+};
+
+export const getTeacherInviteByCode = async (code: string): Promise<any | null> => {
+  const snap = await getDoc(doc(db, 'teacherInvites', normalizeInviteCode(code)));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
+
+export const ehCodigoDeProfessor = (code: string) =>
+  normalizeInviteCode(code).startsWith(`${TEACHER_PREFIX}-`);
+
+// Resgate, em três escritas e nesta ordem — a ordem É a segurança:
+//
+// 1. QUEIMAR o convite. É um compare-and-set num único documento (a regra
+//    exige active && sem usedBy), então se duas pessoas abrirem o mesmo link
+//    ao mesmo tempo, exatamente uma ganha.
+// 2. Marcar o próprio perfil. A regra confere que o convite foi queimado POR
+//    QUEM está escrevendo. Se esta falhar, o convite fica queimado e ninguém
+//    foi promovido — erra para o lado de conceder poder de menos.
+// 3. Entrar na lista de professores da turma. Cosmético: quem manda é o
+//    perfil. Falhar aqui não desfaz nada, e o admin corrige pelo painel.
+export const resgatarConviteProfessor = async (codigo: string, jogador: any) => {
+  const code = normalizeInviteCode(codigo);
+  const convite = await getTeacherInviteByCode(code);
+  if (!convite) throw new Error('Código não encontrado. Confira as letras.');
+  if (!convite.active || convite.usedBy) throw new Error('Este convite já foi usado ou revogado.');
+  if (convite.expiresAt?.toMillis && convite.expiresAt.toMillis() < Date.now()) {
+    throw new Error('Este convite venceu. Peça um novo ao administrador.');
+  }
+
+  const turmaSnap = await getDoc(doc(db, 'turmas', convite.turmaId));
+  if (!turmaSnap.exists()) throw new Error('A turma deste convite não existe mais.');
+  const turma = turmaSnap.data() as any;
+
+  await updateDoc(doc(db, 'teacherInvites', code), {
+    active: false,
+    usedBy: jogador.id,
+    usedAt: serverTimestamp(),
+  });
+
+  await updateDoc(doc(db, 'users', jogador.id), {
+    isProfessor: true,
+    turmaId: convite.turmaId,
+    inviteCode: code,
+  });
+
+  try {
+    if (!(turma.professores || []).includes(jogador.id)) {
+      await updateDoc(doc(db, 'turmas', convite.turmaId), {
+        professores: [...(turma.professores || []), jogador.id],
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch {
+    // Não é motivo para dizer que o resgate falhou: o perfil já é o que vale.
+  }
+
+  return { turmaId: convite.turmaId, turmaNome: turma.nome as string };
+};
+
 export const getAdminIds = async (): Promise<Set<string>> => {
   try {
     const q = query(collection(db, 'users'), where('isAdmin', '==', true));

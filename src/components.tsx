@@ -80,7 +80,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -2185,6 +2185,7 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
   const [aberta, setAberta] = useState<string | null>(null);
   const [editando, setEditando] = useState<string | null>(null);
   const [codigos, setCodigos] = useState<Record<string, any[]>>({});
+  const [convitesProf, setConvitesProf] = useState<Record<string, any[]>>({});
   const [ocupado, setOcupado] = useState(false);
   const [verArquivadas, setVerArquivadas] = useState(false);
 
@@ -2305,11 +2306,37 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
       .catch(() => setCodigos(prev => ({ ...prev, [turmaId]: [] })));
   };
 
+  const carregarConvitesProf = (turmaId: string) => {
+    getTeacherInvitesByTurma(turmaId)
+      .then(cs => setConvitesProf(prev => ({ ...prev, [turmaId]: cs })))
+      .catch(() => setConvitesProf(prev => ({ ...prev, [turmaId]: [] })));
+  };
+
   const handleAbrir = (t: Turma) => {
     const abrindo = aberta !== t.id;
     setAberta(abrindo ? t.id : null);
     setEditando(null);
     if (abrindo && !codigos[t.id]) carregarCodigos(t.id);
+    if (abrindo && !convitesProf[t.id]) carregarConvitesProf(t.id);
+  };
+
+  const handleGerarConviteProf = async (t: Turma) => {
+    setOcupado(true);
+    try {
+      const code = await generateTeacherInvite({ id: t.id, locationId: t.locationId }, jogador.id);
+      carregarConvitesProf(t.id);
+      alert(`Convite de professor: ${code}\n\nVale 7 dias e serve UMA vez. Quem resgatar vira professor de "${t.nome}" — mande por mensagem direta, não em grupo.`);
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao gerar o convite de professor.');
+    }
+    setOcupado(false);
+  };
+
+  const handleToggleConviteProf = async (turmaId: string, code: string, active: boolean) => {
+    try {
+      await setTeacherInviteActive(code, !active);
+      setConvitesProf(prev => ({ ...prev, [turmaId]: (prev[turmaId] || []).map(c => c.id === code ? { ...c, active: !active } : c) }));
+    } catch { alert('Erro ao atualizar o convite.'); }
   };
 
   const handleGerarConvite = async (t: Turma) => {
@@ -2525,6 +2552,7 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                       <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:10}}>
                         <button onClick={() => setEditando(t.id)} style={btnMini('var(--teal)', 'rgba(30,158,134,.2)')}>✏️ Editar</button>
                         <button onClick={() => handleGerarConvite(t)} disabled={ocupado} style={btnMini('#F7C600', 'rgba(247,198,0,.15)')}>🎟️ Gerar convite de aluno</button>
+                        <button onClick={() => handleGerarConviteProf(t)} disabled={ocupado} style={btnMini('var(--admin)', 'rgba(124,79,224,.2)')}>🎓 Convite de professor</button>
                         <button onClick={() => handleEnsaio(t)} disabled={ocupado} style={btnMini('var(--admin)', 'rgba(124,79,224,.2)')}>🧪 Ensaio do carimbo</button>
                         <button onClick={() => handleArquivar(t)} disabled={ocupado} style={btnMini(t.active ? 'var(--danger)' : 'var(--success)', t.active ? 'rgba(227,28,61,.15)' : 'rgba(79,184,92,.2)')}>
                           {t.active ? '📦 Arquivar' : '↩️ Reativar'}
@@ -2605,6 +2633,36 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                           </div>
                         ))}
                       </div>
+                    )}
+
+                    {(convitesProf[t.id]?.length ?? 0) > 0 && (
+                      <>
+                        <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, margin:'10px 0 4px'}}>Convites de professor</div>
+                        <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                          {convitesProf[t.id].map(c => {
+                            const vencido = c.expiresAt?.toMillis ? c.expiresAt.toMillis() < Date.now() : false;
+                            const usado = !!c.usedBy;
+                            return (
+                              <div key={c.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'6px 8px', background:'var(--row-bg-strong)', borderRadius:6, opacity: (c.active && !vencido) ? 1 : 0.55}}>
+                                <div style={{minWidth:0}}>
+                                  <span style={{fontFamily:'monospace', fontWeight:900, fontSize:14, color:'var(--admin)', letterSpacing:1}}>{c.code}</span>
+                                  <div style={{fontSize:10, color:'var(--mut)'}}>
+                                    {usado ? `usado por ${nomeDe(c.usedBy)}` : vencido ? 'vencido' : !c.active ? 'revogado' : 'aguardando resgate'}
+                                  </div>
+                                </div>
+                                <div style={{display:'flex', gap:6, flexShrink:0}}>
+                                  <button onClick={() => copiar(c.code, 'Convite copiado. Mande por mensagem direta.')} style={btnMini('var(--teal)', 'rgba(30,158,134,.2)')}>Copiar</button>
+                                  {!usado && (
+                                    <button onClick={() => handleToggleConviteProf(t.id, c.code, c.active)} style={btnMini(c.active ? '#F7C600' : 'var(--success)', c.active ? 'rgba(247,198,0,.15)' : 'rgba(79,184,92,.2)')}>
+                                      {c.active ? 'Revogar' : 'Reativar'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
                     )}
                   </div>
                 )}
@@ -3395,6 +3453,31 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
   const [savingSetup, setSavingSetup] = useState(false);
   const currentLocationName = locations.find(l => l.id === jogador.locationId)?.name;
 
+  // Convite de professor (Fase 3): quem já tem conta resgata aqui. Fica
+  // recolhido atrás de um link porque, para o aluno, isto nunca serve.
+  const [mostrarConviteProf, setMostrarConviteProf] = useState(false);
+  const [codigoProf, setCodigoProf] = useState('');
+  const [resgatando, setResgatando] = useState(false);
+
+  const handleResgatarProfessor = async () => {
+    const code = codigoProf.trim();
+    if (!code) return;
+    if (!ehCodigoDeProfessor(code)) {
+      return alert('Esse não parece um convite de professor — eles começam com PROF-. Código de aluno se usa no cadastro.');
+    }
+    setResgatando(true);
+    try {
+      const { turmaNome } = await resgatarConviteProfessor(code, jogador);
+      // O perfil mudou no servidor (isProfessor e turmaId). Recarregar é o
+      // jeito honesto de o app inteiro enxergar o papel novo de uma vez.
+      alert(`Pronto! Você agora é professor(a) de "${turmaNome}".\n\nO app vai recarregar para aplicar.`);
+      window.location.reload();
+    } catch (e: any) {
+      alert(e?.message || 'Não foi possível resgatar o convite.');
+      setResgatando(false);
+    }
+  };
+
   // Admin/professor: alternar a própria trilha livremente, uso próprio
   // (testar/acompanhar outras trilhas), sem precisar de outro admin.
   const [switchingTrack, setSwitchingTrack] = useState(false);
@@ -3877,6 +3960,40 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
           <div className="sec-title" style={{marginBottom:8}}>Instalar 📲</div>
           <InstalarApp />
         </div>
+
+        {!jogador.isGuest && (
+          <div style={{marginTop: 20}}>
+            {!mostrarConviteProf ? (
+              <button type="button" onClick={() => setMostrarConviteProf(true)}
+                style={{background:'none', border:'none', color:'var(--mut)', fontSize:12, cursor:'pointer', padding:0, textDecoration:'underline'}}>
+                🎓 Tenho um convite de professor
+              </button>
+            ) : (
+              <div style={{background:'var(--panel-bg)', padding:'14px 16px', borderRadius:14, border:'1px solid var(--panel-border)'}}>
+                <div style={{fontWeight:800, color:'var(--txt2)', marginBottom:6}}>🎓 Convite de professor</div>
+                <div style={{fontSize:12, color:'var(--mut)', marginBottom:10, lineHeight:1.5}}>
+                  Cole o código que a liderança te mandou. Ele vale uma vez só e te liga à turma dele.
+                </div>
+                <input
+                  value={codigoProf}
+                  onChange={e => setCodigoProf(e.target.value.toUpperCase())}
+                  placeholder="PROF-XXXXX"
+                  style={{width:'100%', padding:'10px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, fontFamily:'monospace', letterSpacing:1, marginBottom:10}}
+                />
+                <div style={{display:'flex', gap:8}}>
+                  <button onClick={handleResgatarProfessor} disabled={resgatando || !codigoProf.trim()}
+                    className={`btn btn-gold ${resgatando || !codigoProf.trim() ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'9px'}}>
+                    {resgatando ? 'Resgatando...' : 'Resgatar'}
+                  </button>
+                  <button onClick={() => { setMostrarConviteProf(false); setCodigoProf(''); }}
+                    style={{background:'var(--row-bg)', color:'var(--mut)', border:'none', borderRadius:8, padding:'9px 14px', fontSize:13, fontWeight:800, cursor:'pointer'}}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{marginTop: 'auto', paddingTop: 40}}>
            <button className="btn btn-ghost" onClick={onLogout} style={{color:'var(--magenta)', borderColor:'rgba(255,92,122,.35)', width:'100%'}}>🚪 Sair da conta (Logout)</button>
