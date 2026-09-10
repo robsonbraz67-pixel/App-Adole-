@@ -316,15 +316,37 @@ turma `teen`, quem é de outra igreja não entra, e o histórico de outra trilha
 do mesmo aluno fica de fora (ele o poria no ranking de uma turma que nunca
 frequentou naquela trilha). Convidado do Ao Vivo nunca entra em turma.
 
-**Testes.** A decisão de quem entra saiu para uma função pura
-(`planejarBackfill`), testada com objetos comuns — 14 casos em
+**Testes.** A decisão de quem entra vive em `src/backfillTurmas.ts`, pura e
+compartilhada pelos dois executores, testada com objetos comuns — 14 casos em
 `tests/backfill/planejar.test.ts`, sem emulador, `npm run test:unit`. E dois
 testes de regra novos provam o estado que o backfill deixa: depois do carimbo o
 aluno **salva normalmente sem mandar `turmaId`** (o save é merge, e a regra
 avalia o documento mesclado); e com o progresso carimbado e o perfil sem turma,
 o save é **recusado** — que é justamente o motivo da ordem. Suíte em 64/64.
 
-### Como executar (passos 7 a 10)
+### Dois executores para a mesma decisão
+
+A decisão de quem entra na turma mora em `src/backfillTurmas.ts`, pura e
+testada. Quem a executa é que muda:
+
+| | Painel Admin | Função Netlify |
+|---|---|---|
+| Credencial | a sessão do próprio admin | conta de serviço |
+| Precisa de deploy? | não — `npm run dev` já fala com produção | sim, e de `BACKFILL_TOKEN` |
+| Regras | **cada escrita passa pela regra** | o SDK de servidor as ignora |
+| `updatedAt` do progresso | reescrito (a regra exige `== request.time`) | preservado |
+| Falha num documento | isolada e relatada | derruba o lote |
+
+O painel é o caminho de quem tem o app à mão; a função é o de quem prefere
+`curl` e não quer abrir o app. Nada no app lê `updatedAt` do progresso — a
+diferença está registrada aqui por honestidade, não por consequência.
+
+**No painel:** abrir a turma → **🧪 Ensaio do carimbo** (lê e não escreve nada)
+→ conferir os números → **✅ Aplicar o carimbo**. O ensaio mostra quem entra,
+quem fica de fora e por quê, e oferece incluir quem está sem igreja. Rodar de
+novo depois mostra `0 e 0`: a segunda passada não tem o que escrever.
+
+### Como executar pela função Netlify (passos 7 a 10)
 
 Antes de tudo, definir **`BACKFILL_TOKEN`** nas variáveis do Netlify: a função
 fica numa URL pública e escreve no banco de produção. Sem o token configurado,

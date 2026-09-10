@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getTrackLessons } from './data';
+import { planejarBackfill } from './backfillTurmas';
 import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome } from './utils';
 
 // Desativado em 2026-07-25: a escola opera com UMA trilha e UM local. As duas
@@ -79,7 +80,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -2162,11 +2163,12 @@ export const Dupla = ({ jogador, licao, prog, weekRows, activePair, pendingInvit
 // Custo: uma leitura da coleção `turmas` (pequena por natureza) ao abrir. A
 // contagem de alunos e os nomes dos professores saem da lista de usuários que
 // o Admin já carregou — nenhuma consulta a mais.
-const TurmasPanel = ({ jogador, locations, users, onLocationCreated }: {
+const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosCarimbados }: {
   jogador: any;
   locations: { id: string; name: string }[];
   users: any[];
   onLocationCreated: (loc: { id: string; name: string }) => void;
+  onUsuariosCarimbados: (ids: string[], turmaId: string) => void;
 }) => {
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -2185,6 +2187,14 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated }: {
   const [codigos, setCodigos] = useState<Record<string, any[]>>({});
   const [ocupado, setOcupado] = useState(false);
   const [verArquivadas, setVerArquivadas] = useState(false);
+
+  // Backfill (Fase 2). O progresso inteiro é caro de ler — uma leitura por
+  // documento — então carrega uma vez e serve a todos os ensaios da sessão.
+  const [progressos, setProgressos] = useState<any[] | null>(null);
+  const [ensaio, setEnsaio] = useState<{ turmaId: string; plano: any } | null>(null);
+  const [incluirSemIgreja, setIncluirSemIgreja] = useState(false);
+  const [andamento, setAndamento] = useState('');
+  const [resultado, setResultado] = useState<{ turmaId: string; texto: string } | null>(null);
 
   const TRACKS = Object.keys(TRACK_LABELS) as Track[];
   const locName = (id: string) => locations.find(l => l.id === id)?.name || '—';
@@ -2305,6 +2315,74 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated }: {
     } catch { alert('Erro ao atualizar o código.'); }
   };
 
+  const planoDe = (t: Turma, progs: any[], comSemIgreja: boolean) => planejarBackfill({
+    usuarios: users.map(u => ({ id: u.id, nome: u.nome, email: u.email, isGuest: u.isGuest, turmaId: u.turmaId, track: u.track, locationId: u.locationId })),
+    progressos: progs.map(p => ({ id: p.id, userId: p.userId, turmaId: p.turmaId, track: p.track })),
+    turma: { id: t.id, nome: t.nome, locationId: t.locationId, track: t.track },
+    incluirSemIgreja: comSemIgreja,
+  });
+
+  const handleEnsaio = async (t: Turma, comSemIgreja = incluirSemIgreja) => {
+    setOcupado(true);
+    setResultado(null);
+    setAndamento('Lendo o progresso de todo mundo...');
+    try {
+      const progs = progressos ?? await getTodosProgressos();
+      setProgressos(progs);
+      setEnsaio({ turmaId: t.id, plano: planoDe(t, progs, comSemIgreja) });
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao montar o ensaio.');
+    }
+    setAndamento('');
+    setOcupado(false);
+  };
+
+  const handleCarimbar = async (t: Turma) => {
+    if (!ensaio || ensaio.turmaId !== t.id) return;
+    const { contagem, elegiveis, progElegiveis } = ensaio.plano;
+    if (!contagem.elegiveis && !progElegiveis.length) return alert('Não há nada a carimbar.');
+    if (!window.confirm(
+      `Carimbar a turma "${t.nome}" em ${contagem.elegiveis} perfil(is) e ${progElegiveis.length} documento(s) de progresso?\n\n` +
+      'Isto escreve nos dados reais. Ninguém é tirado de outra turma e nada é apagado — o campo só é acrescentado a quem está sem ele.'
+    )) return;
+
+    setOcupado(true);
+    setResultado(null);
+    try {
+      const r = await adminCarimbarTurma(
+        t.id,
+        elegiveis.map((e: any) => e.id),
+        progElegiveis,
+        (etapa, feitos, total) => setAndamento(`${etapa === 'perfis' ? 'Perfis' : 'Progresso'}: ${feitos}/${total}`),
+      );
+
+      // O painel (contagem de alunos) e o ensaio seguinte precisam enxergar o
+      // que acabou de ser escrito, senão o segundo ensaio repetiria a lista.
+      const idsOk = elegiveis.map((e: any) => e.id).filter((id: string) => !r.perfis.falhas.some(f => f.id === id));
+      onUsuariosCarimbados(idsOk, t.id);
+      setProgressos(prev => (prev || []).map(p => (
+        progElegiveis.some((q: any) => q.id === p.id) && !r.progresso.falhas.some(f => f.id === p.id)
+          ? { ...p, turmaId: t.id } : p
+      )));
+
+      const falhas = r.perfis.falhas.length + r.progresso.falhas.length;
+      setResultado({
+        turmaId: t.id,
+        texto: `Carimbados ${r.perfis.feitos} perfil(is) e ${r.progresso.feitos} documento(s) de progresso.`
+          + (falhas ? ` ${falhas} recusado(s) pela regra — ver o console para os ids.` : '')
+          + (r.progressoAdiadoPorFalhaNoPerfil ? ` ${r.progressoAdiadoPorFalhaNoPerfil} progresso(s) ficaram de fora porque o perfil do dono falhou.` : ''),
+      });
+      if (falhas) console.warn('Backfill de turmas — recusados:', [...r.perfis.falhas, ...r.progresso.falhas]);
+      setEnsaio(null);
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao carimbar.');
+    }
+    setAndamento('');
+    setOcupado(false);
+  };
+
+  const ensaioOuCarimboDe = (id: string) => ensaio?.turmaId === id || resultado?.turmaId === id || aberta === id;
+
   const copiar = (texto: string, msg = 'Código copiado!') =>
     navigator.clipboard.writeText(texto).then(() => alert(msg)).catch(() => {});
 
@@ -2417,9 +2495,55 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated }: {
                       <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:10}}>
                         <button onClick={() => setEditando(t.id)} style={btnMini('var(--teal)', 'rgba(30,158,134,.2)')}>✏️ Editar</button>
                         <button onClick={() => handleGerarConvite(t)} disabled={ocupado} style={btnMini('#F7C600', 'rgba(247,198,0,.15)')}>🎟️ Gerar convite de aluno</button>
+                        <button onClick={() => handleEnsaio(t)} disabled={ocupado} style={btnMini('var(--admin)', 'rgba(124,79,224,.2)')}>🧪 Ensaio do carimbo</button>
                         <button onClick={() => handleArquivar(t)} disabled={ocupado} style={btnMini(t.active ? 'var(--danger)' : 'var(--success)', t.active ? 'rgba(227,28,61,.15)' : 'rgba(79,184,92,.2)')}>
                           {t.active ? '📦 Arquivar' : '↩️ Reativar'}
                         </button>
+                      </div>
+                    )}
+
+                    {/* Backfill da Fase 2: matricular nesta turma quem já está
+                        no app sem turma nenhuma. Ensaio primeiro, sempre — o
+                        carimbo só aparece depois de os números estarem à vista. */}
+                    {andamento && ensaioOuCarimboDe(t.id) && (
+                      <div style={{fontSize:12, color:'var(--mut)', marginBottom:8}}>{andamento}</div>
+                    )}
+                    {resultado?.turmaId === t.id && (
+                      <div style={{fontSize:12, color:'var(--success)', background:'rgba(79,184,92,.12)', padding:'8px 10px', borderRadius:8, marginBottom:10, lineHeight:1.5}}>
+                        ✅ {resultado.texto}
+                      </div>
+                    )}
+                    {ensaio?.turmaId === t.id && (
+                      <div style={{background:'var(--row-bg-strong)', padding:10, borderRadius:8, marginBottom:10}}>
+                        <div style={{fontSize:12, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>Ensaio — nada foi escrito</div>
+                        <div style={{fontSize:12, color:'var(--txt2)', lineHeight:1.6}}>
+                          Entram nesta turma: <strong style={{color:'var(--gold)'}}>{ensaio.plano.contagem.elegiveis} aluno(s)</strong>
+                          {' '}e <strong style={{color:'var(--gold)'}}>{ensaio.plano.progElegiveis.length} documento(s)</strong> de progresso.
+                        </div>
+                        <div style={{fontSize:11, color:'var(--mut)', marginTop:6, lineHeight:1.6}}>
+                          Ficam de fora: {ensaio.plano.contagem.outraTrilha} de outra trilha · {ensaio.plano.contagem.outraIgreja} de outra igreja
+                          {' '}· {ensaio.plano.contagem.emOutraTurma} já em outra turma · {ensaio.plano.contagem.jaNestaTurma} já nesta
+                          {' '}· {ensaio.plano.contagem.convidados} convidado(s) do Ao Vivo
+                          {ensaio.plano.progContagem.outraTrilha > 0 && ` · ${ensaio.plano.progContagem.outraTrilha} progresso(s) de outra trilha`}
+                        </div>
+                        {ensaio.plano.contagem.semIgreja > 0 && (
+                          <label style={{display:'flex', alignItems:'center', gap:6, fontSize:11, color:'var(--mut)', marginTop:8, cursor:'pointer'}}>
+                            <input type="checkbox" checked={incluirSemIgreja} onChange={e => { setIncluirSemIgreja(e.target.checked); handleEnsaio(t, e.target.checked); }} />
+                            incluir {ensaio.plano.contagem.semIgreja} aluno(s) sem igreja nenhuma
+                          </label>
+                        )}
+                        {ensaio.plano.elegiveis.length > 0 && (
+                          <div style={{fontSize:11, color:'var(--mut)', marginTop:8}}>
+                            Ex.: {ensaio.plano.elegiveis.slice(0, 6).map((e: any) => e.nome).join(', ')}{ensaio.plano.elegiveis.length > 6 ? '…' : ''}
+                          </div>
+                        )}
+                        <div style={{display:'flex', gap:6, marginTop:10}}>
+                          <button onClick={() => handleCarimbar(t)} disabled={ocupado || (!ensaio.plano.contagem.elegiveis && !ensaio.plano.progElegiveis.length)}
+                            className={`btn btn-gold ${ocupado ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px'}}>
+                            {ocupado ? 'Carimbando...' : '✅ Aplicar o carimbo'}
+                          </button>
+                          <button onClick={() => setEnsaio(null)} style={{...btnMini('var(--mut)', 'var(--row-bg)'), padding:'8px 14px', fontSize:13}}>Fechar</button>
+                        </div>
                       </div>
                     )}
 
@@ -3104,6 +3228,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
                 locations={locations}
                 users={users}
                 onLocationCreated={loc => setLocations(prev => [...prev, loc].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')))}
+                onUsuariosCarimbados={(ids, turmaId) => setUsers(prev => prev.map(u => ids.includes(u.id) ? { ...u, turmaId } : u))}
               />
             )}
           </>

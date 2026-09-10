@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planejarBackfill } from '../../netlify/functions/backfill-turmas.mts';
+import { planejarBackfill } from '../../src/backfillTurmas';
 
 // A decisão de quem entra na turma não depende de rede, e é onde um erro
 // custaria caro: carimbar alguém na turma errada o põe no ranking errado, e
@@ -98,7 +98,7 @@ describe('planejarBackfill — qual progresso é carimbado', () => {
       progressos: [{ id: 'a1_2026-01', userId: 'a1', track: 'teen' }],
       turma,
     });
-    expect(r.progElegiveis).toEqual(['a1_2026-01']);
+    expect(r.progElegiveis.map(p => p.id)).toEqual(['a1_2026-01']);
   });
 
   // Chave legada `${uid}_${week}`, sem trilha no meio: é teen por definição.
@@ -108,7 +108,7 @@ describe('planejarBackfill — qual progresso é carimbado', () => {
       progressos: [{ id: 'a1_2025-40', userId: 'a1' }],
       turma,
     });
-    expect(r.progElegiveis).toEqual(['a1_2025-40']);
+    expect(r.progElegiveis.map(p => p.id)).toEqual(['a1_2025-40']);
   });
 
   // Quem trocou de trilha tem histórico de outra: carimbá-lo aqui o poria no
@@ -122,7 +122,7 @@ describe('planejarBackfill — qual progresso é carimbado', () => {
       ],
       turma,
     });
-    expect(r.progElegiveis).toEqual(['a1_2026-01']);
+    expect(r.progElegiveis.map(p => p.id)).toEqual(['a1_2026-01']);
     expect(r.progContagem.outraTrilha).toBe(1);
   });
 
@@ -146,7 +146,7 @@ describe('planejarBackfill — qual progresso é carimbado', () => {
       turma,
     });
     expect(r.contagem.elegiveis).toBe(0);
-    expect(r.progElegiveis).toEqual(['a1_2026-01']);
+    expect(r.progElegiveis.map(p => p.id)).toEqual(['a1_2026-01']);
   });
 
   it('não mexe em progresso já apontando para outra turma', () => {

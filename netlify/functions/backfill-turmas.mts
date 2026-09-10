@@ -1,4 +1,5 @@
 import type { Config } from "@netlify/functions";
+import { planejarBackfill, trackDe } from "../../src/backfillTurmas";
 
 // ===== Backfill da Fase 2: carimbar turmaId nos dados que já existem =====
 //
@@ -41,87 +42,6 @@ const json = (body: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json' },
   });
 
-// Antes das trilhas, todo progresso era teen — e a chave legada
-// `${uid}_${week}` (sem trilha no meio) É teen. Perfil sem track segue a
-// mesma leitura, senão o aluno mais antigo da escola ficaria de fora.
-const trackDe = (v: unknown) => (typeof v === 'string' && v ? v : 'teen');
-
-// ===== A decisão, separada do Firestore =====
-// Quem entra na turma e qual progresso é carimbado não depende de rede nenhuma
-// — e é exatamente onde um erro custaria caro. Fica aqui como função pura, para
-// ser testada com objetos comuns (tests/backfill/planejar.test.ts).
-export type PerfilBackfill = {
-  id: string;
-  nome?: string;
-  email?: string;
-  isGuest?: boolean;
-  turmaId?: string;
-  track?: string;
-  locationId?: string;
-};
-export type ProgressoBackfill = { id: string; userId?: string; turmaId?: string; track?: string };
-export type TurmaBackfill = { id: string; nome?: string; locationId: string; track: string };
-
-export const planejarBackfill = ({ usuarios, progressos, turma, incluirSemIgreja = false }: {
-  usuarios: PerfilBackfill[];
-  progressos: ProgressoBackfill[];
-  turma: TurmaBackfill;
-  incluirSemIgreja?: boolean;
-}) => {
-  const contagem = {
-    total: usuarios.length,
-    convidados: 0,
-    jaNestaTurma: 0,
-    emOutraTurma: 0,
-    outraIgreja: 0,
-    outraTrilha: 0,
-    semIgreja: 0,
-    elegiveis: 0,
-  };
-  const elegiveis: { id: string; nome: string }[] = [];
-
-  for (const u of usuarios) {
-    // Convidado do Modo Ao Vivo não é aluno matriculado — não entra em turma.
-    if (u.isGuest) { contagem.convidados++; continue; }
-    if (u.turmaId === turma.id) { contagem.jaNestaTurma++; continue; }
-    // Nunca sobrescrever: mover alguém de turma é decisão humana, não backfill.
-    if (u.turmaId) { contagem.emOutraTurma++; continue; }
-    if (trackDe(u.track) !== trackDe(turma.track)) { contagem.outraTrilha++; continue; }
-    if (!u.locationId) {
-      contagem.semIgreja++;
-      if (!incluirSemIgreja) continue;
-    } else if (u.locationId !== turma.locationId) {
-      contagem.outraIgreja++;
-      continue;
-    }
-    contagem.elegiveis++;
-    elegiveis.push({ id: u.id, nome: u.nome || u.email || u.id });
-  }
-
-  // O progresso segue os donos: os que acabam de entrar e os que já estavam.
-  // Nunca um progresso cujo dono não esteja carimbado com esta mesma turma —
-  // a regra exige turmaId == ownTurmaId(), e a diferença travaria o aluno.
-  const daTurma = new Set([
-    ...elegiveis.map(e => e.id),
-    ...usuarios.filter(u => u.turmaId === turma.id).map(u => u.id),
-  ]);
-
-  const progContagem = { total: progressos.length, jaNestaTurma: 0, emOutraTurma: 0, deOutroDono: 0, outraTrilha: 0, elegiveis: 0 };
-  const progElegiveis: string[] = [];
-
-  for (const p of progressos) {
-    if (!p.userId || !daTurma.has(p.userId)) { progContagem.deOutroDono++; continue; }
-    if (p.turmaId === turma.id) { progContagem.jaNestaTurma++; continue; }
-    if (p.turmaId) { progContagem.emOutraTurma++; continue; }
-    // Só o progresso da MESMA trilha da turma: quem trocou de trilha tem
-    // histórico de outra, e carimbá-lo aqui o poria no ranking errado.
-    if (trackDe(p.track) !== trackDe(turma.track)) { progContagem.outraTrilha++; continue; }
-    progContagem.elegiveis++;
-    progElegiveis.push(p.id);
-  }
-
-  return { contagem, elegiveis, progContagem, progElegiveis };
-};
 
 export default async (req: Request): Promise<Response> => {
   const url = new URL(req.url);
@@ -227,7 +147,7 @@ export default async (req: Request): Promise<Response> => {
   };
 
   await gravarEmLotes(elegiveis.map(e => db.collection('users').doc(e.id)), { turmaId });
-  await gravarEmLotes(progElegiveis.map(id => db.collection('progress').doc(id)), { turmaId });
+  await gravarEmLotes(progElegiveis.map(p => db.collection('progress').doc(p.id)), { turmaId });
 
   const escritas = { users: elegiveis.length, progress: progElegiveis.length };
   console.log('Backfill de turmas concluído:', JSON.stringify({ turmaId, ...escritas }));

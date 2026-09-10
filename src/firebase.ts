@@ -267,6 +267,92 @@ export const arquivarTurma = async (turmaId: string, active: boolean) => {
   await updateDoc(doc(db, 'turmas', turmaId), { active, updatedAt: serverTimestamp() });
 };
 
+// ===== Backfill de turmas rodando no navegador do admin (Fase 2) =====
+// A decisão de quem entra fica em backfillTurmas.ts, compartilhada com a
+// função Netlify. Aqui só a parte que fala com o Firestore.
+//
+// Por que o admin pode: a regra dá a ele a exceção nos dois lados
+// (`isUserAdmin()` em isValidProgress e o branch de admin no update de users).
+// Rodar assim dispensa conta de serviço, token e deploy — e tem uma vantagem
+// sobre o SDK de servidor: cada escrita ainda passa pela regra, uma a uma.
+
+// Lê a coleção inteira de progresso. É caro (uma leitura por documento) e só
+// existe para o backfill: nenhuma tela do dia a dia chama isto.
+export const getTodosProgressos = async (): Promise<any[]> => {
+  const snap = await getDocs(collection(db, 'progress'));
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list;
+};
+
+const LOTE_CARIMBO = 100;
+
+// Escreve em lotes, mas isola a falha: um documento legado inválido faria o
+// lote inteiro voltar, e sem o reteste individual não daria para saber qual
+// era. Assim o carimbo termina o que dá para terminar e diz o que sobrou.
+const carimbarEmLotes = async (
+  refs: { id: string; patch: Record<string, any>; colecao: string }[],
+  aoAvancar?: (feitos: number, total: number) => void,
+) => {
+  const falhas: { id: string; erro: string }[] = [];
+  let feitos = 0;
+
+  for (let i = 0; i < refs.length; i += LOTE_CARIMBO) {
+    const fatia = refs.slice(i, i + LOTE_CARIMBO);
+    try {
+      const batch = writeBatch(db);
+      fatia.forEach(r => batch.update(doc(db, r.colecao, r.id), r.patch));
+      await batch.commit();
+      feitos += fatia.length;
+    } catch {
+      for (const r of fatia) {
+        try {
+          await updateDoc(doc(db, r.colecao, r.id), r.patch);
+          feitos++;
+        } catch (e: any) {
+          falhas.push({ id: r.id, erro: e?.code || e?.message || 'erro desconhecido' });
+        }
+      }
+    }
+    aoAvancar?.(feitos + falhas.length, refs.length);
+  }
+  return { feitos, falhas };
+};
+
+// Carimba a turma: PERFIL PRIMEIRO, progresso depois — e o progresso de quem
+// falhou no perfil fica de fora. A regra exige turmaId == ownTurmaId(), então
+// progresso carimbado sem o dono travaria TODO save seguinte daquele aluno,
+// em silêncio (a mesma família do apagão de 2026-07-25).
+export const adminCarimbarTurma = async (
+  turmaId: string,
+  usuarios: string[],
+  progressos: { id: string; userId: string }[],
+  aoAvancar?: (etapa: 'perfis' | 'progresso', feitos: number, total: number) => void,
+) => {
+  const rPerfis = await carimbarEmLotes(
+    usuarios.map(id => ({ id, colecao: 'users', patch: { turmaId } })),
+    (f, t) => aoAvancar?.('perfis', f, t),
+  );
+
+  const perfisComFalha = new Set(rPerfis.falhas.map(f => f.id));
+  const seguros = progressos.filter(p => !perfisComFalha.has(p.userId));
+
+  // updatedAt precisa ir junto: isValidProgress exige `updatedAt == request.time`
+  // sempre que a chave existe, e ela existe em todo progresso já salvo. Nada no
+  // app lê esse campo, então rescrevê-lo não muda nenhuma tela — mas é uma
+  // diferença real para o caminho da função Netlify, que o preserva.
+  const rProgresso = await carimbarEmLotes(
+    seguros.map(p => ({ id: p.id, colecao: 'progress', patch: { turmaId, updatedAt: serverTimestamp() } })),
+    (f, t) => aoAvancar?.('progresso', f, t),
+  );
+
+  return {
+    perfis: rPerfis,
+    progresso: rProgresso,
+    progressoAdiadoPorFalhaNoPerfil: progressos.length - seguros.length,
+  };
+};
+
 // ===== Códigos de convite por local + trilha (Etapa 3) =====
 // Doc id == o próprio código, para resgate por leitura direta (sem precisar de
 // permissão de list para quem resgata). Alfabeto sem caracteres ambíguos (0/O/1/I).
