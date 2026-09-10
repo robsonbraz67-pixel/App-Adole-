@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "progress",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "turmaId", "order": "ASCENDING" },
+        { "fieldPath": "week", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "progress",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "locationId", "order": "ASCENDING" },
+        { "fieldPath": "week", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

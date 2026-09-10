@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'firestore.rules'
+      - 'firestore.indexes.json'
       - 'firebase.json'
       - '.firebaserc'
       - 'tests/rules/**'
@@ -12,6 +13,7 @@ on:
   pull_request:
     paths:
       - 'firestore.rules'
+      - 'firestore.indexes.json'
       - 'firebase.json'
       - 'tests/rules/**'
       - 'scripts/check-rules-functions.mjs'
@@ -67,5 +69,10 @@ jobs:
 
       # Usa o firebase-tools fixado no package.json, não @latest: o deploy de
       # regras não pode mudar de comportamento sozinho quando sai versão nova.
-      - name: Deploy Firestore rules
-        run: npx firebase deploy --only firestore:rules --non-interactive --token "${{ secrets.FIREBASE_TOKEN }}"
+      # Índices junto das regras: uma consulta sem índice falha em PRODUÇÃO
+      # (não degrada, falha), então o índice precisa existir antes do código
+      # que consulta. Publicar os dois pelo mesmo caminho evita a ordem errada.
+      # O índice leva alguns minutos construindo depois de aceito — conferir em
+      # `npx firebase firestore:indexes` antes de subir código que dependa dele.
+      - name: Deploy Firestore rules e índices
+        run: npx firebase deploy --only firestore:rules,firestore:indexes --non-interactive --token "${{ secrets.FIREBASE_TOKEN }}"
