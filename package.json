@@ -10,7 +10,9 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "check:rules": "node scripts/check-rules-functions.mjs",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-sabatina \"vitest run --dir tests/rules\""
+    "test": "firebase emulators:exec --only firestore --project demo-sabatina \"vitest run --dir tests\"",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-sabatina \"vitest run --dir tests/rules\"",
+    "test:backfill": "firebase emulators:exec --only firestore --project demo-sabatina \"vitest run --dir tests/backfill\""
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

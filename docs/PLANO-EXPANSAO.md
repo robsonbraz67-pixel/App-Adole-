@@ -239,8 +239,45 @@ Achado ao revisar o próprio diff antes de commitar: o formulário de edição
 mostrava o dropdown de igreja mas `handleSalvar` não enviava `locationId` no
 update — mudar a igreja na tela seria descartado em silêncio. Corrigido.
 
-**Falta o backfill (passos 7-10), recomendado em Opus 5**: escreve em dados
-reais de produção, uma vez, sem desfazer fácil.
+### Backfill (passos 7-10): escrito e testado; **ainda não executado**
+
+`netlify/functions/backfill-turmas.mts`. Protegido por token (`BACKFILL_TOKEN`),
+**falha fechado** — sem a variável configurada o endpoint não faz nada. Três
+modos, e nenhum escreve sem `&aplicar=1`.
+
+**A ordem users → progress não é preferência, é obrigação.** Depois de
+carimbado, todo save de quiz carrega o `turmaId` do documento (o cliente salva
+com merge) e a regra confere contra o `turmaId` do PERFIL. Carimbar `progress`
+sem carimbar `users` recusa **todo quiz daquele aluno, em silêncio** — o apagão
+de 2026-07-25 em versão parcial. Está provado nos invariantes #47/#48, a função
+grava os perfis primeiro e **confere que chegaram** antes de tocar em progresso,
+e nunca carimba progresso de dono sem turma.
+
+9 testes contra o emulador, incluindo `integracao.test.ts`, que roda o backfill
+de verdade e depois faz um save de cliente sob as regras reais — a prova de que
+o carimbo não quebra o quiz do aluno.
+
+#### Como executar (na ordem)
+
+1. No Netlify, criar a variável de ambiente **`BACKFILL_TOKEN`** com um valor
+   secreto qualquer. Sem ela o endpoint fica inerte.
+2. No preview da branch, criar a **Turma Padrão** pelo painel (igreja e trilha
+   em uso hoje).
+3. **Relatório** — `<preview>/api/backfill-turmas?token=SEU_TOKEN`
+   Mostra a realidade: quantos usuários, distribuição por igreja e trilha,
+   quantos já têm turma. Não escreve nada. *Confira a distribuição por igreja
+   antes de seguir: ela decide o escopo do passo 4.*
+4. **Simulação** — `...&turmaId=<id da turma>`
+   Mostra o que SERIA carimbado. Ainda não escreve. Se o relatório mostrou
+   muita gente sem igreja, acrescente `&escopo=todos`.
+5. **Aplicar** — `...&turmaId=<id>&aplicar=1` (mais `&escopo=todos` se for o
+   caso). Rodar de novo depois não muda nada.
+
+#### Verificação depois de aplicar
+
+Abrir o app e fazer um dia do quiz: tem de sincronizar normalmente. O painel de
+turmas passa a mostrar a contagem de alunos preenchida, e o ranking da semana
+continua idêntico ao de antes.
 
 ### Passos — UI (Sonnet 5)
 

@@ -130,6 +130,8 @@ escreve neles ainda — estes testes existem para que a regra esteja provada
 | 44 | Aluno comum **não** cria convite de professor | 264 | ❌ | ✔️ feito |
 | 45 | Admin cria convite de professor | 264 | ✅ | ✔️ feito |
 | 46 | Aluno **não** se matricula em turma que não existe | 135-144 | ❌ | ✔️ feito |
+| 47 | Aluno salva quiz num progresso JÁ carimbado com a turma dele | 419 | ✅ | ✔️ feito |
+| 48 | Progresso carimbado com turma que o dono não tem trava o save | 419 | ❌ | ✔️ feito |
 
 > **#35 e #37 são a mesma trava do `locationId`, aplicada à turma.** Sem #35 o
 > aluno se mudaria de turma sozinho; sem #37 ele gravaria progresso carimbado
@@ -140,6 +142,15 @@ escreve neles ainda — estes testes existem para que a regra esteja provada
 > **#41 trava a decisão do plano na própria regra**, em vez de deixá-la só na
 > documentação: turma se arquiva (`active: false`), nunca se exclui, senão o
 > progresso que carrega aquele `turmaId` vira histórico órfão.
+
+> **#47 e #48 são a razão de o backfill da Fase 2 ter uma ORDEM obrigatória.**
+> Depois de carimbado, todo save de quiz do aluno passa a carregar o `turmaId`
+> que está no documento (o cliente salva com merge, então o campo sobrevive) —
+> e a regra confere esse valor contra o `turmaId` do PERFIL. Carimbar
+> `progress` sem carimbar `users` deixa os dois em desacordo e **recusa todo
+> quiz daquele aluno, em silêncio**: exatamente o apagão de 2026-07-25, em
+> versão parcial. Por isso o backfill grava `users` primeiro, `progress`
+> depois, e nunca carimba um progresso cujo dono não tenha turma.
 
 > **#46 fecha um buraco encontrado revisando o diff da Fase 1**, não pela lista
 > original: #37 obriga o progresso a bater com o `turmaId` do perfil, mas nada
@@ -161,6 +172,14 @@ Um arquivo por área:
 | `gestao.test.ts` | 14, 15, 16, 17, 22, 23 |
 | `privacidade.test.ts` | 5, 19, 24 |
 | `aovivo.test.ts` | 25, 26, 27, 28, 29, 30 |
+| `turmas.test.ts` | 38 a 45 (Fase 1: turmas e convite de professor) |
+
+Fora de `tests/rules/`, `tests/backfill/` cobre a função que carimba `turmaId`
+na base inteira: `turmas.test.ts` (escopo, idempotência, a trava que impede
+carimbar progresso de dono sem turma) e `integracao.test.ts`, que roda o
+backfill de verdade e depois faz um save de cliente sob as regras REAIS — a
+prova de que o carimbo não quebra o quiz do aluno. `npm test` roda os dois
+conjuntos; o CI usa esse.
 
 Para regra nova a partir da Fase 1 (ex.: `turmas`, `teacherInvites`), o padrão é
 adicionar linhas aqui primeiro (o contrato), depois o arquivo de teste — nunca

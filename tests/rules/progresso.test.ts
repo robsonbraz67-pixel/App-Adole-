@@ -120,6 +120,37 @@ describe('progress', () => {
     );
   });
 
+  // #47 — o caminho DIÁRIO depois do backfill da Fase 2: o doc já está
+  // carimbado, e o cliente salva com merge (saveProgress em firebase.ts), então
+  // o turmaId sobrevive no documento e passa pela regra a cada quiz.
+  it('aluno salva quiz num progresso já carimbado com a turma dele', async () => {
+    await semearAluno('aluno1', { turmaId: 'turma1' });
+    await semearDoc(`progress/aluno1_${SEMANA}`, progressoValido('aluno1', { turmaId: 'turma1' }));
+    const db = comoUsuario('aluno1');
+
+    await assertSucceeds(
+      db.doc(`progress/aluno1_${SEMANA}`).update({
+        xp: 360, streak: 3, done: [1, 2, 3], updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  // #48 — o backfill pela METADE. Se o progresso for carimbado sem o perfil,
+  // ownTurmaId() devolve '' e a conferência nunca casa: TODO quiz daquele
+  // aluno passa a ser recusado, em silêncio. É por isso que o backfill grava
+  // users antes de progress, e nunca carimba progresso de dono sem turma.
+  it('progresso carimbado com turma que o dono não tem trava o save do aluno', async () => {
+    await semearAluno('aluno1'); // sem turmaId — o backfill não chegou no perfil
+    await semearDoc(`progress/aluno1_${SEMANA}`, progressoValido('aluno1', { turmaId: 'turma1' }));
+    const db = comoUsuario('aluno1');
+
+    await assertFails(
+      db.doc(`progress/aluno1_${SEMANA}`).update({
+        xp: 360, streak: 3, done: [1, 2, 3], updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
   // #18 — nem o admin apaga um doc de progress (allow delete: if false).
   // Corrigir é sempre zerar campos (ver #6), nunca remover o documento.
   it('ninguém apaga um documento de progresso — nem admin', async () => {

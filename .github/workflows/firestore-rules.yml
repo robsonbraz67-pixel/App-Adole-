@@ -7,14 +7,16 @@ on:
       - 'firestore.rules'
       - 'firebase.json'
       - '.firebaserc'
-      - 'tests/rules/**'
+      - 'tests/**'
       - 'scripts/check-rules-functions.mjs'
+      - 'netlify/functions/backfill-turmas.mts'
   pull_request:
     paths:
       - 'firestore.rules'
       - 'firebase.json'
-      - 'tests/rules/**'
+      - 'tests/**'
       - 'scripts/check-rules-functions.mjs'
+      - 'netlify/functions/backfill-turmas.mts'
   workflow_dispatch: {}
 
 jobs:
@@ -42,8 +44,10 @@ jobs:
       - name: Checar função indefinida nas regras
         run: npm run check:rules
 
-      - name: Testar as regras no emulador
-        run: npm run test:rules
+      # Regras + backfill: o backfill escreve na base inteira, então também
+      # precisa passar antes de qualquer coisa ir para produção.
+      - name: Testar regras e backfill no emulador
+        run: npm test
 
   deploy-rules:
     needs: test
