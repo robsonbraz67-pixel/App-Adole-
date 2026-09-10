@@ -79,7 +79,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -2150,6 +2150,362 @@ export const Dupla = ({ jogador, licao, prog, weekRows, activePair, pendingInvit
 };
 
 /* ===== CÓDIGOS DE CONVITE (Etapa 3) ===== */
+/* ===== TURMAS (admin) ===== */
+// A turma é o escopo primário da expansão (ver docs/PLANO-EXPANSAO.md): ela
+// pertence a uma igreja, define a trilha, e o aluno herda as duas ao se
+// matricular. Este painel é a Fase 2 — cria e edita turmas nos bastidores,
+// antes de qualquer aluno ver diferença.
+//
+// Só admin: a regra publicada na Fase 1 recusa escrita de professor em
+// `turmas`, e mostrar botão que dá permission-denied é pior do que não mostrar.
+//
+// Custo: uma leitura da coleção `turmas` (pequena por natureza) ao abrir. A
+// contagem de alunos e os nomes dos professores saem da lista de usuários que
+// o Admin já carregou — nenhuma consulta a mais.
+const TurmasPanel = ({ jogador, locations, users, onLocationCreated }: {
+  jogador: any;
+  locations: { id: string; name: string }[];
+  users: any[];
+  onLocationCreated: (loc: { id: string; name: string }) => void;
+}) => {
+  const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState('');
+
+  const [formAberto, setFormAberto] = useState(false);
+  const [fNome, setFNome] = useState('');
+  const [fLocation, setFLocation] = useState('');
+  const [fTrack, setFTrack] = useState<Track>('teen');
+  const [fProfessores, setFProfessores] = useState<string[]>([]);
+  const [novaIgreja, setNovaIgreja] = useState('');
+  const [salvando, setSalvando] = useState(false);
+
+  const [aberta, setAberta] = useState<string | null>(null);
+  const [editando, setEditando] = useState<string | null>(null);
+  const [codigos, setCodigos] = useState<Record<string, any[]>>({});
+  const [ocupado, setOcupado] = useState(false);
+  const [verArquivadas, setVerArquivadas] = useState(false);
+
+  const TRACKS = Object.keys(TRACK_LABELS) as Track[];
+  const locName = (id: string) => locations.find(l => l.id === id)?.name || '—';
+  const nomeDe = (uid: string) => users.find(u => u.id === uid)?.nome || uid.slice(0, 6);
+
+  // Quem pode ser professor de turma. Admin entra na lista porque quase sempre
+  // também dá aula — e sem isso ele não conseguiria se atribuir.
+  const candidatos = useMemo(
+    () => users.filter(u => u.isProfessor || u.isAdmin).sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR')),
+    [users]
+  );
+
+  // Alunos por turma, da lista que o Admin já tem em memória.
+  const alunosPorTurma = useMemo(() => {
+    const m: Record<string, number> = {};
+    users.forEach(u => { if (u.turmaId) m[u.turmaId] = (m[u.turmaId] || 0) + 1; });
+    return m;
+  }, [users]);
+
+  const semTurma = useMemo(() => users.filter(u => !u.turmaId && !u.isGuest).length, [users]);
+
+  const carregar = () => {
+    setCarregando(true);
+    getTurmas()
+      .then(t => { setTurmas(t); setErro(''); })
+      .catch(e => setErro(e?.message || 'Não foi possível carregar as turmas.'))
+      .finally(() => setCarregando(false));
+  };
+  useEffect(carregar, []);
+
+  const limparForm = () => { setFNome(''); setFLocation(''); setFTrack('teen'); setFProfessores([]); setNovaIgreja(''); };
+
+  const handleCriar = async () => {
+    setSalvando(true);
+    try {
+      let locationId = fLocation;
+      // "Nova igreja" resolve um beco sem saída: fora do cadastro não existe
+      // outro lugar no app para criar uma igreja, e sem igreja não há turma.
+      if (fLocation === '__nova__') {
+        const nome = novaIgreja.trim();
+        if (!nome) throw new Error('Dê um nome à nova igreja.');
+        locationId = await createStudyLocation(nome, jogador.id);
+        onLocationCreated({ id: locationId, name: nome });
+      }
+      const id = await createTurma({ locationId, track: fTrack, nome: fNome, professores: fProfessores }, jogador.id);
+      setTurmas(prev => [...prev, {
+        id, locationId, track: fTrack, nome: fNome.trim(),
+        professores: fProfessores, active: true, createdBy: jogador.id,
+      }].sort((a, b) => (a.active === b.active) ? (a.nome || '').localeCompare(b.nome || '', 'pt-BR') : (a.active ? -1 : 1)));
+      limparForm();
+      setFormAberto(false);
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao criar a turma.');
+    }
+    setSalvando(false);
+  };
+
+  const handleSalvarEdicao = async (t: Turma, patch: Partial<Turma>) => {
+    setOcupado(true);
+    try {
+      await updateTurma(t.id, patch as any);
+      setTurmas(prev => prev.map(x => x.id === t.id ? { ...x, ...patch, nome: (patch.nome ?? x.nome).trim() } : x));
+      setEditando(null);
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao salvar a turma.');
+    }
+    setOcupado(false);
+  };
+
+  const handleArquivar = async (t: Turma) => {
+    const alunos = alunosPorTurma[t.id] || 0;
+    if (t.active && !window.confirm(
+      `Arquivar "${t.nome}"?\n\nA turma some das listas ativas, mas nada é apagado: ${alunos} aluno(s) e todo o histórico continuam ligados a ela. Dá para reativar depois.`
+    )) return;
+    setOcupado(true);
+    try {
+      await arquivarTurma(t.id, !t.active);
+      setTurmas(prev => prev.map(x => x.id === t.id ? { ...x, active: !t.active } : x));
+      // A turma arquivada sai da lista visível, mas continuaria marcada como
+      // aberta: o próximo clique nela (já em "ver arquivadas") fecharia em vez
+      // de abrir. Fechar aqui deixa o estado igual ao que a tela mostra.
+      if (t.active && !verArquivadas) setAberta(null);
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao arquivar a turma.');
+    }
+    setOcupado(false);
+  };
+
+  const carregarCodigos = (turmaId: string) => {
+    getInviteCodesByTurma(turmaId)
+      .then(cs => setCodigos(prev => ({ ...prev, [turmaId]: cs })))
+      .catch(() => setCodigos(prev => ({ ...prev, [turmaId]: [] })));
+  };
+
+  const handleAbrir = (t: Turma) => {
+    const abrindo = aberta !== t.id;
+    setAberta(abrindo ? t.id : null);
+    setEditando(null);
+    if (abrindo && !codigos[t.id]) carregarCodigos(t.id);
+  };
+
+  const handleGerarConvite = async (t: Turma) => {
+    setOcupado(true);
+    try {
+      const code = await generateInviteCode(t.locationId, t.track, jogador.id, t.id);
+      carregarCodigos(t.id);
+      alert(`Código gerado: ${code}\n\nQuem entrar com ele já cai nesta turma, nesta igreja e nesta trilha.`);
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao gerar o convite.');
+    }
+    setOcupado(false);
+  };
+
+  const handleToggleCodigo = async (turmaId: string, code: string, active: boolean) => {
+    try {
+      await setInviteCodeActive(code, !active);
+      setCodigos(prev => ({ ...prev, [turmaId]: (prev[turmaId] || []).map(c => c.id === code ? { ...c, active: !active } : c) }));
+    } catch { alert('Erro ao atualizar o código.'); }
+  };
+
+  const copiar = (code: string) => navigator.clipboard.writeText(code).then(() => alert('Código copiado!')).catch(() => {});
+
+  const visiveis = verArquivadas ? turmas : turmas.filter(t => t.active);
+  const arquivadas = turmas.filter(t => !t.active).length;
+
+  const inputSt: React.CSSProperties = { width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13 };
+  const rotuloSt: React.CSSProperties = { fontSize:11, color:'var(--mut)', fontWeight:800, marginBottom:4 };
+  const btnMini = (cor: string, bg: string): React.CSSProperties => ({ background:bg, color:cor, border:'none', borderRadius:6, padding:'6px 8px', fontSize:11, fontWeight:800, cursor:'pointer' });
+
+  const seletorProfessores = (sel: string[], set: (v: string[]) => void) => (
+    <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
+      {candidatos.length === 0 ? (
+        <span style={{fontSize:12, color:'var(--mut)'}}>Ninguém marcado como professor ainda.</span>
+      ) : candidatos.map(p => {
+        const on = sel.includes(p.id);
+        return (
+          <button key={p.id} type="button"
+            onClick={() => set(on ? sel.filter(x => x !== p.id) : [...sel, p.id])}
+            style={{...btnMini(on ? 'var(--admin)' : 'var(--mut)', on ? 'rgba(124,79,224,.2)' : 'var(--row-bg)'), border: on ? '1px solid var(--admin)' : '1px solid transparent'}}>
+            {on ? '✓ ' : ''}{p.nome || p.email}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:24}}>
+      {!formAberto ? (
+        <button onClick={() => setFormAberto(true)} className="btn btn-gold" style={{fontSize:14, padding:'10px', marginBottom:12}}>
+          ➕ Nova turma
+        </button>
+      ) : (
+        <div style={{background:'var(--row-bg)', padding:10, borderRadius:10, marginBottom:12}}>
+          <div style={{marginBottom:8}}>
+            <div style={rotuloSt}>Nome da turma</div>
+            <input value={fNome} onChange={e => setFNome(e.target.value)} maxLength={80} placeholder="Ex.: Adolescentes — Profa. Ana" style={inputSt} />
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8}}>
+            <div>
+              <div style={rotuloSt}>Igreja</div>
+              <select value={fLocation} onChange={e => setFLocation(e.target.value)} style={inputSt}>
+                <option value="">Selecione...</option>
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                <option value="__nova__">➕ Nova igreja...</option>
+              </select>
+            </div>
+            <div>
+              <div style={rotuloSt}>Trilha</div>
+              <select value={fTrack} onChange={e => setFTrack(e.target.value as Track)} style={inputSt}>
+                {TRACKS.map(t => <option key={t} value={t}>{TRACK_LABELS[t]}</option>)}
+              </select>
+            </div>
+          </div>
+          {fLocation === '__nova__' && (
+            <div style={{marginBottom:8}}>
+              <div style={rotuloSt}>Nome da nova igreja</div>
+              <input value={novaIgreja} onChange={e => setNovaIgreja(e.target.value)} maxLength={60} placeholder="Ex.: Central de Campinas" style={inputSt} />
+            </div>
+          )}
+          <div style={{marginBottom:10}}>
+            <div style={rotuloSt}>Professores</div>
+            {seletorProfessores(fProfessores, setFProfessores)}
+          </div>
+          <div style={{display:'flex', gap:8}}>
+            <button onClick={handleCriar} disabled={salvando} className={`btn btn-gold ${salvando ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'9px'}}>
+              {salvando ? 'Criando...' : 'Criar turma'}
+            </button>
+            <button onClick={() => { setFormAberto(false); limparForm(); }} style={{...btnMini('var(--mut)', 'var(--row-bg-strong)'), padding:'9px 14px', fontSize:13}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {carregando ? <div style={{color:'var(--mut)', fontSize:13}}>Carregando turmas...</div>
+       : erro ? <div style={{color:'var(--danger)', fontSize:13}}>{erro}</div>
+       : turmas.length === 0 ? (
+        <div style={{color:'var(--mut)', fontSize:13, textAlign:'center', padding:'8px 0', lineHeight:1.5}}>
+          Nenhuma turma ainda.<br/>
+          Crie a turma que a escola já usa hoje — os {semTurma} aluno(s) atuais entram nela no próximo passo.
+        </div>
+      ) : (
+        <>
+          <div style={{display:'flex', flexDirection:'column', gap:8}}>
+            {visiveis.map(t => (
+              <div key={t.id} style={{background:'var(--row-bg)', borderRadius:8, opacity: t.active ? 1 : 0.6}}>
+                <div onClick={() => handleAbrir(t)} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'8px 10px', cursor:'pointer'}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                      {t.nome} {!t.active && <span style={{fontSize:10, color:'var(--mut)', fontWeight:800}}>ARQUIVADA</span>}
+                    </div>
+                    <div style={{fontSize:11, color:'var(--mut)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                      🏛️ {locName(t.locationId)} · {TRACK_LABELS[t.track as Track] || t.track}
+                    </div>
+                    <div style={{fontSize:11, color:'var(--mut)'}}>
+                      👥 {alunosPorTurma[t.id] || 0} aluno(s) · 🎓 {t.professores?.length ? t.professores.map(nomeDe).join(', ') : 'sem professor'}
+                    </div>
+                  </div>
+                  <span style={{fontSize:12, color:'var(--mut)', flexShrink:0}}>{aberta === t.id ? '▲' : '▼'}</span>
+                </div>
+
+                {aberta === t.id && (
+                  <div style={{padding:'0 10px 10px'}}>
+                    {editando === t.id ? (
+                      <EdicaoTurma t={t} locations={locations} tracks={TRACKS} inputSt={inputSt} rotuloSt={rotuloSt}
+                        seletorProfessores={seletorProfessores} ocupado={ocupado}
+                        onCancelar={() => setEditando(null)}
+                        onSalvar={patch => handleSalvarEdicao(t, patch)} />
+                    ) : (
+                      <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:10}}>
+                        <button onClick={() => setEditando(t.id)} style={btnMini('var(--teal)', 'rgba(30,158,134,.2)')}>✏️ Editar</button>
+                        <button onClick={() => handleGerarConvite(t)} disabled={ocupado} style={btnMini('#F7C600', 'rgba(247,198,0,.15)')}>🎟️ Gerar convite de aluno</button>
+                        <button onClick={() => handleArquivar(t)} disabled={ocupado} style={btnMini(t.active ? 'var(--danger)' : 'var(--success)', t.active ? 'rgba(227,28,61,.15)' : 'rgba(79,184,92,.2)')}>
+                          {t.active ? '📦 Arquivar' : '↩️ Reativar'}
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, marginBottom:4}}>Convites desta turma</div>
+                    {!codigos[t.id] ? <div style={{fontSize:12, color:'var(--mut)'}}>Carregando...</div>
+                     : codigos[t.id].length === 0 ? <div style={{fontSize:12, color:'var(--mut)'}}>Nenhum convite ainda.</div>
+                     : (
+                      <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                        {codigos[t.id].map(c => (
+                          <div key={c.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'6px 8px', background:'var(--row-bg-strong)', borderRadius:6, opacity: c.active ? 1 : 0.55}}>
+                            <span style={{fontFamily:'monospace', fontWeight:900, fontSize:14, color:'var(--gold)', letterSpacing:1}}>
+                              {c.code} {!c.active && <span style={{fontSize:10, color:'var(--danger)', letterSpacing:0}}>REVOGADO</span>}
+                            </span>
+                            <div style={{display:'flex', gap:6, flexShrink:0}}>
+                              <button onClick={() => copiar(c.code)} style={btnMini('var(--teal)', 'rgba(30,158,134,.2)')}>Copiar</button>
+                              <button onClick={() => handleToggleCodigo(t.id, c.code, c.active)} style={btnMini(c.active ? '#F7C600' : 'var(--success)', c.active ? 'rgba(247,198,0,.15)' : 'rgba(79,184,92,.2)')}>
+                                {c.active ? 'Revogar' : 'Reativar'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {arquivadas > 0 && (
+            <button onClick={() => setVerArquivadas(v => !v)} style={{...btnMini('var(--mut)', 'transparent'), marginTop:8, padding:0}}>
+              {verArquivadas ? 'ocultar arquivadas' : `ver ${arquivadas} arquivada(s)`}
+            </button>
+          )}
+          {semTurma > 0 && (
+            <div style={{fontSize:11, color:'var(--mut)', marginTop:10, lineHeight:1.5}}>
+              {semTurma} aluno(s) ainda sem turma. Eles continuam funcionando normalmente — o app trata "sem turma" como a turma padrão até o carimbo em massa acontecer.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+// Formulário de edição em componente próprio: assim os campos nascem do valor
+// atual da turma toda vez que abre, sem precisar sincronizar estado do pai.
+const EdicaoTurma = ({ t, locations, tracks, inputSt, rotuloSt, seletorProfessores, ocupado, onCancelar, onSalvar }: any) => {
+  const [nome, setNome] = useState(t.nome);
+  const [locationId, setLocationId] = useState(t.locationId);
+  const [track, setTrack] = useState<Track>(t.track);
+  const [professores, setProfessores] = useState<string[]>(t.professores || []);
+
+  return (
+    <div style={{background:'var(--row-bg-strong)', padding:10, borderRadius:8, marginBottom:10}}>
+      <div style={{marginBottom:8}}>
+        <div style={rotuloSt}>Nome</div>
+        <input value={nome} onChange={e => setNome(e.target.value)} maxLength={80} style={inputSt} />
+      </div>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8}}>
+        <div>
+          <div style={rotuloSt}>Igreja</div>
+          <select value={locationId} onChange={e => setLocationId(e.target.value)} style={inputSt}>
+            {locations.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={rotuloSt}>Trilha</div>
+          <select value={track} onChange={e => setTrack(e.target.value as Track)} style={inputSt}>
+            {tracks.map((tr: Track) => <option key={tr} value={tr}>{TRACK_LABELS[tr]}</option>)}
+          </select>
+        </div>
+      </div>
+      <div style={{marginBottom:10}}>
+        <div style={rotuloSt}>Professores</div>
+        {seletorProfessores(professores, setProfessores)}
+      </div>
+      <div style={{display:'flex', gap:8}}>
+        <button onClick={() => onSalvar({ nome, locationId, track, professores })} disabled={ocupado} className={`btn btn-gold ${ocupado ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px'}}>
+          {ocupado ? 'Salvando...' : 'Salvar'}
+        </button>
+        <button onClick={onCancelar} style={{background:'var(--row-bg)', color:'var(--mut)', border:'none', borderRadius:6, padding:'8px 14px', fontSize:13, fontWeight:800, cursor:'pointer'}}>Cancelar</button>
+      </div>
+    </div>
+  );
+};
+
 const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { id: string; name: string }[] }) => {
   const isAdmin = !!jogador?.isAdmin;
   const [teacherLocationId, setTeacherLocationId] = useState<string | null>(null);
@@ -2504,6 +2860,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
   // Locais de estudo + atribuição de professor por local
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [teacherAssignments, setTeacherAssignments] = useState<Record<string, { locationId: string }>>({});
+  const [showTurmas, setShowTurmas] = useState(false);
 
   useEffect(() => {
     let unmounted = false;
@@ -2721,6 +3078,26 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
               </div>
            )}
         </div>
+
+        {/* Turmas (Fase 2). Fora das flags MULTI_*: a turma é o que o admin
+            precisa arrumar ANTES de os alunos verem qualquer coisa — quando as
+            flags virarem (Fase 4), as turmas já existem e estão povoadas. */}
+        {!!jogador?.isAdmin && (
+          <>
+            <div className="sec-title" style={{marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer'}} onClick={() => setShowTurmas(s => !s)}>
+              <span>🏫 Turmas</span>
+              <span style={{fontSize:12, color:'var(--mut)'}}>{showTurmas ? '▲ ocultar' : '▼ ver'}</span>
+            </div>
+            {showTurmas && (
+              <TurmasPanel
+                jogador={jogador}
+                locations={locations}
+                users={users}
+                onLocationCreated={loc => setLocations(prev => [...prev, loc].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')))}
+              />
+            )}
+          </>
+        )}
 
         {(MULTI_LOCATION_ENABLED || MULTI_TRACK_ENABLED) && (
           <>

@@ -81,6 +81,120 @@ describe('turmas', () => {
 
     await assertSucceeds(db.doc('turmas/turma1').update({ active: false }));
   });
+
+  // ===== Formatos que o painel da Fase 2 grava de verdade =====
+  // Os testes acima provam a REGRA; estes provam o que o createTurma /
+  // updateTurma / arquivarTurma (firebase.ts) põem no fio. É a diferença entre
+  // "a regra aceita uma turma" e "a regra aceita a turma que o app manda" — e
+  // uma recusa aqui apareceria no app como permission-denied silencioso.
+
+  // O painel manda `professores: []` mesmo sem ninguém escolhido: a regra
+  // exige `professores is list`, então omitir o campo derrubaria a criação.
+  it('admin cria turma sem professor nenhum (lista vazia)', async () => {
+    await semearAdmin('admin1');
+    const db = comoUsuario('admin1');
+
+    await assertSucceeds(
+      db.doc('turmas/turma1').set(turmaValida({ professores: [] })),
+    );
+  });
+
+  // updateTurma carimba updatedAt junto do patch. O campo está no hasOnly da
+  // regra, mas nenhum teste passava por ele — e um hasOnly incompleto recusa o
+  // documento INTEIRO, não só o campo novo.
+  it('admin edita a turma e o updatedAt do painel passa', async () => {
+    await semearAdmin('admin1');
+    await semearDoc('turmas/turma1', turmaValida());
+    const db = comoUsuario('admin1');
+
+    await assertSucceeds(
+      db.doc('turmas/turma1').update({
+        nome: 'Adolescentes — Prof. João',
+        locationId: 'igreja2',
+        track: 'teen',
+        professores: ['professor1', 'professor2'],
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it('arquivar pelo painel (active + updatedAt) passa', async () => {
+    await semearAdmin('admin1');
+    await semearDoc('turmas/turma1', turmaValida());
+    const db = comoUsuario('admin1');
+
+    await assertSucceeds(
+      db.doc('turmas/turma1').update({ active: false, updatedAt: serverTimestamp() }),
+    );
+  });
+
+  it('o painel não consegue inventar campo fora do modelo', async () => {
+    await semearAdmin('admin1');
+    const db = comoUsuario('admin1');
+
+    await assertFails(
+      db.doc('turmas/turma1').set(turmaValida({ alunos: ['aluno1'] })),
+    );
+  });
+});
+
+// O convite de aluno emitido de dentro da turma (Fase 2): mesmo código de
+// sempre, agora carregando turmaId para quem resgata já cair matriculado.
+describe('inviteCodes com turmaId', () => {
+  beforeAll(() => setup('turmas'));
+  afterAll(teardown);
+  beforeEach(limpar);
+
+  const codigoDaTurma = (extra: Record<string, unknown> = {}) => ({
+    code: 'TEEN-ABCDE',
+    locationId: 'igreja1',
+    turmaId: 'turma1',
+    track: 'teen',
+    active: true,
+    createdBy: 'admin1',
+    createdAt: serverTimestamp(),
+    ...extra,
+  });
+
+  it('admin emite convite de aluno carregando a turma', async () => {
+    await semearAdmin('admin1');
+    await semearDoc('turmas/turma1', turmaValida());
+    const db = comoUsuario('admin1');
+
+    await assertSucceeds(db.doc('inviteCodes/TEEN-ABCDE').set(codigoDaTurma()));
+  });
+
+  // Os códigos emitidos antes da Fase 2 não têm turmaId e continuam valendo —
+  // é o que garante que ninguém que já recebeu um link fique de fora.
+  it('convite antigo, sem turmaId, continua válido', async () => {
+    await semearAdmin('admin1');
+    const db = comoUsuario('admin1');
+
+    const { turmaId, ...semTurma } = codigoDaTurma();
+    await assertSucceeds(db.doc('inviteCodes/TEEN-ABCDE').set(semTurma));
+  });
+
+  // Revogar de dentro da turma: setInviteCodeActive faz merge só de `active`,
+  // e o documento resultante ainda carrega turmaId.
+  it('admin revoga um convite que carrega turmaId', async () => {
+    await semearAdmin('admin1');
+    await semearDoc('turmas/turma1', turmaValida());
+    await semearDoc('inviteCodes/TEEN-ABCDE', codigoDaTurma());
+    const db = comoUsuario('admin1');
+
+    await assertSucceeds(db.doc('inviteCodes/TEEN-ABCDE').update({ active: false }));
+  });
+
+  it('revogar não é desculpa para trocar a turma do convite', async () => {
+    await semearAdmin('admin1');
+    await semearDoc('turmas/turma1', turmaValida());
+    await semearDoc('inviteCodes/TEEN-ABCDE', codigoDaTurma());
+    const db = comoUsuario('admin1');
+
+    await assertFails(
+      db.doc('inviteCodes/TEEN-ABCDE').update({ active: false, turmaId: 'turma2' }),
+    );
+  });
 });
 
 describe('teacherInvites', () => {

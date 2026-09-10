@@ -169,6 +169,104 @@ export const getAllTeacherAssignments = async (): Promise<Record<string, { locat
   return map;
 };
 
+// ===== Turmas (Fase 2) =====
+// A turma é o escopo primário da expansão: pertence a uma igreja (locationId),
+// define a trilha, e o aluno herda as duas ao se matricular. Ver
+// docs/PLANO-EXPANSAO.md.
+//
+// Só admin escreve — é o que a regra publicada na Fase 1 permite. O professor
+// gerenciar a própria turma é a Fase 3, e sobe junto com os testes do que ele
+// passa a NÃO poder fazer.
+export interface Turma {
+  id: string;
+  locationId: string;
+  track: string;
+  nome: string;
+  professores: string[];
+  active: boolean;
+  createdBy: string;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+// Os mesmos limites que a regra impõe (isValidTurma). Conferir aqui é o que
+// transforma um 'permission-denied' silencioso numa mensagem que diz o que
+// fazer — a regra continua sendo a autoridade, esta checagem é só o aviso.
+const LIMITES_TURMA = { nome: 80, locationId: 200, professores: 20 };
+
+const checarNomeTurma = (nome: string) => {
+  const limpo = (nome || '').trim();
+  if (!limpo) throw new Error('Dê um nome à turma.');
+  if (limpo.length > LIMITES_TURMA.nome) throw new Error(`O nome da turma pode ter no máximo ${LIMITES_TURMA.nome} caracteres.`);
+  return limpo;
+};
+
+const checarLocationTurma = (locationId: string) => {
+  if (!locationId) throw new Error('Escolha a igreja da turma.');
+  if (locationId.length > LIMITES_TURMA.locationId) throw new Error('Igreja inválida.');
+};
+
+const checarProfessoresTurma = (professores: string[]) => {
+  if (professores.length > LIMITES_TURMA.professores) {
+    throw new Error(`Uma turma pode ter no máximo ${LIMITES_TURMA.professores} professores.`);
+  }
+};
+
+// Lista completa. A coleção é pequena por natureza (uma turma por classe de
+// escola sabatina), então não vale paginar. Ativas primeiro, depois por nome.
+export const getTurmas = async (): Promise<Turma[]> => {
+  const snap = await getDocs(collection(db, 'turmas'));
+  const list: Turma[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...(d.data() as any) }));
+  return list.sort((a, b) =>
+    (a.active === b.active)
+      ? (a.nome || '').localeCompare(b.nome || '', 'pt-BR')
+      : (a.active ? -1 : 1)
+  );
+};
+
+export const createTurma = async (
+  dados: { locationId: string; track: string; nome: string; professores?: string[] },
+  createdBy: string
+): Promise<string> => {
+  const nome = checarNomeTurma(dados.nome);
+  checarLocationTurma(dados.locationId);
+  checarProfessoresTurma(dados.professores || []);
+  const ref = doc(collection(db, 'turmas'));
+  await setDoc(ref, {
+    locationId: dados.locationId,
+    track: dados.track,
+    nome,
+    // Sempre lista, mesmo vazia: a regra exige `professores is list`, e mandar
+    // o campo só quando tem alguém faria a criação falhar sem turma nenhuma.
+    professores: dados.professores || [],
+    active: true,
+    createdBy,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+};
+
+// updateDoc (não setDoc merge) porque a regra valida o documento RESULTANTE:
+// os campos que não vão no patch precisam continuar existindo no servidor.
+export const updateTurma = async (
+  turmaId: string,
+  patch: Partial<Pick<Turma, 'nome' | 'locationId' | 'track' | 'professores'>>
+) => {
+  const limpo: any = { ...patch };
+  if (patch.nome !== undefined) limpo.nome = checarNomeTurma(patch.nome);
+  if (patch.locationId !== undefined) checarLocationTurma(patch.locationId);
+  if (patch.professores !== undefined) checarProfessoresTurma(patch.professores);
+  await updateDoc(doc(db, 'turmas', turmaId), { ...limpo, updatedAt: serverTimestamp() });
+};
+
+// Turma se ARQUIVA, nunca se exclui: os documentos de progresso carregam
+// turmaId, e apagar a turma deixaria esse histórico órfão. A regra trava isso
+// (`delete: if false`) — aqui só existe o caminho certo.
+export const arquivarTurma = async (turmaId: string, active: boolean) => {
+  await updateDoc(doc(db, 'turmas', turmaId), { active, updatedAt: serverTimestamp() });
+};
+
 // ===== Códigos de convite por local + trilha (Etapa 3) =====
 // Doc id == o próprio código, para resgate por leitura direta (sem precisar de
 // permissão de list para quem resgata). Alfabeto sem caracteres ambíguos (0/O/1/I).
@@ -187,17 +285,32 @@ export const normalizeInviteCode = (code: string) => (code || '').trim().toUpper
 
 // Cria um código novo para (locationId, track). createdBy = quem gerou.
 // A regra do Firestore garante que professor só cria para o local atribuído a ele.
-export const generateInviteCode = async (locationId: string, track: string, createdBy: string): Promise<string> => {
+//
+// turmaId é opcional e chegou na Fase 2: o código emitido pelo painel de turmas
+// carrega a turma, então quem resgata já entra matriculado nela. Os códigos
+// antigos não têm o campo e continuam válidos — a regra o aceita ausente.
+export const generateInviteCode = async (locationId: string, track: string, createdBy: string, turmaId?: string): Promise<string> => {
   // tenta algumas vezes para o caso raríssimo de colisão de sufixo
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = `${TRACK_PREFIX[track] || 'TRK'}-${randomCodeSuffix()}`;
     const ref = doc(db, 'inviteCodes', code);
     const existing = await getDoc(ref);
     if (existing.exists()) continue;
-    await setDoc(ref, { code, locationId, track, active: true, createdBy, createdAt: serverTimestamp() });
+    // O campo só vai quando existe: mandar `turmaId: undefined` quebra o SDK, e
+    // mandar string vazia falharia na regra (size() > 0).
+    await setDoc(ref, { code, locationId, track, active: true, createdBy, createdAt: serverTimestamp(), ...(turmaId ? { turmaId } : {}) });
     return code;
   }
   throw new Error('Não foi possível gerar um código único. Tente novamente.');
+};
+
+// Códigos de uma turma específica. Usado pelo painel de turmas para mostrar,
+// dentro da própria linha, os convites que já circulam por ela.
+export const getInviteCodesByTurma = async (turmaId: string): Promise<any[]> => {
+  const snap = await getDocs(query(collection(db, 'inviteCodes'), where('turmaId', '==', turmaId)));
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list.sort((a, b) => (a.createdAt?.seconds || 0) < (b.createdAt?.seconds || 0) ? 1 : -1);
 };
 
 // Lista códigos. Admin vê todos; professor filtra pelo próprio local (client-side,
