@@ -474,9 +474,48 @@ O ranking da turma reusa a consulta por semana que o app já faz e recorta no
 cliente. O recorte no servidor, com índice composto, é a Fase 4 — aqui não
 custa índice novo nem leitura nova.
 
-**Falta:** estreitar as regras (o que o professor deixa de poder), com os testes
-de cada permissão removida, e testar com um professor de verdade em branch
-deploy antes de ligar a flag.
+### Estado da 3b parte 2 (2026-09-10): regras escritas e testadas; **não publicadas**
+
+Três permissões saíram do professor:
+
+| O quê | Era | Passou a ser |
+|---|---|---|
+| Ler `users` | qualquer perfil do sistema | só os da própria turma |
+| Editar `conteudoOverrides` | qualquer trilha | só a trilha da turma dele |
+| Ler `errorLogs` | professor e admin | só admin |
+
+18 testes novos, um para cada permissão removida e para cada uma que **não**
+podia sair junto: o professor continua lendo o próprio perfil, o admin continua
+lendo tudo, o aluno continua lendo o conteúdo da lição, qualquer autenticado
+continua conseguindo REGISTRAR um erro (erro que não grava é erro perdido), e o
+`progress` segue público — senão o ranking cairia junto.
+
+Duas guardas que não são óbvias e estão testadas: um professor **sem turma** não
+lê ninguém (sem o `!= ''`, ele casaria com todo perfil que também está sem
+turma, que hoje seria meio sistema); e listar *filtrando por outra turma*
+também é recusado, não só listar tudo.
+
+Validado no negativo: devolvendo `users` para `canManage()`, cinco dos testes
+novos falham na hora. Suíte em 103/103 com as regras corretas.
+
+**Um invariante da Fase 0 mudou de propósito** — o #21, "professor lê `users`".
+Ele falhou no CI assim que a regra estreitou, que é exatamente o trabalho da
+rede: obrigar a decisão a ser explícita. A mudança está registrada em
+`tests/rules/INVARIANTES.md`, na seção "Invariantes que mudaram de propósito".
+
+### A ORDEM DE PUBLICAÇÃO, que é o que pode dar errado
+
+1. Subir o **cliente** com `PROFESSOR_ESCOPO_TURMA = true` (exige `[deploy]`).
+2. Conferir com um professor de verdade que o painel da turma abre.
+3. Só então publicar **as regras** estreitadas (push do `firestore.rules`).
+
+Invertido, o professor fica com o painel antigo pedindo todos os usuários
+contra uma regra que já recusa — tela quebrada, sem erro visível para ele.
+
+Há uma rede para esse engano: se `getAllUsers` voltar `permission-denied` e a
+pessoa for professor sem ser admin, o Admin cai sozinho no painel da turma
+(`semAcessoGlobal` em components.tsx). É rede, não licença para inverter a
+ordem — ela cobre o caso de alguém publicar as regras primeiro.
 
 ### Por que é a mais arriscada
 

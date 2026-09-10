@@ -3260,6 +3260,11 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  // Rede de segurança para a ordem errada de publicação: se as regras já
+  // estreitaram (Fase 3b) e a flag ainda está desligada, getAllUsers volta
+  // permission-denied e o professor ficaria olhando um painel quebrado. Neste
+  // caso o painel da turma dele assume — que é o destino de qualquer forma.
+  const [semAcessoGlobal, setSemAcessoGlobal] = useState(false);
 
   // Locais de estudo + atribuição de professor por local
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
@@ -3275,8 +3280,10 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
            setUsers(usrs);
            setLoadingUsers(false);
         }
-      } catch (e) {
-        if (!unmounted) setLoadingUsers(false);
+      } catch (e: any) {
+        if (unmounted) return;
+        setLoadingUsers(false);
+        if (e?.code === 'permission-denied' && jogador?.isProfessor && !jogador?.isAdmin) setSemAcessoGlobal(true);
       }
     };
     loadUsers();
@@ -3403,6 +3410,12 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
         alert('Erro ao excluir usuário');
      }
   };
+
+  // Depois de TODOS os hooks: a condição muda em tempo de execução, e um
+  // retorno antecipado lá em cima puliria os hooks seguintes.
+  if (semAcessoGlobal) {
+    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} />;
+  }
 
   return (
     <div className="scr" style={{paddingBottom:100}}>

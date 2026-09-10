@@ -143,8 +143,29 @@ service cloud.firestore {
         || exists(/databases/$(database)/documents/turmas/$(incoming().turmaId));
     }
 
+    // Professor com escopo de turma (Fase 3b): enxerga o perfil de quem está
+    // na MESMA turma que ele, e mais ninguém. Antes disto, isProfessor lia o
+    // sistema inteiro.
+    //
+    // Duas armadilhas moram aqui:
+    //
+    // 1. `allow list` é tudo-ou-nada contra a CONSULTA, não por documento: se
+    //    o cliente pedir "todos os usuários", a consulta inteira é recusada,
+    //    não filtrada. Por isso o painel do professor pede
+    //    `where('turmaId','==', a minha)` — ver getUsersDaTurma em firebase.ts.
+    //    Publicar esta regra antes daquele painel estar no ar trava professor
+    //    real na tela de gestão.
+    // 2. Sem o `!= ''`, um professor SEM turma casaria com todo perfil que
+    //    também está sem turma — que hoje seria meio sistema.
+    function professorDaMesmaTurma(dados) {
+      return isProfessor()
+        && ownTurmaId() != ''
+        && dados.get('turmaId', '') == ownTurmaId();
+    }
+
     match /users/{userId} {
-      allow get, list: if isOwner(userId) || canManage();
+      allow get: if isOwner(userId) || isUserAdmin() || professorDaMesmaTurma(existing());
+      allow list: if isUserAdmin() || professorDaMesmaTurma(existing());
 
       allow create: if isOwner(userId)
         && incoming().id == userId
@@ -686,9 +707,20 @@ service cloud.firestore {
         && (!data.keys().hasAny(['updatedAt']) || data.updatedAt == request.time);
     }
 
+    // O id do override é `${track}_${semana}_${dia}` (saveDayOverride em
+    // firebase.ts), então a trilha do documento está no próprio id. O professor
+    // edita só a trilha da turma dele — antes, editava a de todo mundo.
+    function overrideDaMinhaTrilha(docId) {
+      return isProfessor()
+        && ownTurmaId() != ''
+        && exists(/databases/$(database)/documents/turmas/$(ownTurmaId()))
+        && get(/databases/$(database)/documents/turmas/$(ownTurmaId())).data.track == docId.split('_')[0];
+    }
+
     match /conteudoOverrides/{docId} {
       allow get, list: if isAuthenticated();
-      allow create, update: if canManage() && isValidOverride(incoming());
+      allow create, update: if (isUserAdmin() || overrideDaMinhaTrilha(docId))
+        && isValidOverride(incoming());
       allow delete: if isUserAdmin();
     }
 
@@ -941,8 +973,11 @@ service cloud.firestore {
     }
 
     match /errorLogs/{id} {
-      // Só quem gerencia lê — é diagnóstico técnico, não dado de aluno comum.
-      allow get, list: if canManage();
+      // Só ADMIN lê (Fase 3b): é diagnóstico técnico do sistema inteiro, de
+      // todas as turmas — nada que o professor de uma turma precise ver.
+      // Escrever continua aberto a qualquer autenticado: é o app relatando o
+      // próprio erro, e um erro que não consegue ser gravado é um erro perdido.
+      allow get, list: if isUserAdmin();
       allow create: if isAuthenticated() && isValidErrorLog(incoming());
       allow update: if false;
       allow delete: if isUserAdmin();
