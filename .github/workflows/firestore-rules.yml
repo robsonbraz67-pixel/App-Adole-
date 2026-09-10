@@ -42,6 +42,12 @@ jobs:
       - name: Checar função indefinida nas regras
         run: npm run check:rules
 
+      # Testes que não precisam de emulador (a decisão do backfill de turmas).
+      # Rodam junto porque o job já está de pé; um push que mexa SÓ na função
+      # não dispara este workflow — nesse caso, rodar `npm run test:unit` local.
+      - name: Testes unitários
+        run: npm run test:unit
+
       - name: Testar as regras no emulador
         run: npm run test:rules
 

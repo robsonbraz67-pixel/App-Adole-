@@ -120,6 +120,43 @@ describe('progress', () => {
     );
   });
 
+  // ===== O estado que o backfill da Fase 2 deixa para trás =====
+  // Os dois testes acima cobrem o aluno MANDANDO turmaId. Depois do backfill o
+  // caso é outro, e mais perigoso: o cliente não manda o campo (saveProgress
+  // nem o conhece), mas o documento no servidor já o tem — e como o save é
+  // merge, a regra avalia o resultado MESCLADO. É por isso que o backfill
+  // carimba o perfil ANTES do progresso, e nunca um sem o outro.
+
+  it('depois do backfill, o aluno salva normalmente sem mandar turmaId', async () => {
+    await semearAluno('aluno1', { turmaId: 'turma1', locationId: 'igreja1' });
+    await semearDoc(`progress/aluno1_${SEMANA}`, progressoValido('aluno1', { turmaId: 'turma1', locationId: 'igreja1' }));
+    const db = comoUsuario('aluno1');
+
+    // Exatamente o que saveProgress manda: sem turmaId no corpo.
+    await assertSucceeds(
+      db.doc(`progress/aluno1_${SEMANA}`).set(
+        progressoValido('aluno1', { xp: 360, done: [1, 2, 3], locationId: 'igreja1' }),
+        { merge: true },
+      ),
+    );
+  });
+
+  // Se o progresso for carimbado e o perfil não, TODO save seguinte daquele
+  // aluno passa a ser recusado — e ele não vê erro nenhum, só para de pontuar.
+  // Mesma família do apagão de 2026-07-25. É o motivo da ordem no backfill.
+  it('progresso carimbado com o perfil sem turma trava o aluno', async () => {
+    await semearAluno('aluno1', { locationId: 'igreja1' }); // sem turmaId
+    await semearDoc(`progress/aluno1_${SEMANA}`, progressoValido('aluno1', { turmaId: 'turma1', locationId: 'igreja1' }));
+    const db = comoUsuario('aluno1');
+
+    await assertFails(
+      db.doc(`progress/aluno1_${SEMANA}`).set(
+        progressoValido('aluno1', { xp: 360, done: [1, 2, 3], locationId: 'igreja1' }),
+        { merge: true },
+      ),
+    );
+  });
+
   // #18 — nem o admin apaga um doc de progress (allow delete: if false).
   // Corrigir é sempre zerar campos (ver #6), nunca remover o documento.
   it('ninguém apaga um documento de progresso — nem admin', async () => {

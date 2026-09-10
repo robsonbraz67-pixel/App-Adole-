@@ -296,8 +296,64 @@ Validados no sentido negativo, como manda a Fase 0: com `updatedAt` removido do
 antigos continuam passando** — que é exatamente o buraco que existia. Regra
 restaurada e conferida idêntica ao original depois do teste.
 
-**Falta o backfill (passos 7 a 10), que é o `⏸️ PARE` desta fase:** ele escreve
-em dados reais de produção, e o plano recomenda Opus 5 para essa metade.
+### Estado do backfill (2026-09-10): escrito e testado; **não executado**
+
+`netlify/functions/backfill-turmas.mts`, no molde do `backfill-ranking-data`.
+Três travas, cada uma vinda de um jeito conhecido de isto quebrar:
+
+1. **Ensaio por padrão.** Só escreve com `POST` **e** `?aplicar=1`. Um GET —
+   de navegador, de prefetch, de crawler — nunca escreve.
+2. **Perfil antes do progresso, e nunca um sem o outro.** A regra do progresso
+   exige `turmaId == ownTurmaId()`: um doc de progresso carimbado com turma que
+   não bate com o perfil do dono faria **todo save seguinte daquele aluno
+   falhar em silêncio** — a mesma família do apagão de 2026-07-25.
+3. **Nunca sobrescreve.** Quem já tem `turmaId` é contado e ignorado; a segunda
+   passada não escreve nada. É o que torna seguro repetir se a execução
+   estourar o tempo no meio.
+
+Além disso o carimbo respeita igreja e trilha: quem é `adult` não entra em
+turma `teen`, quem é de outra igreja não entra, e o histórico de outra trilha
+do mesmo aluno fica de fora (ele o poria no ranking de uma turma que nunca
+frequentou naquela trilha). Convidado do Ao Vivo nunca entra em turma.
+
+**Testes.** A decisão de quem entra saiu para uma função pura
+(`planejarBackfill`), testada com objetos comuns — 14 casos em
+`tests/backfill/planejar.test.ts`, sem emulador, `npm run test:unit`. E dois
+testes de regra novos provam o estado que o backfill deixa: depois do carimbo o
+aluno **salva normalmente sem mandar `turmaId`** (o save é merge, e a regra
+avalia o documento mesclado); e com o progresso carimbado e o perfil sem turma,
+o save é **recusado** — que é justamente o motivo da ordem. Suíte em 64/64.
+
+### Como executar (passos 7 a 10)
+
+Antes de tudo, definir **`BACKFILL_TOKEN`** nas variáveis do Netlify: a função
+fica numa URL pública e escreve no banco de produção. Sem o token configurado,
+ela responde 503 e não roda.
+
+```bash
+URL=https://<site>.netlify.app; T=<BACKFILL_TOKEN>
+
+# 1. o mapa — quantas turmas precisam existir, por igreja e trilha
+curl "$URL/.netlify/functions/backfill-turmas?token=$T&mapa=1"
+
+# 2. criar no Admin (🏫 Turmas) uma turma por grupo do mapa; o id aparece ao
+#    abrir a linha da turma, com botão de copiar
+
+# 3. o ensaio, por turma — o que ACONTECERIA, sem escrever nada
+curl "$URL/.netlify/functions/backfill-turmas?token=$T&turmaId=$ID"
+
+# 4. o carimbo, depois de conferir o ensaio
+curl -X POST "$URL/.netlify/functions/backfill-turmas?token=$T&turmaId=$ID&aplicar=1"
+```
+
+A função só existe numa URL depois de um build. Produção exige `[deploy]` no
+commit (e autorização — ver `CLAUDE.md`); um **branch deploy** builda sempre e
+dá uma URL real que fala com o mesmo banco de produção, o que permite rodar o
+mapa e o ensaio sem tocar no build de produção.
+
+`incluirSemIgreja=1` acrescenta quem está sem igreja nenhuma. O padrão é
+deixá-los de fora: com mais de uma igreja no sistema, "sem igreja" é ambíguo, e
+o ensaio os conta separadamente para a decisão ser consciente.
 
 ---
 

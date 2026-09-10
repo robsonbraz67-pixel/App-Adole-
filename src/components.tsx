@@ -2305,7 +2305,8 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated }: {
     } catch { alert('Erro ao atualizar o código.'); }
   };
 
-  const copiar = (code: string) => navigator.clipboard.writeText(code).then(() => alert('Código copiado!')).catch(() => {});
+  const copiar = (texto: string, msg = 'Código copiado!') =>
+    navigator.clipboard.writeText(texto).then(() => alert(msg)).catch(() => {});
 
   const visiveis = verArquivadas ? turmas : turmas.filter(t => t.active);
   const arquivadas = turmas.filter(t => !t.active).length;
@@ -2421,6 +2422,15 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated }: {
                         </button>
                       </div>
                     )}
+
+                    {/* O id é o que o backfill (netlify/functions/backfill-turmas.mts)
+                        pede para carimbar turmaId nos dados atuais. Sem ele à
+                        mão, só o console do Firebase responderia. */}
+                    <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:8}}>
+                      <span style={{fontSize:10, color:'var(--mut)', fontWeight:800}}>id</span>
+                      <code style={{fontSize:11, color:'var(--txt2)', fontFamily:'ui-monospace,Menlo,monospace', background:'var(--row-bg-strong)', padding:'2px 6px', borderRadius:4, overflow:'hidden', textOverflow:'ellipsis'}}>{t.id}</code>
+                      <button onClick={() => copiar(t.id, 'Id da turma copiado.')} style={btnMini('var(--mut)', 'var(--row-bg-strong)')}>Copiar</button>
+                    </div>
 
                     <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, marginBottom:4}}>Convites desta turma</div>
                     {!codigos[t.id] ? <div style={{fontSize:12, color:'var(--mut)'}}>Carregando...</div>
