@@ -1,18 +1,20 @@
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 
-// Projeto `demo-` faz o firebase-tools tratar como projeto de demonstração:
-// nunca toca em credencial real nem em banco de verdade.
-const PROJECT_ID = 'demo-sabatina';
-
 let testEnv: RulesTestEnvironment | null = null;
 
 // As regras são passadas explicitamente ao emulador, e não lidas do
 // firebase.json — assim o teste roda contra o arquivo que está no disco agora,
 // independente de qual banco nomeado a configuração de produção aponta.
-export const setup = async () => {
+//
+// `suffix` isola cada arquivo de teste em seu PRÓPRIO projeto de demonstração
+// (`demo-sabatina-<suffix>`). O vitest roda os arquivos em paralelo por
+// padrão; sem isolamento, o clearFirestore() de um arquivo apaga o que outro
+// acabou de semear, no meio do teste dele — mesmo cada arquivo tendo seu
+// próprio módulo (o emulador é o recurso compartilhado, não o módulo JS).
+export const setup = async (suffix: string) => {
   testEnv = await initializeTestEnvironment({
-    projectId: PROJECT_ID,
+    projectId: `demo-sabatina-${suffix}`,
     firestore: {
       rules: readFileSync('firestore.rules', 'utf8'),
       host: '127.0.0.1',
@@ -69,3 +71,15 @@ export const semearAdmin = (uid: string, extra: Record<string, unknown> = {}) =>
 
 export const semearProfessor = (uid: string, extra: Record<string, unknown> = {}) =>
   semearAluno(uid, { isProfessor: true, ...extra });
+
+// Semeadura genérica para coleções fora de users/ (teacherAssignments,
+// studyLocations, inviteCodes, liveGames, pairs, etc.) — mesmo princípio:
+// escreve ignorando as regras, para montar o estado inicial sem depender
+// daquilo que está sendo testado.
+export const semearDoc = (path: string, data: Record<string, unknown>) =>
+  semear(async db => { await db.doc(path).set(data); });
+
+// Usado em várias regras para decidir quem é o super admin fixo do sistema
+// (components.tsx define o mesmo valor). Os contextos de teste usam
+// `${uid}@teste.com` por padrão, que nunca colide com este.
+export const SUPER_ADMIN_EMAIL = 'robsonbraz67@gmail.com';
