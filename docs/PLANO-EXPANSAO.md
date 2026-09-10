@@ -96,15 +96,26 @@ garante que ninguém suma do ranking no dia da virada.
 **Visível para o usuário:** nada.
 **Modelo:** Opus 5 para desenhar → `⏸️ PARE` → Sonnet 5 para escrever.
 
-**Estado (2026-09-10):** andaime pronto e no CI. Passos 1, 2, 4, 5 e 6
-concluídos; passo 3 parcial — 2 dos 30 invariantes escritos.
-Restam 28, listados em `tests/rules/INVARIANTES.md`. **Estamos no `⏸️ PARE`:
-a próxima etapa é a escrita dos testes, recomendada em Sonnet 5.**
+**Estado (2026-09-10): concluída.** Os 6 passos feitos; os 30 invariantes de
+`tests/rules/INVARIANTES.md` estão escritos, `npm run test:rules` roda 31/31
+verde no CI antes de qualquer deploy de regras.
 
-As duas camadas foram validadas contra uma cópia das regras com
-`ownLocationId()` removida — o verificador estático aponta a linha, e o
-emulador responde `Function not found error` e recusa a gravação. A rede pega
-o apagão de 2026-07-25.
+Validado nos dois sentidos, não só que os testes passam: contra uma cópia das
+regras com `ownLocationId()` removida (o apagão de 2026-07-25), o emulador
+responde `Function not found error` e o teste do invariante #1 falha; contra
+uma cópia com o invariante #10 quebrado de propósito (isProfessor liberado no
+`hasOnly` do dono), o teste correspondente falha com "Expected request to
+fail, but it succeeded." A rede pega apagão silencioso e escalada de
+privilégio, os dois riscos que mais importam a partir daqui.
+
+Lição registrada em `tests/rules/INVARIANTES.md` para a Fase 1: o vitest roda
+arquivos de teste em paralelo contra o mesmo projeto do emulador por padrão —
+sem isolar cada arquivo em seu próprio projeto (`setup(sufixo)`), o
+`clearFirestore()` de um arquivo apaga o que outro acabou de semear no meio do
+teste. Todo arquivo de teste novo precisa de um sufixo próprio.
+
+**Próximo passo: Fase 1 — regras alargadas, recomendada em Opus 5** (é o
+maior risco do repositório: erro em regra falha em silêncio).
 
 ### Por que primeiro
 
