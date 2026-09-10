@@ -185,7 +185,7 @@ regressão nas regras, não dado novo.
 `git revert` do commit de regras + rodar o workflow. Volta ao estado anterior em
 minutos, sem perda de dado.
 
-### Estado (2026-09-10): escrita e testada na branch; **não publicada**
+### Estado (2026-09-10): concluída e publicada
 
 Passos 1 a 5 concluídos. 54/54 testes verdes, incluindo os 31 anteriores sem
 nenhuma alteração — alargar enum e aceitar campo opcional não invalidou
@@ -203,9 +203,17 @@ Um buraco não previsto na lista original apareceu na revisão do diff e foi
 fechado — invariante #46: o progresso era obrigado a bater com o `turmaId` do
 perfil, mas nada obrigava o perfil a apontar para uma turma **real**.
 
-**Falta o passo 6 (publicar), que é decisão do usuário:** a publicação acontece
-quando este trabalho for para `main`, porque o workflow dispara no push com
-alteração em `firestore.rules`. Antes disso, nada mudou em produção.
+**Passo 6 feito.** O push para `main` (`c8fb679` + `c07e448`) disparou o
+workflow `Deploy Firestore Rules` (run `34508965401`, 10/09 17:33): 54/54 testes
+verdes no emulador e, em seguida, `released rules firestore.rules to
+cloud.firestore`. As regras alargadas estão **no ar em produção**.
+
+Nada no app grava campo novo ainda — `turmaId` continua sem ser escrito por
+ninguém —, então esta publicação é puro alargamento: o que passava antes
+continua passando (é o que os 31 testes da Fase 0, inalterados, provam).
+
+**Próximo passo: Fase 2 — turmas nos bastidores.** O plano recomenda Sonnet 5
+para a UI do painel, `⏸️ PARE`, e Opus 5 para o backfill em dados reais.
 
 ---
 
