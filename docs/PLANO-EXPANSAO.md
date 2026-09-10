@@ -296,7 +296,7 @@ Validados no sentido negativo, como manda a Fase 0: com `updatedAt` removido do
 antigos continuam passando** — que é exatamente o buraco que existia. Regra
 restaurada e conferida idêntica ao original depois do teste.
 
-### Estado do backfill (2026-09-10): escrito e testado; **não executado**
+### Estado do backfill (2026-09-10): **executado em produção**
 
 `netlify/functions/backfill-turmas.mts`, no molde do `backfill-ranking-data`.
 Três travas, cada uma vinda de um jeito conhecido de isto quebrar:
@@ -323,6 +323,31 @@ testes de regra novos provam o estado que o backfill deixa: depois do carimbo o
 aluno **salva normalmente sem mandar `turmaId`** (o save é merge, e a regra
 avalia o documento mesclado); e com o progresso carimbado e o perfil sem turma,
 o save é **recusado** — que é justamente o motivo da ordem. Suíte em 64/64.
+
+### O que foi carimbado (2026-09-10, pelo painel Admin)
+
+| Turma | Id | Perfis | Progresso |
+|---|---|---|---|
+| Adolescentes — ASA NORTE (`teen`) | `vhaDdRAvuY9uQhGIVYxV` | 28 | 157 |
+| 1 e 2 Coríntios — ASA NORTE (`adult`) | `TL0WckZsdCX42rEoaCFY` | 1 | 7 |
+
+Nenhuma escrita recusada pela regra. Os 28 são os 23 com ASA NORTE no perfil
+mais os 5 que estavam sem igreja — incluídos por decisão do usuário, já que
+ASA NORTE é a única igreja cadastrada, ou seja, "sem igreja" ali é cadastro
+incompleto, não outra congregação. A turma teen ficou com os 7 professores já
+marcados no sistema.
+
+O único perfil da trilha adulto é a conta do próprio admin, que alterna de
+trilha para testar. Os **6 documentos de progresso teen dessa conta ficaram de
+fora** do carimbo adulto — é a regra de "não misturar trilha" funcionando em
+dados reais.
+
+Rodar o ensaio de novo depois disso devolve `0 e 0` com o botão de aplicar
+desabilitado: a idempotência está confirmada em produção, não só nos testes.
+
+**Ninguém ficou sem turma.** E nada disso é visível ao aluno ainda: as flags
+`MULTI_*` continuam `false`, e o app publicado nem tem o painel — o que existe
+é o dado, pronto para a Fase 4 usar.
 
 ### Dois executores para a mesma decisão
 
