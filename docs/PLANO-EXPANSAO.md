@@ -219,6 +219,29 @@ workflow disparou e as regras subiram depois de o CI passar.
 **Visível para o aluno:** nada.
 **Modelo:** Sonnet 5 para a UI → `⏸️ PARE` → Opus 5 para o backfill.
 
+### Estado (2026-09-10): UI pronta na branch; **backfill ainda não começou**
+
+Passos 1 a 6 concluídos: `TurmasPanel` no Admin (gated por `jogador.isAdmin`,
+não pelas flags de aluno), CRUD completo (criar/editar/arquivar), contagem de
+alunos por turma derivada do `turmaId` já carregado em `users`, e o botão
+"Gerar convite" reaproveitando `generateInviteCode` com o `turmaId` novo da
+Fase 1.
+
+`tsc`/`vite build`/os 54 testes de regras passam. **Não testado clique-a-clique
+no navegador**: o app não sobe além da tela de boot neste sandbox por falta de
+credenciais Firebase reais (`.env` ausente) — confirmado que o mesmo erro
+(`auth/invalid-api-key`) ocorre no código antes desta mudança, então é
+limitação do ambiente, não bug introduzido aqui. Empurrado para a branch, que
+o Netlify builda automaticamente (branch deploy) — **verificação pendente do
+usuário**, logado como admin de verdade, antes de considerar a UI fechada.
+
+Achado ao revisar o próprio diff antes de commitar: o formulário de edição
+mostrava o dropdown de igreja mas `handleSalvar` não enviava `locationId` no
+update — mudar a igreja na tela seria descartado em silêncio. Corrigido.
+
+**Falta o backfill (passos 7-10), recomendado em Opus 5**: escreve em dados
+reais de produção, uma vez, sem desfazer fácil.
+
 ### Passos — UI (Sonnet 5)
 
 1. `firebase.ts`: `getTurmas`, `createTurma`, `updateTurma`, `arquivarTurma`.
