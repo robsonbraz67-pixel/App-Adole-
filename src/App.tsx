@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getTrackLessons, loadTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking } from './utils';
-import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress } from './firebase';
+import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress, getWeeklyRanking } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, ReportarProblemaModal } from './components';
 import { BUILD_ID, buscarBuildPublicado, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
 import { setErroContexto } from './errorLog';
@@ -168,10 +168,10 @@ export default function App() {
         const linhas = aggregateWeekRanking(rows);
         setWeekRows(linhas);
         ss('rankrows_' + licao.semana, linhas);
-      });
+      }, jogador?.turmaId);
     }).catch(e => console.error('assinatura da semana', e));
     return () => { cancelado = true; unsub?.(); };
-  }, [jogador?.id, licao?.semana]);
+  }, [jogador?.id, licao?.semana, jogador?.turmaId]);
 
   // Escalação das duplas do meu local, também ao vivo: dupla formada agora
   // entra no ranking na mesma hora (pairsPublic é escrito junto com pairs).
@@ -545,13 +545,41 @@ export default function App() {
     setSeasonLoading(false);
   };
 
+  // A semana inteira (todas as turmas), lida SOB DEMANDA — só quando alguém
+  // abre a aba Geral ou o ranking de duplas. A assinatura ao vivo é a da
+  // turma; esta é a foto do resto, e não fica pendurada custando leitura.
+  //
+  // As duplas precisam dela porque um par é formado por local+trilha, não por
+  // turma: com duas turmas de adolescentes na mesma igreja, um par pode
+  // atravessar turmas, e as linhas da turma deixariam metade do par de fora.
+  const [weekGeralRows, setWeekGeralRows] = useState<any[]>([]);
+  const [weekGeralSemana, setWeekGeralSemana] = useState('');
+  const [weekGeralLoading, setWeekGeralLoading] = useState(false);
+
+  const loadWeekGeral = async (semana: string, forcar = false) => {
+    if (!semana) return;
+    if (!forcar && weekGeralSemana === semana) return;
+    setWeekGeralLoading(true);
+    try {
+      const user = await waitForAuthInit();
+      if (user) {
+        setWeekGeralRows(await getWeeklyRanking(semana));
+        setWeekGeralSemana(semana);
+      }
+    } catch (e) {
+      console.error('carregar semana geral', e);
+    }
+    setWeekGeralLoading(false);
+  };
+
   const loadLatestRanking = (type: string = 'week', licaoArg?: any) => {
     setRankingType(type);
     const l = licaoArg || licao || getActiveLicao(jogador?.track);
     playSound('ranking');
     setTela('ranking');
-    // Semana e Duplas/Semana já estão assinadas; só a campanha precisa buscar.
-    if (type !== 'week' && type !== 'duplasSemana') loadSeason(l.trimestre);
+    // A semana da própria turma já está assinada; o resto busca.
+    if (type === 'weekGeral' || type === 'duplasSemana') loadWeekGeral(l.semana);
+    else if (type !== 'week') loadSeason(l.trimestre);
   };
 
   // Minha dupla entra na escalação mesmo antes do backfill espelhar duplas
@@ -574,7 +602,11 @@ export default function App() {
     const meuLocal = jogador?.locationId;
     const minhaTrilha = jogador?.track || 'teen';
     if (rankingType === 'week') return weekRows;
-    if (rankingType === 'duplasSemana') return buildPairWeekRanking(rosterComMinha, weekRows);
+    // Enquanto a foto da semana inteira não chega, as linhas da turma servem:
+    // lista parcial é melhor que lista vazia, e ela se completa sozinha.
+    const geral = weekGeralSemana === semana && weekGeralRows.length ? weekGeralRows : weekRows;
+    if (rankingType === 'weekGeral') return geral;
+    if (rankingType === 'duplasSemana') return buildPairWeekRanking(rosterComMinha, geral);
     const campanha = mergeLiveWeek(seasonRows, weekRows, semana);
     switch (rankingType) {
       case 'trilha': return aggregateSeasonRanking(campanha, { locationId: meuLocal, track: minhaTrilha });
@@ -583,7 +615,7 @@ export default function App() {
       case 'duplasCampanha': return buildPairSeasonRanking(rosterComMinha, campanha);
       default: return aggregateSeasonRanking(campanha);
     }
-  }, [rankingType, weekRows, seasonRows, rosterComMinha, licao?.semana, jogador?.locationId, jogador?.track]);
+  }, [rankingType, weekRows, weekGeralRows, weekGeralSemana, seasonRows, rosterComMinha, licao?.semana, jogador?.locationId, jogador?.track]);
 
   const handleChangeLicao = async (newLicao: any, trackOverride?: string) => {
     ss('licao_atual', newLicao);
@@ -735,7 +767,7 @@ export default function App() {
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} liberado={(prog.liberados || []).includes(diaAtual.id)} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} />}
-      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading} onRefresh={() => loadSeason(licao.trimestre, true)} />}
+      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading || weekGeralLoading} onRefresh={() => loadSeason(licao.trimestre, true)} />}
       {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onModoAoVivo={() => setTela('liveHost')} />}
       {tela === 'liveHost' && (
         <React.Suspense fallback={<CarregandoAoVivo />}>

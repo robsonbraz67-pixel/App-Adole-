@@ -1111,7 +1111,7 @@ const gerarImagemRanking = async (opts: {
 }): Promise<Blob | null> => {
   const { emDia, atrasados, regular, type, licao, metaDias, zoneOn } = opts;
   const isPair = type === 'duplasSemana' || type === 'duplasCampanha';
-  const isSemanal = type === 'week' || type === 'duplasSemana';
+  const isSemanal = type === 'week' || type === 'weekGeral' || type === 'duplasSemana';
   // Emoji do par lado a lado; se algum for foto, cai no avatar da 1ª pessoa
   const rowAvatar = (u: any) => !isPair ? u.avatar
     : (u.aAvatar?.startsWith('data:') || u.bAvatar?.startsWith('data:')) ? (u.aAvatar || u.bAvatar)
@@ -1378,6 +1378,14 @@ const DUPLA_SCOPES = [
   { k: 'duplasSemana', label: 'Semana' },
   { k: 'duplasCampanha', label: 'Campanha' },
 ];
+// A semana ganha escopo quando o aluno tem turma (Fase 4): a assinatura ao vivo
+// passou a ler só a turma dele — é ali que está a economia de leitura — e a
+// escola inteira vira uma foto sob demanda, em vez de assinatura permanente.
+// Sem turma, não há o que escolher: a assinatura já é a semana inteira.
+const SEMANA_SCOPES = [
+  { k: 'week', label: 'Minha turma' },
+  { k: 'weekGeral', label: 'Toda a escola' },
+];
 
 export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao, rankingLoading, onRefresh }: any) => {
   // Rankings por local (trilha/geral) vêm pré-calculados e são ordenados por
@@ -1391,7 +1399,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   // Semana e campanha ordenam por PONTOS: a campanha é a soma do XP de todas
   // as lições até hoje.
   const porDias = isPair;
-  const mainTab = type === 'week' ? 'week' : isPair ? 'duplas' : 'campanha';
+  const mainTab = (type === 'week' || type === 'weekGeral') ? 'week' : isPair ? 'duplas' : 'campanha';
 
   const { regular, staff } = useMemo(() => {
     const all = isPair
@@ -1406,8 +1414,9 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           const isMe = r.id === jogador.id;
           const nome = isMe ? jogador.nome : r.nome;
           const avatar = isMe ? jogador.avatar : r.avatar;
-          const dias = isMe && type === 'week' ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
-          const xp = isMe && type === 'week' ? (prog.xp || 0) : (r.xp || 0);
+          const ehSemanaAtual = type === 'week' || type === 'weekGeral';
+          const dias = isMe && ehSemanaAtual ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
+          const xp = isMe && ehSemanaAtual ? (prog.xp || 0) : (r.xp || 0);
           const isAdmin = r.isAdmin || (isMe && !!jogador.isAdmin);
           const isProfessor = !isAdmin && (r.isProfessor || (isMe && !!jogador.isProfessor));
           return { ...r, nome, avatar, dias, xp, isAdmin, isProfessor, eu: isMe };
@@ -1537,6 +1546,20 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
             >{t.label}</div>
           ))}
         </div>
+        {mainTab === 'week' && !!jogador?.turmaId && (
+          <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'center',flexWrap:'wrap'}}>
+            {SEMANA_SCOPES.map(s => (
+              <div
+                key={s.k}
+                onClick={() => onChangeType(s.k)}
+                style={{padding:'6px 14px',borderRadius:20,fontSize:12,fontWeight:800,cursor:'pointer',fontFamily:'Poppins,sans-serif',border:`1.5px solid ${type===s.k?'rgba(247,198,0,.5)':'var(--b2)'}`,background:type===s.k?'rgba(247,198,0,.12)':'transparent',color:type===s.k?'var(--gold)':'var(--mut)'}}
+              >{s.label}</div>
+            ))}
+            {type === 'weekGeral' && rankingLoading && (
+              <div style={{padding:'6px 10px',fontSize:12,color:'var(--mut)'}}>⏳</div>
+            )}
+          </div>
+        )}
         {mainTab !== 'week' && (mainTab === 'duplas' || CAMPANHA_SCOPES.length > 1) && (
           <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'center',flexWrap:'wrap'}}>
             {(mainTab === 'campanha' ? CAMPANHA_SCOPES : DUPLA_SCOPES).map(s => (
@@ -3693,7 +3716,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
   // Resgate de código de convite (autopreenche local + trilha)
   const [inviteInput, setInviteInput] = useState('');
   const [redeeming, setRedeeming] = useState(false);
-  const [redeemed, setRedeemed] = useState<{ code: string; locationId: string; track: Track } | null>(null);
+  const [redeemed, setRedeemed] = useState<{ code: string; locationId: string; track: Track; turmaId?: string } | null>(null);
 
   const handleRedeem = async () => {
     const code = normalizeInviteCode(inviteInput);
@@ -3704,7 +3727,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
       if (!inv || !inv.active) {
         alert('Código inválido ou desativado. Confira com quem te enviou.');
       } else {
-        setRedeemed({ code, locationId: inv.locationId, track: inv.track as Track });
+        setRedeemed({ code, locationId: inv.locationId, track: inv.track as Track, turmaId: inv.turmaId });
         setLocationId(inv.locationId);
         setTrack(inv.track as Track);
         setShowNewLocation(false);
@@ -4106,6 +4129,10 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
             let finalLocationId = jogador.locationId || (!MULTI_LOCATION_ENABLED ? (locations[0]?.id || '') : '');
             let finalTrack: Track = jogador.track || track;
             let finalInviteCode: string | undefined = jogador.inviteCode;
+            // A turma vem do convite. Sem isto, quem se cadastra amanhã entra
+            // SEM turma mesmo usando um código que aponta para uma — e some do
+            // ranking por turma até alguém carimbar na mão.
+            let finalTurmaId: string | undefined = jogador.turmaId;
             if (!locationLocked) {
               if (canManageLocations) {
                 // Admin/professor: setup manual
@@ -4131,11 +4158,13 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                 finalLocationId = redeemed.locationId;
                 finalTrack = redeemed.track;
                 finalInviteCode = redeemed.code;
+                finalTurmaId = redeemed.turmaId || finalTurmaId;
               } else if (redeemed) {
                 // Aluno usou o código (atalho opcional)
                 finalLocationId = redeemed.locationId;
                 finalTrack = redeemed.track;
                 finalInviteCode = redeemed.code;
+                finalTurmaId = redeemed.turmaId || finalTurmaId;
               } else {
                 // Aluno escolheu da lista — ou, com a ferramenta desligada,
                 // entra direto no único local cadastrado
@@ -4147,6 +4176,9 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
             }
             const payload: any = { ...jogador, nome, avatar, telefone: telefoneE164, whatsappOptIn, track: finalTrack, locationId: finalLocationId };
             if (finalInviteCode) payload.inviteCode = finalInviteCode;
+            // Só quando existe: a regra exige turmaId não-vazio quando a chave
+            // está presente, e string vazia derrubaria o cadastro inteiro.
+            if (finalTurmaId) payload.turmaId = finalTurmaId;
             onSave(payload);
           }}
           style={{fontSize: 18, marginTop: 10}}

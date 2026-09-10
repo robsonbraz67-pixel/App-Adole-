@@ -421,7 +421,7 @@ export const deleteInviteCode = async (code: string) => {
 };
 
 // Resgate: leitura direta pelo código (== doc id). Retorna null se não existir.
-export const getInviteCodeByCode = async (code: string): Promise<{ code: string; locationId: string; track: string; active: boolean } | null> => {
+export const getInviteCodeByCode = async (code: string): Promise<{ code: string; locationId: string; turmaId?: string; track: string; active: boolean } | null> => {
   const ref = doc(db, 'inviteCodes', normalizeInviteCode(code));
   const snap = await getDoc(ref);
   return snap.exists() ? snap.data() as any : null;
@@ -952,17 +952,50 @@ const rowsFromSnap = (snap: any, adminIds: Set<string>): ProgressRow[] => {
 
 // Assina o progresso de uma semana. É a base ao vivo do ranking da semana e do
 // de duplas — ~1 doc por aluno, o caminho quente e mais barato do app.
-export const listenToWeekProgress = (week: string, cb: (rows: ProgressRow[]) => void) => {
+// Assinatura da semana. Com `turmaId`, o cliente passa a ler só a própria
+// turma — é a mudança de custo da Fase 4, e ela cresce ao quadrado sem isso:
+// cada aluno assinando o progresso de todos os alunos de todas as igrejas dá
+// ~4 milhões de leituras/semana num cenário de 20 igrejas. Com o recorte, ~60
+// mil (ver docs/PLANO-EXPANSAO.md).
+//
+// Sem `turmaId` (aluno recém-cadastrado, ainda sem turma) o comportamento é o
+// de sempre: a semana inteira. Ausência de turma nunca pode virar lista vazia.
+//
+// Exige o índice composto (turmaId + week) — declarado em
+// firestore.indexes.json. Consulta sem índice FALHA em produção; o `err` do
+// onSnapshot é o que denuncia isso no console em vez de sumir em silêncio.
+export const listenToWeekProgress = (week: string, cb: (rows: ProgressRow[]) => void, turmaId?: string) => {
   let stop = false;
   let unsub: (() => void) | null = null;
+
   getAdminIds().then(adminIds => {
     if (stop) return;
-    unsub = onSnapshot(
-      query(collection(db, 'progress'), where('week', '==', week)),
-      snap => cb(rowsFromSnap(snap, adminIds)),
-      err => console.error('listenToWeekProgress', err),
-    );
+    const base = collection(db, 'progress');
+
+    const assinar = (comTurma: boolean) => {
+      const consulta = comTurma
+        ? query(base, where('turmaId', '==', turmaId), where('week', '==', week))
+        : query(base, where('week', '==', week));
+      unsub = onSnapshot(
+        consulta,
+        snap => cb(rowsFromSnap(snap, adminIds)),
+        err => {
+          console.error('listenToWeekProgress', err);
+          // Índice ainda construindo, ou apagado por engano: a consulta
+          // recortada falha INTEIRA, e o ranking sumiria da tela sem explicar
+          // por quê. Cair para a consulta antiga custa mais leitura e mostra a
+          // lista certa — degradar é melhor do que apagar.
+          if (comTurma && !stop) {
+            console.warn('listenToWeekProgress: caindo para a semana inteira (índice indisponível)');
+            assinar(false);
+          }
+        },
+      );
+    };
+
+    assinar(!!turmaId);
   });
+
   return () => { stop = true; unsub?.(); };
 };
 
