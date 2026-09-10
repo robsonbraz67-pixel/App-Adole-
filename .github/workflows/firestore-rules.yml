@@ -7,17 +7,59 @@ on:
       - 'firestore.rules'
       - 'firebase.json'
       - '.firebaserc'
+      - 'tests/rules/**'
+      - 'scripts/check-rules-functions.mjs'
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - 'tests/rules/**'
+      - 'scripts/check-rules-functions.mjs'
   workflow_dispatch: {}
 
 jobs:
-  deploy-rules:
+  # Regra quebrada falha em SILÊNCIO em produção (ver o apagão de 2026-07-25
+  # documentado em firestore.rules). Este job é o que impede isso de ser
+  # publicado: o deploy abaixo só roda se ele passar.
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
 
+      # O emulador do Firestore roda em Java
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - name: Checar função indefinida nas regras
+        run: npm run check:rules
+
+      - name: Testar as regras no emulador
+        run: npm run test:rules
+
+  deploy-rules:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Usa o firebase-tools fixado no package.json, não @latest: o deploy de
+      # regras não pode mudar de comportamento sozinho quando sai versão nova.
       - name: Deploy Firestore rules
-        run: npx firebase-tools@latest deploy --only firestore:rules --non-interactive --token "${{ secrets.FIREBASE_TOKEN }}"
+        run: npx firebase deploy --only firestore:rules --non-interactive --token "${{ secrets.FIREBASE_TOKEN }}"
