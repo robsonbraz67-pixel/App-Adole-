@@ -139,6 +139,59 @@ export const createStudyLocation = async (name: string, createdBy: string): Prom
   return ref.id;
 };
 
+// ===== Turmas (Fase 1/2 da expansão multi-igreja) =====
+// Cada turma pertence a uma igreja (locationId) e define a trilha; o aluno
+// herda as duas ao se matricular nela (turmaId em users/progress). Só admin
+// escreve por enquanto — o professor gerenciar a própria turma é a Fase 3.
+export type Turma = {
+  id: string;
+  locationId: string;
+  track: string;
+  nome: string;
+  professores: string[];
+  active: boolean;
+  createdBy: string;
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+// Lista completa: mesma lógica de getStudyLocations (poucas dezenas, ok
+// carregar tudo de uma vez para o painel Admin ver e editar qualquer turma).
+export const getTurmas = async (): Promise<Turma[]> => {
+  const snap = await getDocs(collection(db, 'turmas'));
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+};
+
+export const createTurma = async (
+  data: { locationId: string; track: string; nome: string; professores?: string[] },
+  createdBy: string
+): Promise<string> => {
+  const ref = doc(collection(db, 'turmas'));
+  await setDoc(ref, {
+    locationId: data.locationId,
+    track: data.track,
+    nome: data.nome.trim(),
+    professores: data.professores || [],
+    active: true,
+    createdBy,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+};
+
+export const updateTurma = async (turmaId: string, patch: { nome?: string; locationId?: string; track?: string; professores?: string[] }) => {
+  await setDoc(doc(db, 'turmas', turmaId), { ...patch, updatedAt: serverTimestamp() }, { merge: true });
+};
+
+// Arquiva/reativa. Turma nunca se exclui (a regra do Firestore recusa
+// delete): o progresso carrega turmaId, e apagar a turma deixaria esse
+// histórico órfão — o ranking da campanha ficaria com buracos.
+export const arquivarTurma = async (turmaId: string, active: boolean) => {
+  await setDoc(doc(db, 'turmas', turmaId), { active, updatedAt: serverTimestamp() }, { merge: true });
+};
+
 // Só admin altera o local de um usuário depois do cadastro (correção de erro, mudança de igreja etc.)
 export const adminSetUserLocation = async (userId: string, locationId: string) => {
   const userRef = doc(db, 'users', userId);
@@ -186,15 +239,21 @@ const randomCodeSuffix = (len = 5) => {
 export const normalizeInviteCode = (code: string) => (code || '').trim().toUpperCase().replace(/\s+/g, '');
 
 // Cria um código novo para (locationId, track). createdBy = quem gerou.
+// turmaId é opcional (Fase 1): quando presente, quem resgatar o código já
+// entra carimbado na turma — mas o resgate em si só passa a fazer isso na
+// Fase 4; até lá o campo fica gravado, inerte.
 // A regra do Firestore garante que professor só cria para o local atribuído a ele.
-export const generateInviteCode = async (locationId: string, track: string, createdBy: string): Promise<string> => {
+export const generateInviteCode = async (locationId: string, track: string, createdBy: string, turmaId?: string): Promise<string> => {
   // tenta algumas vezes para o caso raríssimo de colisão de sufixo
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = `${TRACK_PREFIX[track] || 'TRK'}-${randomCodeSuffix()}`;
     const ref = doc(db, 'inviteCodes', code);
     const existing = await getDoc(ref);
     if (existing.exists()) continue;
-    await setDoc(ref, { code, locationId, track, active: true, createdBy, createdAt: serverTimestamp() });
+    await setDoc(ref, {
+      code, locationId, track, active: true, createdBy, createdAt: serverTimestamp(),
+      ...(turmaId ? { turmaId } : {}),
+    });
     return code;
   }
   throw new Error('Não foi possível gerar um código único. Tente novamente.');

@@ -79,7 +79,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getTeacherAssignment, normalizeInviteCode, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -2150,6 +2150,202 @@ export const Dupla = ({ jogador, licao, prog, weekRows, activePair, pendingInvit
 };
 
 /* ===== CÓDIGOS DE CONVITE (Etapa 3) ===== */
+/* ===== TURMAS (Admin) ===== */
+// Cada turma pertence a uma igreja e uma trilha; o aluno herda as duas ao se
+// matricular. Só admin gerencia por enquanto — o professor cuidar da própria
+// turma é a Fase 3. `users` já vem carregado pelo Admin (mesma consulta que
+// alimenta a lista de usuários), então contar aluno por turma e nomear
+// professor não custa leitura nova nenhuma.
+const TurmasPanel = ({ jogador, locations, users }: { jogador: any; locations: { id: string; name: string }[]; users: any[] }) => {
+  const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [nome, setNome] = useState('');
+  const [selLocation, setSelLocation] = useState('');
+  const [selTrack, setSelTrack] = useState<Track>('teen');
+  const [selProfessores, setSelProfessores] = useState<string[]>([]);
+  const [salvando, setSalvando] = useState(false);
+
+  const professoresDisponiveis = users.filter(u => u.isProfessor);
+  const locName = (id: string) => locations.find(l => l.id === id)?.name || id;
+  const nomeDoUsuario = (uid: string) => users.find(u => u.id === uid)?.nome || uid;
+
+  // Contagem de alunos por turma: derivada do mesmo `users` do painel, sem
+  // consulta extra. Só conta quem tem turmaId — ninguém tem ainda até o
+  // backfill da Fase 2 carimbar os usuários existentes.
+  const alunosPorTurma = useMemo(() => {
+    const map: Record<string, number> = {};
+    users.forEach(u => { if (u.turmaId) map[u.turmaId] = (map[u.turmaId] || 0) + 1; });
+    return map;
+  }, [users]);
+
+  const carregar = () => {
+    setLoading(true);
+    getTurmas().then(setTurmas).catch(() => {}).finally(() => setLoading(false));
+  };
+  useEffect(carregar, []);
+
+  const resetForm = () => {
+    setNome(''); setSelLocation(''); setSelTrack('teen'); setSelProfessores([]);
+    setEditingId(null); setShowForm(false);
+  };
+
+  const handleEditar = (t: Turma) => {
+    setEditingId(t.id);
+    setNome(t.nome);
+    setSelLocation(t.locationId);
+    setSelTrack((t.track as Track) || 'teen');
+    setSelProfessores(t.professores || []);
+    setShowForm(true);
+  };
+
+  const handleSalvar = async () => {
+    if (!nome.trim()) return alert('Digite um nome para a turma.');
+    if (!selLocation) return alert('Selecione a igreja.');
+    setSalvando(true);
+    try {
+      if (editingId) {
+        await updateTurma(editingId, { nome, locationId: selLocation, track: selTrack, professores: selProfessores });
+        setTurmas(prev => prev.map(t => t.id === editingId ? { ...t, nome: nome.trim(), locationId: selLocation, track: selTrack, professores: selProfessores } : t));
+      } else {
+        const id = await createTurma({ locationId: selLocation, track: selTrack, nome, professores: selProfessores }, jogador.id);
+        setTurmas(prev => [...prev, {
+          id, locationId: selLocation, track: selTrack, nome: nome.trim(),
+          professores: selProfessores, active: true, createdBy: jogador.id,
+        }]);
+      }
+      resetForm();
+    } catch (e) {
+      alert('Erro ao salvar a turma.');
+    }
+    setSalvando(false);
+  };
+
+  const handleArquivar = async (t: Turma) => {
+    const acao = t.active ? 'arquivar' : 'reativar';
+    if (!window.confirm(`Deseja ${acao} a turma "${t.nome}"?`)) return;
+    try {
+      await arquivarTurma(t.id, !t.active);
+      setTurmas(prev => prev.map(x => x.id === t.id ? { ...x, active: !t.active } : x));
+    } catch (e) { alert('Erro ao atualizar a turma.'); }
+  };
+
+  // O código gerado já carrega o turmaId (Fase 1): fica gravado, inerte, até
+  // o resgate da Fase 4 passar a usá-lo para matricular o aluno na turma certa.
+  const handleGerarConvite = async (t: Turma) => {
+    try {
+      const code = await generateInviteCode(t.locationId, t.track, jogador.id, t.id);
+      await navigator.clipboard.writeText(code).catch(() => {});
+      alert(`Código gerado para "${t.nome}": ${code}\n(copiado para a área de transferência)`);
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao gerar convite.');
+    }
+  };
+
+  const toggleProfessor = (uid: string) => {
+    setSelProfessores(prev => prev.includes(uid) ? prev.filter(p => p !== uid) : [...prev, uid]);
+  };
+
+  return (
+    <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:24}}>
+      {!showForm && (
+        <button onClick={() => setShowForm(true)} className="btn btn-gold" style={{fontSize:14, padding:'10px', marginBottom:14}}>
+          ➕ Nova turma
+        </button>
+      )}
+
+      {showForm && (
+        <div style={{background:'var(--row-bg)', padding:12, borderRadius:10, marginBottom:14}}>
+          <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, marginBottom:4}}>Nome da turma</div>
+          <input
+            value={nome} onChange={e => setNome(e.target.value)} placeholder="Ex: Adolescentes — Profa. Ana"
+            style={{width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13, marginBottom:10, boxSizing:'border-box'}}
+          />
+
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10}}>
+            <div>
+              <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, marginBottom:4}}>Igreja</div>
+              <select value={selLocation} onChange={e => setSelLocation(e.target.value)} style={{width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13}}>
+                <option value="">Selecione...</option>
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, marginBottom:4}}>Trilha</div>
+              <select value={selTrack} onChange={e => setSelTrack(e.target.value as Track)} style={{width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13}}>
+                <option value="teen">Adolescente</option>
+                <option value="youngAdult">Jovem</option>
+                <option value="adult">1 e 2 Coríntios</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{fontSize:11, color:'var(--mut)', fontWeight:800, marginBottom:4}}>Professores</div>
+          {professoresDisponiveis.length === 0 ? (
+            <div style={{fontSize:12, color:'var(--mut)', marginBottom:10}}>Nenhum professor cadastrado ainda (ver "Gerenciar Usuários" acima).</div>
+          ) : (
+            <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:10}}>
+              {professoresDisponiveis.map(p => (
+                <button
+                  key={p.id} type="button" onClick={() => toggleProfessor(p.id)}
+                  style={{
+                    background: selProfessores.includes(p.id) ? 'rgba(124,79,224,.25)' : 'var(--input-bg)',
+                    color: selProfessores.includes(p.id) ? 'var(--admin)' : 'var(--txt2)',
+                    border: '1px solid var(--input-border)', borderRadius:20, padding:'5px 12px', fontSize:12, fontWeight:700, cursor:'pointer',
+                  }}
+                >
+                  {selProfessores.includes(p.id) ? '✓ ' : ''}{p.nome}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div style={{display:'flex', gap:8}}>
+            <button onClick={handleSalvar} disabled={salvando} className={`btn btn-gold ${salvando ? 'btn-dis' : ''}`} style={{flex:1, fontSize:13, padding:'9px'}}>
+              {salvando ? 'Salvando...' : editingId ? 'Salvar alterações' : 'Criar turma'}
+            </button>
+            <button onClick={resetForm} className="btn btn-ghost" style={{flex:'0 0 auto', fontSize:13, padding:'9px 14px'}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : turmas.length === 0 ? (
+        <div style={{color:'var(--mut)', fontSize:13, textAlign:'center', padding:'8px 0'}}>Nenhuma turma cadastrada ainda.</div>
+      ) : (
+        <div style={{display:'flex', flexDirection:'column', gap:8, maxHeight:340, overflowY:'auto'}}>
+          {turmas.map(t => (
+            <div key={t.id} style={{padding:'10px', background:'var(--row-bg)', borderRadius:8, opacity: t.active ? 1 : 0.55}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8}}>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>
+                    {t.nome} {!t.active && <span style={{fontSize:10, color:'var(--danger)', fontWeight:800}}>ARQUIVADA</span>}
+                  </div>
+                  <div style={{fontSize:11, color:'var(--mut)'}}>
+                    {locName(t.locationId)} · {TRACK_LABELS[(t.track as Track)] || t.track} · {alunosPorTurma[t.id] || 0} aluno(s)
+                  </div>
+                  {(t.professores || []).length > 0 && (
+                    <div style={{fontSize:11, color:'var(--admin)', marginTop:2}}>
+                      🎓 {(t.professores || []).map(nomeDoUsuario).join(', ')}
+                    </div>
+                  )}
+                </div>
+                <div style={{display:'flex', gap:6, flexShrink:0, flexWrap:'wrap', justifyContent:'flex-end'}}>
+                  <button onClick={() => handleGerarConvite(t)} title="Gerar convite de aluno para esta turma" style={{background:'rgba(30,158,134,.2)', color:'var(--teal)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>🎟️ Convite</button>
+                  <button onClick={() => handleEditar(t)} style={{background:'rgba(255,255,255,.08)', color:'var(--txt2)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>✏️ Editar</button>
+                  <button onClick={() => handleArquivar(t)} style={{background: t.active ? 'rgba(247,198,0,.15)' : 'rgba(79,184,92,.2)', color: t.active ? '#F7C600' : 'var(--success)', border:'none', borderRadius:6, padding:'6px 10px', fontSize:11, fontWeight:800, cursor:'pointer'}}>
+                    {t.active ? 'Arquivar' : 'Reativar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { id: string; name: string }[] }) => {
   const isAdmin = !!jogador?.isAdmin;
   const [teacherLocationId, setTeacherLocationId] = useState<string | null>(null);
@@ -2721,6 +2917,16 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
               </div>
            )}
         </div>
+
+        {!!jogador?.isAdmin && (
+          <>
+            <div className="sec-title" style={{marginBottom:8}}>Turmas 🎓</div>
+            <div style={{fontSize:12, color:'var(--mut)', marginBottom:8, lineHeight:1.5}}>
+              Cada turma pertence a uma igreja e uma trilha. Progresso e ranking de quem se matricula numa turma passam a ser calculados por ela.
+            </div>
+            <TurmasPanel jogador={jogador} locations={locations} users={users} />
+          </>
+        )}
 
         {(MULTI_LOCATION_ENABLED || MULTI_TRACK_ENABLED) && (
           <>
