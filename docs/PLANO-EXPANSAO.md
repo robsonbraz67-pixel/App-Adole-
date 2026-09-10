@@ -185,6 +185,28 @@ regressão nas regras, não dado novo.
 `git revert` do commit de regras + rodar o workflow. Volta ao estado anterior em
 minutos, sem perda de dado.
 
+### Estado (2026-09-10): escrita e testada na branch; **não publicada**
+
+Passos 1 a 5 concluídos. 54/54 testes verdes, incluindo os 31 anteriores sem
+nenhuma alteração — alargar enum e aceitar campo opcional não invalidou
+documento nenhum.
+
+O que entrou: `juvenil` nos 9 enums de trilha, `turmaId` opcional em `users`,
+`progress` e `inviteCodes`, e as coleções `turmas` e `teacherInvites`, ambas
+nascendo fechadas (só admin escreve; nem professor lista convite de professor).
+
+Duas decisões ficaram travadas na regra, não só na documentação: turma se
+arquiva e nunca se exclui (`delete: if false`), e convite de professor exige
+`exists(turmas/{id})`.
+
+Um buraco não previsto na lista original apareceu na revisão do diff e foi
+fechado — invariante #46: o progresso era obrigado a bater com o `turmaId` do
+perfil, mas nada obrigava o perfil a apontar para uma turma **real**.
+
+**Falta o passo 6 (publicar), que é decisão do usuário:** a publicação acontece
+quando este trabalho for para `main`, porque o workflow dispara no push com
+alteração em `firestore.rules`. Antes disso, nada mudou em produção.
+
 ---
 
 ## Fase 2 — Turmas nos bastidores
