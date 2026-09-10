@@ -2216,6 +2216,22 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
 
   const semTurma = useMemo(() => users.filter(u => !u.turmaId && !u.isGuest).length, [users]);
 
+  // Quantas turmas precisam existir: agrupa quem ainda está sem turma por
+  // igreja + trilha. Sai da lista que o Admin já carregou — custo zero — e é a
+  // pergunta que vem antes de criar a primeira turma (o `?mapa=1` da função
+  // Netlify responde a mesma coisa, para quem prefere curl).
+  const distribuicao = useMemo(() => {
+    const m: Record<string, { locationId: string; track: string; n: number }> = {};
+    users.forEach(u => {
+      if (u.turmaId || u.isGuest) return;
+      const track = u.track || 'teen';
+      const chave = `${u.locationId || ''}|${track}`;
+      m[chave] ??= { locationId: u.locationId || '', track, n: 0 };
+      m[chave].n++;
+    });
+    return Object.values(m).sort((a, b) => b.n - a.n);
+  }, [users]);
+
   const carregar = () => {
     setCarregando(true);
     getTurmas()
@@ -2453,6 +2469,20 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
               {salvando ? 'Criando...' : 'Criar turma'}
             </button>
             <button onClick={() => { setFormAberto(false); limparForm(); }} style={{...btnMini('var(--mut)', 'var(--row-bg-strong)'), padding:'9px 14px', fontSize:13}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {distribuicao.length > 0 && (
+        <div style={{background:'var(--row-bg)', padding:'8px 10px', borderRadius:8, marginBottom:12}}>
+          <div style={{fontSize:11, fontWeight:800, color:'var(--mut)', marginBottom:4}}>Quem ainda está sem turma, por igreja e trilha</div>
+          {distribuicao.map(g => (
+            <div key={`${g.locationId}|${g.track}`} style={{fontSize:12, color:'var(--txt2)'}}>
+              🏛️ {g.locationId ? locName(g.locationId) : <em style={{color:'var(--mut)'}}>sem igreja</em>} · {TRACK_LABELS[g.track as Track] || g.track} — <strong>{g.n}</strong>
+            </div>
+          ))}
+          <div style={{fontSize:11, color:'var(--mut)', marginTop:5, lineHeight:1.5}}>
+            Uma turma por linha desta lista cobre todo mundo. Depois de criar, use o ensaio dentro da turma.
           </div>
         </div>
       )}
