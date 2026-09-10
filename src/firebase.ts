@@ -544,6 +544,38 @@ export const resgatarConviteProfessor = async (codigo: string, jogador: any) => 
   return { turmaId: convite.turmaId, turmaNome: turma.nome as string };
 };
 
+// Matrícula por código de turma, para quem JÁ tem conta (Fase 4). No cadastro
+// isso acontece sozinho (o payload leva o turmaId do convite); aqui é o caminho
+// de quem entrou antes de a turma existir.
+//
+// Só define turma para quem ainda não tem: a regra permite ao dono ESCOLHER uma
+// turma que exista, mas TROCAR de turma é ato de admin. É o que impede um aluno
+// de migrar sozinho para a turma dos amigos no meio do trimestre.
+export const matricularPorCodigoDaTurma = async (codigo: string, jogador: any) => {
+  const code = normalizeInviteCode(codigo);
+  const convite = await getInviteCodeByCode(code);
+  if (!convite) throw new Error('Código não encontrado. Confira as letras.');
+  if (!convite.active) throw new Error('Este código foi revogado. Peça um novo.');
+  if (!convite.turmaId) throw new Error('Este código é antigo e não aponta para nenhuma turma. Peça um novo ao professor.');
+  if (jogador.turmaId === convite.turmaId) throw new Error('Você já está nesta turma.');
+  if (jogador.turmaId) throw new Error('Você já está em uma turma. Só um administrador pode te mudar de turma.');
+
+  const turmaSnap = await getDoc(doc(db, 'turmas', convite.turmaId));
+  if (!turmaSnap.exists()) throw new Error('A turma deste convite não existe mais.');
+  const turma = turmaSnap.data() as any;
+  if (turma.active === false) throw new Error('Esta turma está arquivada.');
+
+  // locationId e track só vão quando o perfil ainda não os tem: a regra
+  // congela os dois depois de definidos (ownerLocationTrackUnchanged), e
+  // reenviá-los iguais é inofensivo, mas diferentes derrubaria a gravação.
+  const patch: any = { turmaId: convite.turmaId, inviteCode: code };
+  if (!jogador.locationId) patch.locationId = convite.locationId;
+  if (!jogador.track) patch.track = convite.track;
+
+  await updateDoc(doc(db, 'users', jogador.id), patch);
+  return { turmaId: convite.turmaId, turmaNome: turma.nome as string };
+};
+
 export const getAdminIds = async (): Promise<Set<string>> => {
   try {
     const q = query(collection(db, 'users'), where('isAdmin', '==', true));

@@ -90,7 +90,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -3680,21 +3680,25 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
   const [codigoProf, setCodigoProf] = useState('');
   const [resgatando, setResgatando] = useState(false);
 
-  const handleResgatarProfessor = async () => {
+  // Um campo, dois caminhos: PROF- torna a pessoa professora da turma; o resto
+  // é código de aluno, que matricula. Quem recebe um código no WhatsApp não
+  // sabe (nem precisa saber) de qual tipo ele é.
+  const handleResgatar = async () => {
     const code = codigoProf.trim();
     if (!code) return;
-    if (!ehCodigoDeProfessor(code)) {
-      return alert('Esse não parece um convite de professor — eles começam com PROF-. Código de aluno se usa no cadastro.');
-    }
     setResgatando(true);
     try {
-      const { turmaNome } = await resgatarConviteProfessor(code, jogador);
-      // O perfil mudou no servidor (isProfessor e turmaId). Recarregar é o
-      // jeito honesto de o app inteiro enxergar o papel novo de uma vez.
-      alert(`Pronto! Você agora é professor(a) de "${turmaNome}".\n\nO app vai recarregar para aplicar.`);
+      const { turmaNome } = ehCodigoDeProfessor(code)
+        ? await resgatarConviteProfessor(code, jogador)
+        : await matricularPorCodigoDaTurma(code, jogador);
+      // O perfil mudou no servidor. Recarregar é o jeito honesto de o app
+      // inteiro enxergar o papel (ou a turma) novo de uma vez.
+      alert(ehCodigoDeProfessor(code)
+        ? `Pronto! Você agora é professor(a) de "${turmaNome}".\n\nO app vai recarregar para aplicar.`
+        : `Pronto! Você entrou na turma "${turmaNome}".\n\nO app vai recarregar para aplicar.`);
       window.location.reload();
     } catch (e: any) {
-      alert(e?.message || 'Não foi possível resgatar o convite.');
+      alert(e?.message || 'Não foi possível usar este código.');
       setResgatando(false);
     }
   };
@@ -4196,24 +4200,24 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
             {!mostrarConviteProf ? (
               <button type="button" onClick={() => setMostrarConviteProf(true)}
                 style={{background:'none', border:'none', color:'var(--mut)', fontSize:12, cursor:'pointer', padding:0, textDecoration:'underline'}}>
-                🎓 Tenho um convite de professor
+                🎟️ Tenho um código de convite
               </button>
             ) : (
               <div style={{background:'var(--panel-bg)', padding:'14px 16px', borderRadius:14, border:'1px solid var(--panel-border)'}}>
-                <div style={{fontWeight:800, color:'var(--txt2)', marginBottom:6}}>🎓 Convite de professor</div>
+                <div style={{fontWeight:800, color:'var(--txt2)', marginBottom:6}}>🎟️ Código de convite</div>
                 <div style={{fontSize:12, color:'var(--mut)', marginBottom:10, lineHeight:1.5}}>
-                  Cole o código que a liderança te mandou. Ele vale uma vez só e te liga à turma dele.
+                  Cole o código que te mandaram. Ele te liga à turma certa — e, se for um convite de professor (começa com <strong>PROF-</strong>), também te torna professor(a) dela.
                 </div>
                 <input
                   value={codigoProf}
                   onChange={e => setCodigoProf(e.target.value.toUpperCase())}
-                  placeholder="PROF-XXXXX"
+                  placeholder="Ex.: TEEN-K7M2P"
                   style={{width:'100%', padding:'10px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, fontFamily:'monospace', letterSpacing:1, marginBottom:10}}
                 />
                 <div style={{display:'flex', gap:8}}>
-                  <button onClick={handleResgatarProfessor} disabled={resgatando || !codigoProf.trim()}
+                  <button onClick={handleResgatar} disabled={resgatando || !codigoProf.trim()}
                     className={`btn btn-gold ${resgatando || !codigoProf.trim() ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'9px'}}>
-                    {resgatando ? 'Resgatando...' : 'Resgatar'}
+                    {resgatando ? 'Aplicando...' : 'Usar código'}
                   </button>
                   <button onClick={() => { setMostrarConviteProf(false); setCodigoProf(''); }}
                     style={{background:'var(--row-bg)', color:'var(--mut)', border:'none', borderRadius:8, padding:'9px 14px', fontSize:13, fontWeight:800, cursor:'pointer'}}>

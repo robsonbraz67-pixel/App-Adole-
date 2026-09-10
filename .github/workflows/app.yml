@@ -1,0 +1,51 @@
+name: App
+
+# O workflow de regras só dispara em firestore.rules e tests/rules — mudança em
+# src/ passava sem nenhuma checagem no CI. Este cobre o outro lado: tipos,
+# testes que não precisam de emulador, e a integridade do conteúdo das lições.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/check-licoes.mjs'
+      - 'tests/backfill/**'
+      - 'netlify/functions/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/check-licoes.mjs'
+      - 'tests/backfill/**'
+      - 'netlify/functions/**'
+  workflow_dispatch: {}
+
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Tipos
+        run: npm run lint
+
+      - name: Testes unitários
+        run: npm run test:unit
+
+      # Gabarito apontando para fora das opções faz o aluno perder ponto
+      # respondendo certo — e ninguém descobre até alguém reclamar.
+      - name: Integridade das lições
+        run: npm run check:licoes
+
+      - name: Build
+        run: npm run build
