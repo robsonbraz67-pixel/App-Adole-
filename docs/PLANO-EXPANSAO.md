@@ -96,6 +96,16 @@ garante que ninguém suma do ranking no dia da virada.
 **Visível para o usuário:** nada.
 **Modelo:** Opus 5 para desenhar → `⏸️ PARE` → Sonnet 5 para escrever.
 
+**Estado (2026-09-10):** andaime pronto e no CI. Passos 1, 2, 4, 5 e 6
+concluídos; passo 3 parcial — 2 dos 30 invariantes escritos.
+Restam 28, listados em `tests/rules/INVARIANTES.md`. **Estamos no `⏸️ PARE`:
+a próxima etapa é a escrita dos testes, recomendada em Sonnet 5.**
+
+As duas camadas foram validadas contra uma cópia das regras com
+`ownLocationId()` removida — o verificador estático aponta a linha, e o
+emulador responde `Function not found error` e recusa a gravação. A rede pega
+o apagão de 2026-07-25.
+
 ### Por que primeiro
 
 `firestore.rules:387-399` documenta o apagão de 2026-07-25: uma função de regra
