@@ -13,11 +13,14 @@ export const MULTI_TRACK_ENABLED = false;
 export const MULTI_LOCATION_ENABLED = false;
 
 // Fase 3b: o professor passa a ver só a PRÓPRIA turma, em vez do sistema
-// inteiro. Começa em false porque é a única mudança do plano que REMOVE
-// permissão de quem já tem — com ela ligada, o painel do professor entra no
-// lugar do Admin para quem é professor e não é admin. As regras do Firestore
-// só estreitam depois que isto rodar com professor de verdade.
-export const PROFESSOR_ESCOPO_TURMA = false;
+// inteiro. Com ela ligada, o painel do professor entra no lugar do Admin para
+// quem é professor e não é admin.
+//
+// LIGADA em 2026-09-10, e de propósito ANTES de as regras estreitarem: o
+// `allow list` do Firestore é tudo-ou-nada contra a consulta, então a tela que
+// pede todos os usuários precisa sair de circulação antes de a regra passar a
+// recusá-la. Desligar de volta é um deploy, não um deploy de regras.
+export const PROFESSOR_ESCOPO_TURMA = true;
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
 export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 1 e 2 Coríntios' };
@@ -3260,6 +3263,11 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  // Rede de segurança para a ordem errada de publicação: se as regras já
+  // estreitaram (Fase 3b) e a flag ainda está desligada, getAllUsers volta
+  // permission-denied e o professor ficaria olhando um painel quebrado. Neste
+  // caso o painel da turma dele assume — que é o destino de qualquer forma.
+  const [semAcessoGlobal, setSemAcessoGlobal] = useState(false);
 
   // Locais de estudo + atribuição de professor por local
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
@@ -3275,8 +3283,10 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
            setUsers(usrs);
            setLoadingUsers(false);
         }
-      } catch (e) {
-        if (!unmounted) setLoadingUsers(false);
+      } catch (e: any) {
+        if (unmounted) return;
+        setLoadingUsers(false);
+        if (e?.code === 'permission-denied' && jogador?.isProfessor && !jogador?.isAdmin) setSemAcessoGlobal(true);
       }
     };
     loadUsers();
@@ -3403,6 +3413,12 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
         alert('Erro ao excluir usuário');
      }
   };
+
+  // Depois de TODOS os hooks: a condição muda em tempo de execução, e um
+  // retorno antecipado lá em cima puliria os hooks seguintes.
+  if (semAcessoGlobal) {
+    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} />;
+  }
 
   return (
     <div className="scr" style={{paddingBottom:100}}>
