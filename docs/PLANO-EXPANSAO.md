@@ -589,6 +589,45 @@ turma bate com a soma manual dos alunos dela.
 ### Rollback
 Flags para `false`. O índice pode ficar — não custa nada parado.
 
+### Estado (2026-09-10): o custo está resolvido; as flags seguem desligadas
+
+**Feito:**
+
+- Índices compostos (`turmaId`+`week` e `locationId`+`week`) declarados em
+  `firestore.indexes.json` e publicados **pelo mesmo workflow das regras** —
+  índice e código não podem subir em ordem trocada, e este é o caminho que
+  garante isso.
+- `listenToWeekProgress` recorta por turma. É a mudança de custo: cada aluno
+  assinava o progresso de todos os alunos de todas as igrejas.
+- **Queda segura:** se a consulta recortada falhar (índice construindo, ou
+  apagado por engano), a assinatura cai sozinha para a consulta antiga. Custa
+  mais leitura e mostra a lista certa — degradar é melhor que apagar. Sem isso,
+  "consulta sem índice falha em produção" viraria ranking vazio sem explicação.
+- Aba Semana com escopo: **[Minha turma] [Toda a escola]**. A escola inteira é
+  foto sob demanda, não assinatura pendurada.
+- O ranking de **duplas** passou a usar a foto geral: um par é formado por
+  local+trilha, não por turma, e as linhas da turma deixariam metade do par de
+  fora quando houver duas turmas de adolescentes na mesma igreja.
+- Matrícula por código: no cadastro (o `turmaId` do convite entra no perfil) e
+  no Perfil, para quem já tem conta. Um campo só, dois caminhos — `PROF-` torna
+  professor, o resto matricula. Matricular só vale para quem ainda **não** tem
+  turma: trocar de turma é ato de admin, o que impede um aluno migrar sozinho
+  para a turma dos amigos no meio do trimestre.
+
+Verificado contra produção: a consulta recortada devolveu só o membro da turma
+adulto, sem erro de índice, e "Toda a escola" trouxe a escola inteira.
+
+**Não feito, de propósito: as flags `MULTI_*` continuam `false`.**
+
+O plano mandava ligá-las aqui. Com **uma** igreja cadastrada, "Meu Local" e
+"Geral" mostram exatamente a mesma lista — que é a razão pela qual elas foram
+desligadas em 2026-07-25. E o seletor de trilha solto contradiz o modelo novo:
+agora quem define igreja e trilha é a **turma**, não uma escolha livre do aluno.
+Por isso a matrícula por código entrou no lugar dos seletores.
+
+Ligar as duas passa a fazer sentido quando existir a segunda igreja. Aí é uma
+linha em `components.tsx` — e o ranking já tem os escopos prontos por baixo.
+
 ---
 
 ## Fase 5 — Conteúdo das trilhas novas
@@ -610,6 +649,29 @@ Flags para `false`. O índice pode ficar — não custa nada parado.
 
 ### Verificação
 Script de validação verde + abrir cada trilha nova em branch deploy.
+
+### Estado (2026-09-10): validação pronta; conteúdo **bloqueado por falta de material**
+
+`npm run check:licoes` (e o workflow `App` no CI) confere: 4 opções por
+pergunta, gabarito **dentro** das opções, 7 dias por semana, datas em sequência
+e semana sem repetir — duas lições na mesma semana disputariam o MESMO
+documento de progresso, já que o id é `uid_semana`. Hoje: 26 lições, 182 dias,
+728 perguntas, íntegro. Validado no negativo: com um gabarito apontando para
+fora das opções, ele nomeia a pergunta exata.
+
+O erro que este script existe para pegar não quebra o app — faz o **aluno
+perder ponto respondendo certo**, e ninguém descobre até alguém reclamar.
+
+**Falta o conteúdo.** `juvenil` está aceito nas regras desde a Fase 1, mas não
+foi registrado em `data.ts` nem oferecido no seletor de turmas de propósito:
+registrar a trilha sem lição nenhuma cria turma que não leva a lugar nenhum.
+Quando o material chegar (formato de `lessonsTeen.ts`), é registrar em
+`TrackId`/`cache`/`carregadores`/`normalize`, acrescentar em `TRACK_LABELS` e
+rodar o validador.
+
+Uma correção ao plano: o rótulo de `adult` **não** virou "Adulto". Ele foi
+renomeado de propósito para "1 e 2 Coríntios" (o trimestre em curso) num commit
+anterior, e desfazer isso seria reverter uma decisão de conteúdo sem motivo.
 
 ---
 
