@@ -19,6 +19,31 @@ esperado — a rede pega regressão real, não só passa por acidente.
 
 ---
 
+## Invariantes que mudaram de propósito
+
+Um teste que passa a falhar é ou uma regressão, ou uma decisão. Esta seção é
+onde as decisões ficam registradas — se não estiver aqui, é regressão.
+
+### #21 — leitura de `users` pelo professor (Fase 3b, 2026-09-10)
+
+**Era:** professor lê o perfil de qualquer usuário do sistema.
+**Passou a ser:** professor lê os perfis da própria turma; admin continua lendo
+tudo.
+
+**Por quê:** `isProfessor` era global — quem tivesse o selo enxergava todos os
+alunos de todas as igrejas. Com turmas, o escopo natural do professor é a turma
+dele. É a única mudança do plano de expansão que REMOVE permissão de quem já
+tem, e por isso vem acompanhada de `escopo-professor.test.ts`, que testa cada
+permissão removida.
+
+**O que quebra se a ordem for invertida:** `allow list` do Firestore é
+tudo-ou-nada contra a CONSULTA. Uma tela que peça "todos os usuários" passa a
+ser recusada por completo — não filtrada. Por isso o painel do professor
+(`getUsersDaTurma`, que já consulta `where('turmaId','==', a minha)`) precisa
+estar **no ar** antes de esta regra ser publicada.
+
+---
+
 ## Tier 1 — O app para de funcionar
 
 Quebrar qualquer um destes derruba o uso normal, e o repositório já provou que
@@ -76,7 +101,7 @@ O app é usado por adolescentes. Anotação de estudo é conteúdo pessoal.
 |---|---|---|---|---|
 | 19 | Aluno **não** lê `studyNotes` de outro | 475 | ❌ | ✔️ feito |
 | 20 | Aluno **não** lê `users` de outro | 119 | ❌ | ✔️ feito |
-| 21 | Professor/admin **lê** `users` (o painel depende disso) | 119 | ✅ | ✔️ feito |
+| 21 | Professor lê `users` **da própria turma**; admin lê tudo | 119 | ✅ | ✔️ feito · **alterado na Fase 3b** |
 | 22 | Aluno **não** lista `inviteCodes` (não pode enumerar os códigos) | 215 | ❌ | ✔️ feito |
 | 23 | Aluno **não** lê `errorLogs` nem `userReports` | 751, 768 | ❌ | ✔️ feito |
 | 24 | Não-membro **não** lê uma `pairs` (as anotações compartilhadas) | 304 | ❌ | ✔️ feito |

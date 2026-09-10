@@ -482,10 +482,41 @@ turma no lugar do painel do sistema.
 Desligar de volta é um deploy do cliente — não um deploy de regras — porque
 nada no servidor mudou ainda.
 
-**Falta:** conferir com um professor de verdade que o painel abre e, só então,
-publicar as regras estreitadas, que estão prontas e testadas na branch
-`claude/fase3b-painel-professor` (commit `b74aa06`), com o passo a passo na
-seção "A ORDEM DE PUBLICAÇÃO" que sobe junto com elas.
+### Estado da 3b parte 2 (2026-09-10): regras estreitadas **publicadas**
+
+Três permissões saíram do professor:
+
+| O quê | Era | Passou a ser |
+|---|---|---|
+| Ler `users` | qualquer perfil do sistema | só os da própria turma |
+| Editar `conteudoOverrides` | qualquer trilha | só a trilha da turma dele |
+| Ler `errorLogs` | professor e admin | só admin |
+
+18 testes novos, um para cada permissão removida e para cada uma que **não**
+podia sair junto: o professor continua lendo o próprio perfil, o admin lê tudo,
+o aluno lê o conteúdo da lição, qualquer autenticado ainda REGISTRA erro (erro
+que não grava é erro perdido) e `progress` segue público — senão o ranking
+cairia junto. Guardas testadas: professor **sem turma** não lê ninguém (sem a
+checagem de turma vazia ele casaria com todo perfil também sem turma), e listar
+*filtrando por outra turma* também é recusado.
+
+Validado no negativo: devolvendo `users` para `canManage()`, cinco dos testes
+novos falham na hora.
+
+**O invariante #21 da Fase 0 mudou de propósito** — "professor lê `users`".
+Ele falhou no CI assim que a regra estreitou, que é exatamente o trabalho da
+rede: obrigar a decisão a ser explícita. Registrado em
+`tests/rules/INVARIANTES.md`, seção "Invariantes que mudaram de propósito".
+
+**Uma consequência verificada, e inofensiva:** `getWeeklyRanking` chama
+`getAdminIds()`, que lista `users` — o que a regra agora recusa para professor.
+Não quebra: a função tem `try/catch` devolvendo conjunto vazio, e o `isAdmin` de
+cada linha vem do próprio documento de progresso.
+
+**A ordem foi respeitada:** o cliente com a flag ligada subiu primeiro
+(`a3c4f1f`), tirando de circulação a tela que pedia todos os usuários; as regras
+vieram depois. Invertido, o professor ficaria com o painel antigo contra uma
+regra que já recusa — tela quebrada, sem erro visível para ele.
 
 ### Por que é a mais arriscada
 

@@ -195,10 +195,14 @@ describe('users — leitura por terceiros', () => {
     await assertFails(db.doc('users/aluno2').get());
   });
 
-  // #21 — o painel Admin/Professor (getAllUsers em firebase.ts) depende disso.
-  it('professor lê o perfil de um aluno', async () => {
-    await semearAluno('aluno1');
-    await semearProfessor('professor1');
+  // #21 — MUDOU na Fase 3b (ver INVARIANTES.md). Era "professor lê qualquer
+  // aluno"; passou a ser "professor lê os alunos da PRÓPRIA turma". A mudança
+  // é o objetivo da fase, não um acidente: antes, um professor enxergava o
+  // sistema inteiro. O escopo completo está em escopo-professor.test.ts.
+  it('professor lê o perfil de um aluno da própria turma', async () => {
+    await semearTurma('turma1');
+    await semearAluno('aluno1', { turmaId: 'turma1' });
+    await semearProfessor('professor1', { turmaId: 'turma1' });
     const db = comoUsuario('professor1');
 
     await assertSucceeds(db.doc('users/aluno1').get());
