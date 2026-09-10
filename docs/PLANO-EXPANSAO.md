@@ -351,6 +351,11 @@ commit (e autorização — ver `CLAUDE.md`); um **branch deploy** builda sempre
 dá uma URL real que fala com o mesmo banco de produção, o que permite rodar o
 mapa e o ensaio sem tocar no build de produção.
 
+O branch deploy desta fase é `claude/turmas-backfill-fase2`, e o Netlify o serve
+em `https://claude-turmas-backfill-fase2--<site>.netlify.app`. Atenção ao que
+isso significa: **é o banco de produção**, não uma cópia. O ensaio é seguro
+porque não escreve, não porque os dados sejam de mentira.
+
 `incluirSemIgreja=1` acrescenta quem está sem igreja nenhuma. O padrão é
 deixá-los de fora: com mais de uma igreja no sistema, "sem igreja" é ambíguo, e
 o ensaio os conta separadamente para a decisão ser consciente.
