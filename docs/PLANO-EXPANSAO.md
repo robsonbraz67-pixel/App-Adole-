@@ -503,11 +503,24 @@ Ele falhou no CI assim que a regra estreitou, que é exatamente o trabalho da
 rede: obrigar a decisão a ser explícita. A mudança está registrada em
 `tests/rules/INVARIANTES.md`, na seção "Invariantes que mudaram de propósito".
 
+### Uma consequência verificada, e inofensiva
+
+`getWeeklyRanking` chama `getAdminIds()`, que **lista** `users` — coisa que a
+regra estreitada recusa para professor. Não quebra nada: aquela função tem
+`try/catch` devolvendo conjunto vazio, e o `isAdmin` de cada linha do ranking
+vem do próprio documento de progresso (`saveProgress` sempre o grava). O
+`adminIds` ali é só uma segunda fonte, para o caso de o documento estar velho.
+
+Vale saber que existe, porque é o tipo de chamada que passa despercebida ao
+estreitar uma regra — esta passou por conferência, não por sorte.
+
 ### A ORDEM DE PUBLICAÇÃO, que é o que pode dar errado
 
-1. Subir o **cliente** com `PROFESSOR_ESCOPO_TURMA = true` (exige `[deploy]`).
-2. Conferir com um professor de verdade que o painel da turma abre.
-3. Só então publicar **as regras** estreitadas (push do `firestore.rules`).
+1. ✅ **Feito em 2026-09-10** (`a3c4f1f`): cliente com
+   `PROFESSOR_ESCOPO_TURMA = true` publicado. As regras seguem permissivas,
+   então o painel novo funciona com folga enquanto é conferido.
+2. ⏳ Conferir com um professor de verdade que o painel da turma abre.
+3. ⏳ Só então publicar **as regras** estreitadas (este commit).
 
 Invertido, o professor fica com o painel antigo pedindo todos os usuários
 contra uma regra que já recusa — tela quebrada, sem erro visível para ele.
