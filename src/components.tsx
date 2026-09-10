@@ -12,6 +12,13 @@ import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, 
 export const MULTI_TRACK_ENABLED = false;
 export const MULTI_LOCATION_ENABLED = false;
 
+// Fase 3b: o professor passa a ver só a PRÓPRIA turma, em vez do sistema
+// inteiro. Começa em false porque é a única mudança do plano que REMOVE
+// permissão de quem já tem — com ela ligada, o painel do professor entra no
+// lugar do Admin para quem é professor e não é admin. As regras do Firestore
+// só estreitam depois que isto rodar com professor de verdade.
+export const PROFESSOR_ESCOPO_TURMA = false;
+
 export type Track = 'teen' | 'youngAdult' | 'adult';
 export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 1 e 2 Coríntios' };
 
@@ -80,7 +87,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -2869,7 +2876,10 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
 // Leitura: UMA consulta por aluno auditado. A coleção progress já é pública
 // para o ranking, então auditar não acrescenta permissão nenhuma; só as
 // correções é que exigem admin (a regra confere, não esta tela).
-const AuditoriaPontuacao = ({ users }: { users: any[] }) => {
+// `somenteLeitura` existe para o painel do professor: auditar é leitura de
+// progress, que é público — mas CORRIGIR é ato de admin, e a regra recusa.
+// Mostrar botões que voltariam "permissão negada" seria pior que não mostrar.
+const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; somenteLeitura?: boolean }) => {
   const [busca, setBusca] = useState('');
   const [alvo, setAlvo] = useState<any>(null);
   const [linhas, setLinhas] = useState<any[] | null>(null);
@@ -3030,7 +3040,7 @@ const AuditoriaPontuacao = ({ users }: { users: any[] }) => {
                                   {h ? `${h.xp || 0} XP${typeof h.acertos === 'number' ? ` · ${h.acertos} acertos` : ''}${h.reiniciado ? ' · reiniciou o quiz' : ''}` : 'sem registro'}
                                 </div>
                               </div>
-                              {feito && (
+                              {feito && !somenteLeitura && (
                                 <button
                                   disabled={ocupado}
                                   onClick={() => executar(
@@ -3040,7 +3050,7 @@ const AuditoriaPontuacao = ({ users }: { users: any[] }) => {
                                   style={{ background: 'rgba(227,28,61,.15)', color: 'var(--danger)', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 10.5, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}
                                 >Zerar</button>
                               )}
-                              <button
+                              {!somenteLeitura && <button
                                 disabled={ocupado}
                                 onClick={() => executar(
                                   feito
@@ -3049,18 +3059,18 @@ const AuditoriaPontuacao = ({ users }: { users: any[] }) => {
                                   () => adminZerarDia(linha.id, linha, d.id, true)
                                 )}
                                 style={{ background: 'rgba(30,158,134,.15)', color: 'var(--teal)', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 10.5, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}
-                              >{feito ? 'Refazer 100%' : 'Liberar 100%'}</button>
+                              >{feito ? 'Refazer 100%' : 'Liberar 100%'}</button>}
                             </div>
                           );
                         })}
-                        <button
+                        {!somenteLeitura && <button
                           disabled={ocupado}
                           onClick={() => executar(
                             `Zerar a SEMANA inteira de ${alvo.nome}?\n\n${licaoSem?.titulo || linha.week}\nTodos os ${done.length} dia(s) e ${linha.xp || 0} XP saem do ranking.`,
                             () => adminZerarSemana(linha.id)
                           )}
                           style={{ width: '100%', marginTop: 10, background: 'rgba(227,28,61,.12)', color: 'var(--danger)', border: '1.5px solid rgba(227,28,61,.35)', borderRadius: 8, padding: '8px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
-                        >🗑️ Zerar a semana inteira</button>
+                        >🗑️ Zerar a semana inteira</button>}
                       </div>
                     )}
                   </div>
@@ -3074,7 +3084,179 @@ const AuditoriaPontuacao = ({ users }: { users: any[] }) => {
   );
 };
 
+/* ===== PAINEL DO PROFESSOR (Fase 3b) ===== */
+// O professor com escopo de turma: vê a própria turma inteira e nada além
+// dela. É o que permite a regra estreitar depois — hoje `isProfessor` enxerga
+// todos os alunos do sistema, e o plano prevê fechar isso.
+//
+// Tudo aqui já pede os dados COM o filtro de turma. `allow list` do Firestore é
+// tudo-ou-nada contra a consulta: no dia em que a regra exigir
+// `turmaId == o meu`, uma tela que pedisse "todos os usuários" pararia de
+// funcionar inteira. Escrita assim, ela atravessa a mudança sem perceber.
+//
+// Atrás de PROFESSOR_ESCOPO_TURMA, que começa em false.
+const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo }: any) => {
+  const [turma, setTurma] = useState<Turma | null>(null);
+  const [alunos, setAlunos] = useState<any[]>([]);
+  const [ranking, setRanking] = useState<any[] | null>(null);
+  const [streaks, setStreaks] = useState<Record<string, any>>({});
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState('');
+  const [aba, setAba] = useState<'alunos' | 'ranking' | 'auditoria'>('alunos');
+
+  const turmaId = jogador?.turmaId;
+
+  useEffect(() => {
+    if (!turmaId) { setCarregando(false); return; }
+    let vivo = true;
+    Promise.all([getTurma(turmaId), getUsersDaTurma(turmaId)])
+      .then(([t, us]) => { if (!vivo) return; setTurma(t); setAlunos(us); })
+      .catch(e => { if (vivo) setErro(e?.message || 'Não foi possível carregar a turma.'); })
+      .finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; };
+  }, [turmaId]);
+
+  // As ofensivas saem das lições da trilha DA TURMA, não da trilha em que o
+  // professor está: ele pode ter alternado para acompanhar outra (o app deixa).
+  // Por isso este efeito espera a turma chegar.
+  useEffect(() => {
+    if (!turma?.track) return;
+    let vivo = true;
+    getAllUsersStreaks(getTrackLessons(turma.track)).then(s => { if (vivo) setStreaks(s || {}); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [turma?.track]);
+
+  // Ranking da semana filtrado para a turma. Reusa a consulta por semana que o
+  // app já faz (barata e sem índice novo) e recorta pelos alunos da turma; o
+  // recorte no servidor, com índice composto, é a Fase 4.
+  useEffect(() => {
+    if (aba !== 'ranking' || ranking || !licao?.semana || alunos.length === 0) return;
+    const daTurma = new Set(alunos.map(a => a.id));
+    getWeeklyRanking(licao.semana)
+      .then(rows => setRanking((rows || []).filter((r: any) => daTurma.has(r.userId || r.id))))
+      .catch(() => setRanking([]));
+  }, [aba, ranking, licao?.semana, alunos]);
+
+  if (carregando) {
+    return <div className="scr"><div className="hdr"><button className="btn-back" onClick={onBack}>← Voltar</button><h2>🎓 Minha Turma</h2></div><div style={{padding:20, color:'var(--mut)'}}>Carregando...</div></div>;
+  }
+
+  if (!turmaId || !turma) {
+    return (
+      <div className="scr">
+        <div className="hdr"><button className="btn-back" onClick={onBack}>← Voltar</button><h2>🎓 Minha Turma</h2></div>
+        <div style={{padding:20}}>
+          <div style={{background:'var(--panel-bg)', padding:16, borderRadius:14, fontSize:14, color:'var(--txt2)', lineHeight:1.6}}>
+            {erro ? erro : 'Você ainda não está ligado a uma turma.'}
+            <div style={{fontSize:12, color:'var(--mut)', marginTop:8}}>
+              Peça à liderança um <strong>convite de professor</strong> (o código começa com PROF-) e resgate no Perfil, ou peça para um admin te colocar numa turma.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const abas: { k: typeof aba; label: string }[] = [
+    { k: 'alunos', label: `Alunos (${alunos.length})` },
+    { k: 'ranking', label: 'Ranking' },
+    { k: 'auditoria', label: 'Auditoria' },
+  ];
+
+  return (
+    <div className="scr" style={{paddingBottom:100}}>
+      <div className="hdr">
+        <button className="btn-back" onClick={onBack}>← Voltar</button>
+        <h2>🎓 Minha Turma</h2>
+      </div>
+
+      <div className="sec" style={{paddingTop:12}}>
+        <div style={{background:'var(--panel-bg)', padding:'12px 14px', borderRadius:14, marginBottom:14}}>
+          <div style={{fontSize:16, fontWeight:900, color:'var(--txt2)'}}>{turma.nome}</div>
+          <div style={{fontSize:12, color:'var(--mut)', marginTop:2}}>
+            {TRACK_LABELS[turma.track as Track] || turma.track} · {alunos.length} pessoa(s)
+          </div>
+        </div>
+
+        <div style={{display:'flex', gap:6, marginBottom:14}}>
+          {abas.map(a => (
+            <button key={a.k} onClick={() => setAba(a.k)}
+              style={{flex:1, padding:'9px 6px', borderRadius:10, fontSize:12, fontWeight:800, cursor:'pointer',
+                border: aba === a.k ? '2px solid var(--gold)' : '1px solid var(--input-border)',
+                background: aba === a.k ? 'rgba(247,198,0,.12)' : 'var(--input-bg)', color:'var(--txt)'}}>
+              {a.label}
+            </button>
+          ))}
+        </div>
+
+        {aba === 'alunos' && (
+          <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:20}}>
+            {alunos.length === 0 ? (
+              <div style={{color:'var(--mut)', fontSize:13, textAlign:'center', padding:'8px 0'}}>Nenhum aluno nesta turma ainda.</div>
+            ) : (
+              <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                {alunos.map(u => (
+                  <div key={u.id} style={{display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'var(--row-bg)', borderRadius:8}}>
+                    <div style={{fontSize:20, width:28, height:28, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                      {u.avatar?.length > 10 ? <img src={u.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}} alt=""/> : <span>{u.avatar}</span>}
+                    </div>
+                    <div style={{minWidth:0, flex:1}}>
+                      <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                        {u.nome}
+                        {u.isProfessor && <span style={{color:'var(--admin)', fontSize:11, marginLeft:4}}>🎓</span>}
+                        {streaks[u.id]?.streak > 0 && <span style={{color:'var(--flame)', fontSize:12, marginLeft:6}}>🔥 {streaks[u.id].streak}</span>}
+                      </div>
+                      <div style={{fontSize:11, color:'var(--mut)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{u.email}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {aba === 'ranking' && (
+          <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:20}}>
+            {!ranking ? <div style={{color:'var(--mut)', fontSize:13}}>Carregando o ranking da semana...</div>
+             : ranking.length === 0 ? <div style={{color:'var(--mut)', fontSize:13, textAlign:'center', padding:'8px 0'}}>Ninguém pontuou nesta semana ainda.</div>
+             : (
+              <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                {ranking.map((r: any, i: number) => (
+                  <div key={r.userId || r.id} style={{display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'var(--row-bg)', borderRadius:8}}>
+                    <span style={{fontSize:13, fontWeight:900, color:'var(--gold)', width:24, textAlign:'center'}}>{i + 1}</span>
+                    <span style={{fontSize:18}}>{r.avatar?.length > 10 ? '🦁' : r.avatar}</span>
+                    <span style={{flex:1, fontSize:13, fontWeight:700, color:'var(--txt2)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{r.nome}</span>
+                    <span className="num" style={{fontSize:13, fontWeight:900, color:'var(--txt)'}}>{r.xp} XP</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{fontSize:11, color:'var(--mut)', marginTop:8}}>Semana {licao?.semana} · só a sua turma</div>
+          </div>
+        )}
+
+        {aba === 'auditoria' && (
+          <>
+            <div style={{fontSize:12, color:'var(--mut)', marginBottom:8, lineHeight:1.5}}>
+              De onde veio o XP de cada aluno, semana a semana e dia a dia. <strong>Corrigir pontuação é ato de admin</strong> — peça a um administrador se encontrar algo errado.
+            </div>
+            <AuditoriaPontuacao users={alunos} somenteLeitura />
+          </>
+        )}
+
+        <button className="btn btn-gold" onClick={onModoAoVivo} style={{width:'100%', marginTop:6}}>🎮 MODO AO VIVO</button>
+      </div>
+    </div>
+  );
+};
+
 export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
+  // Professor com escopo de turma não vê o painel do sistema: vê o dele.
+  // Admin continua vendo tudo, inclusive quando também é professor.
+  if (PROFESSOR_ESCOPO_TURMA && jogador?.isProfessor && !jogador?.isAdmin) {
+    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} />;
+  }
+
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);

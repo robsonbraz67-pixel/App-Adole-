@@ -452,6 +452,32 @@ não serve, convite de uma turma não abre outra, e o resgate não dá `isAdmin`
 junto. Validado no sentido negativo: afrouxando a checagem de "queimado por
 mim", os dois testes correspondentes falham e os demais seguem passando.
 
+### Estado da 3b (2026-09-10): painel pronto; regras ainda **não** estreitadas
+
+`PainelProfessor`, atrás de `PROFESSOR_ESCOPO_TURMA` (começa em `false`).
+Com a flag ligada, quem é professor e não é admin passa a ver a própria turma
+no lugar do painel do sistema: alunos com ofensiva, ranking da semana recortado
+para a turma, e a auditoria de pontuação **em modo leitura**.
+
+A auditoria em leitura não é economia de trabalho: corrigir pontuação exige
+`isUserAdmin()` na regra, então botão de zerar ali voltaria "permissão negada".
+Mostrar o que a regra recusa é pior do que não mostrar.
+
+O ponto que faz esta ordem valer a pena: **todas as leituras do painel já pedem
+os dados com o filtro de turma** (`getUsersDaTurma`). Como `allow list` é
+tudo-ou-nada contra a consulta, uma tela que pedisse "todos os usuários"
+quebraria inteira no dia em que a regra exigisse `turmaId == o meu`. Escrita
+assim, ela atravessa a mudança sem perceber — e é por isso que o painel vem
+antes da regra, não depois.
+
+O ranking da turma reusa a consulta por semana que o app já faz e recorta no
+cliente. O recorte no servidor, com índice composto, é a Fase 4 — aqui não
+custa índice novo nem leitura nova.
+
+**Falta:** estreitar as regras (o que o professor deixa de poder), com os testes
+de cada permissão removida, e testar com um professor de verdade em branch
+deploy antes de ligar a flag.
+
 ### Por que é a mais arriscada
 
 É a **única** mudança que remove permissão de quem já tem. Hoje `isProfessor` é

@@ -427,6 +427,22 @@ export const getInviteCodeByCode = async (code: string): Promise<{ code: string;
   return snap.exists() ? snap.data() as any : null;
 };
 
+// Alunos de UMA turma. A consulta já nasce com o filtro que a regra vai
+// exigir na 3b — `allow list` do Firestore é tudo-ou-nada contra a consulta,
+// então pedir "todos os usuários" deixaria de funcionar no dia em que a regra
+// estreitasse. Escrito assim, a regra pode apertar sem quebrar esta tela.
+export const getUsersDaTurma = async (turmaId: string): Promise<any[]> => {
+  const snap = await getDocs(query(collection(db, 'users'), where('turmaId', '==', turmaId)));
+  const list: any[] = [];
+  snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+  return list.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+};
+
+export const getTurma = async (turmaId: string): Promise<Turma | null> => {
+  const snap = await getDoc(doc(db, 'turmas', turmaId));
+  return snap.exists() ? ({ id: snap.id, ...(snap.data() as any) }) : null;
+};
+
 // ===== Convite de professor (Fase 3) =====
 // Diferente do convite de aluno: resgatar este aqui TORNA a pessoa professora
 // de uma turma. Como concede poder, é mais fechado — só admin emite, ninguém
