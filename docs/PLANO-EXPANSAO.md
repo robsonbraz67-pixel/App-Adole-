@@ -474,9 +474,18 @@ O ranking da turma reusa a consulta por semana que o app já faz e recorta no
 cliente. O recorte no servidor, com índice composto, é a Fase 4 — aqui não
 custa índice novo nem leitura nova.
 
-**Falta:** estreitar as regras (o que o professor deixa de poder), com os testes
-de cada permissão removida, e testar com um professor de verdade em branch
-deploy antes de ligar a flag.
+**Publicado em 2026-09-10** (`a3c4f1f`, com `[deploy]`): a flag está **ligada**
+em produção e as regras seguem permissivas, então o painel novo funciona com
+folga enquanto é conferido. Quem é professor e não é admin já vê a própria
+turma no lugar do painel do sistema.
+
+Desligar de volta é um deploy do cliente — não um deploy de regras — porque
+nada no servidor mudou ainda.
+
+**Falta:** conferir com um professor de verdade que o painel abre e, só então,
+publicar as regras estreitadas, que estão prontas e testadas na branch
+`claude/fase3b-painel-professor` (commit `b74aa06`), com o passo a passo na
+seção "A ORDEM DE PUBLICAÇÃO" que sobe junto com elas.
 
 ### Por que é a mais arriscada
 
