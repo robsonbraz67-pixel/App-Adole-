@@ -251,6 +251,54 @@ da semana continua idêntico ao de antes do backfill.
 UI: flag ou revert. Backfill: o campo `turmaId` é **aditivo** — nada é
 sobrescrito, então basta ignorá-lo. Não apagar campo carimbado.
 
+### Estado (2026-09-10): UI pronta; backfill é o próximo `⏸️ PARE`
+
+Passos 1 a 6 concluídos. Seção **🏫 Turmas** no Admin: criar, editar, arquivar
+e emitir convite de aluno já vinculado à turma.
+
+Três decisões que a lista de passos não previa:
+
+1. **Fora das flags `MULTI_*`.** O painel responde só a `isAdmin`, não a
+   `MULTI_LOCATION_ENABLED`/`MULTI_TRACK_ENABLED`. É o que permite arrumar as
+   turmas com calma antes de os alunos verem qualquer coisa — quando as flags
+   virarem na Fase 4, as turmas já existem e estão povoadas. (Efeito colateral
+   de as flags estarem `false`: o `InviteCodesPanel` está invisível hoje, então
+   os convites emitidos pela turma são revogáveis dentro da própria linha da
+   turma, não só naquele painel.)
+2. **"➕ Nova igreja" dentro do formulário.** Fora do cadastro, não existia
+   outro lugar no app para criar uma igreja — sem isso, um admin sem
+   `studyLocations` não conseguiria criar turma nenhuma.
+3. **A trilha `juvenil` não aparece no seletor**, embora a regra a aceite desde
+   a Fase 1. Criar turma juvenil hoje daria uma turma sem lição nenhuma; a
+   opção entra na Fase 5, junto com o conteúdo.
+
+**Custo de leitura: uma consulta.** A contagem de alunos e os nomes dos
+professores saem da lista de usuários que o Admin já carrega.
+
+### Verificação feita
+
+- `tsc --noEmit` e `vite build` limpos.
+- Painel exercitado no navegador com o `./firebase` trocado por um mock
+  (mesmo método usado na auditoria de pontuação): criar com igreja nova, editar
+  nome/igreja/trilha/professores, arquivar e reativar, gerar convite, revogar e
+  reativar código, e 375 px sem estouro horizontal. Um bug apareceu e foi
+  corrigido: a turma arquivada saía da lista mas continuava marcada como
+  aberta, e o clique seguinte nela fechava em vez de abrir.
+- **62/62 testes de regra verdes** (54 anteriores + 8 novos).
+
+Os 8 novos cobrem o que os antigos não cobriam: os formatos que este painel
+grava de verdade — lista de professores vazia, `updatedAt` na edição e no
+arquivamento, convite carregando `turmaId`, convite antigo sem o campo, e a
+recusa de trocar a turma de um convite ao revogá-lo.
+
+Validados no sentido negativo, como manda a Fase 0: com `updatedAt` removido do
+`hasOnly` de `isValidTurma`, os dois testes de edição falham e **todos os
+antigos continuam passando** — que é exatamente o buraco que existia. Regra
+restaurada e conferida idêntica ao original depois do teste.
+
+**Falta o backfill (passos 7 a 10), que é o `⏸️ PARE` desta fase:** ele escreve
+em dados reais de produção, e o plano recomenda Opus 5 para essa metade.
+
 ---
 
 ## Fase 3 — Convite de professor e painel do professor
@@ -390,6 +438,15 @@ herda as duas.
 | Turma excluída orfana histórico | Arquivar (`active: false`), nunca excluir |
 
 ## Anexo C — Como testar sem custo
+
+**Rodar a suíte de regras localmente exige Java** — o emulador do Firestore roda
+em JVM. Num Mac sem JDK, `npm run test:rules` morre com "Unable to locate a Java
+Runtime"; `brew install openjdk` resolve, mas é *keg-only*, então o PATH precisa
+do prefixo na hora de rodar:
+
+```
+PATH="/opt/homebrew/opt/openjdk/bin:$PATH" npm run test:rules
+```
 
 `netlify.toml:22-27` faz **branch deploys e deploy previews buildarem sempre**,
 sem exigir `[deploy]` no commit. Cada fase pode ser testada numa URL real, com
