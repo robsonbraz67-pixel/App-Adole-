@@ -14,7 +14,7 @@ import {
 import { agoraServidor } from './relogio';
 import { tocarMusicaFundo, pararMusicaFundo, prepararAudio, audioLiberado, somContagem, somVai, somGongo, somPodio, prepararPodio, TEMAS } from './chiptune';
 import type { Tema } from './chiptune';
-import { Confetti } from '../components';
+import { Confetti, SeletorLicao } from '../components';
 
 const DURACOES = [10, 15, 20, 30, 60];
 const QTDS = [5, 8, 10, 12, 16, 20];
@@ -40,6 +40,12 @@ const OpcaoPartida = ({ ligado, onToggle, titulo, descricao }: { ligado: boolean
 );
 
 export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
+  // Lição DA PARTIDA: começa na lição ativa do professor, mas ele troca de
+  // semana (ou de trilha) aqui na tela de preparo sem mexer no próprio perfil.
+  // Uma partida de revisão no fim do trimestre não tem por que exigir que ele
+  // mude a própria trilha no Perfil só para puxar as perguntas certas.
+  const [sel, setSel] = useState<{ licao: any; track: string }>({ licao, track: jogador?.track || 'teen' });
+  const licaoDaPartida = sel.licao || licao;
   const [code, setCode] = useState<string | null>(null);
   const [game, setGame] = useState<any>(null);
   const [jogadores, setJogadores] = useState<any[]>([]);
@@ -69,8 +75,8 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
   const poolEditadoRef = useRef(false);
   useEffect(() => {
     if (code || poolEditadoRef.current) return;
-    setPool(selecionarPerguntasSala(licao, totalQuestions, embaralharOpcoes));
-  }, [licao, totalQuestions, embaralharOpcoes, code]);
+    setPool(selecionarPerguntasSala(licaoDaPartida, totalQuestions, embaralharOpcoes));
+  }, [licaoDaPartida, totalQuestions, embaralharOpcoes, code]);
 
   const ajustarPergunta = (i: number, patch: any) => {
     poolEditadoRef.current = true;
@@ -284,8 +290,8 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
     if (musicaOn) tocarMusicaFundo(TEMAS[tema].lobby);   // sala nova: sempre a da espera, ainda na pilha do clique
     try {
       const novoCodigo = await criarSala({
-        hostId: jogador.id, hostName: jogador.nome, track: jogador.track || 'teen',
-        semana: licao.semana, trimestre: licao.trimestre, licaoTitulo: licao.titulo,
+        hostId: jogador.id, hostName: jogador.nome, track: sel.track || 'teen',
+        semana: licaoDaPartida.semana, trimestre: licaoDaPartida.trimestre, licaoTitulo: licaoDaPartida.titulo,
         perguntas: pool, questionDurationSec: duracao, soNoTelao,
       });
       localStorage.setItem('liveHostCode', novoCodigo);
@@ -627,10 +633,20 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
           <div style={{ width: 64 }} />
         </div>
         <div style={{ padding: '20px 16px 100px' }}>
-          <div className="purple-card" style={{ padding: 16, marginBottom: 16 }}>
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>📖 {licao?.titulo}</div>
-            <div style={{ fontSize: 12, color: 'var(--mut)' }}>As perguntas vêm sorteadas dos dias desta lição. Pontuação da sala é só daquela partida — não altera XP nem progresso.</div>
-          </div>
+          <SeletorLicao
+            track={sel.track}
+            licao={licaoDaPartida}
+            podeTrocarTrilha
+            titulo="📖 Lição da partida"
+            onChange={(l, t) => {
+              // Lição nova = perguntas novas. As edições à mão (enquete, pontos
+              // dobrados, perguntas removidas) eram da lição ANTERIOR — manter
+              // a trava faria a tela continuar mostrando as perguntas velhas.
+              poolEditadoRef.current = false;
+              setSel({ licao: l, track: t });
+            }}
+            nota="As perguntas vêm sorteadas dos dias desta lição. Trocar aqui não mexe no seu perfil nem no progresso de ninguém — a pontuação da sala vale só para a partida."
+          />
           <div className="sec-title">Nº de perguntas</div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
             {QTDS.map(n => (
@@ -692,7 +708,7 @@ export const LiveHost = ({ licao, jogador, onBack, onActiveChange }: any) => {
             <span>Perguntas sorteadas ({pool.length})</span>
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => { poolEditadoRef.current = false; setPool(selecionarPerguntasSala(licao, totalQuestions, embaralharOpcoes)); }}
+              onClick={() => { poolEditadoRef.current = false; setPool(selecionarPerguntasSala(licaoDaPartida, totalQuestions, embaralharOpcoes)); }}
               style={{ width: 'auto' }}
               title="Sortear outro conjunto"
             >🎲 Sortear de novo</button>

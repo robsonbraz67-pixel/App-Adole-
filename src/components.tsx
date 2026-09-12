@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { getTrackLessons } from './data';
+import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
 import { planejarBackfill } from './backfillTurmas';
 import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome } from './utils';
 
@@ -1393,7 +1393,12 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   // O de duplas segue a mesma lógica de dias, mas com a métrica da dupla
   // (dia cheio = os dois; meio dia = só um), que é o próprio critério do rank.
   const isPair = type === 'duplasSemana' || type === 'duplasCampanha';
-  const isSemanal = type === 'week' || type === 'duplasSemana';
+  // 'weekGeral' É semanal: é a mesma semana da turma, só que com a escola
+  // inteira. Ficar de fora daqui fazia a meta da zona de rebaixamento ser
+  // calculada sobre as 13 semanas da campanha (e o título/texto do
+  // compartilhamento virar "campanha"): todo mundo aparecia atrasado na aba
+  // "Toda a escola" com números de semana contra uma meta de temporada.
+  const isSemanal = type === 'week' || type === 'weekGeral' || type === 'duplasSemana';
   // Só o ranking de DUPLAS ordena por dias — ali "dias" é a métrica da dupla
   // (dia cheio = os dois; meio dia = só um), que é o próprio critério.
   // Semana e campanha ordenam por PONTOS: a campanha é a soma do XP de todas
@@ -1468,7 +1473,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       const url = window.location.origin;
       const texto = isPair
         ? `👥 Ranking de duplas — ${isSemanal ? (licao?.titulo || 'esta semana') : `campanha ${licao?.trimestre || ''}`}\n🤝 O dia só conta cheio quando os DOIS estudam. Chame alguém e venha para o topo!\n📲 ${url}`
-        : type === 'week'
+        : isSemanal
           ? `🏆 Ranking da semana — ${licao?.titulo || ''}\n🎰 Estude todos os dias e concorra ao sorteio!\n📲 Venha estudar com a gente: ${url}`
           : `🏆 Ranking da campanha ${licao?.trimestre || ''}\n👑 Revise as lições, fique em dia e participe do GRANDE SORTEIO da campanha! Quem sabe você é o campeão!\n📲 Venha estudar com a gente: ${url}`;
       const file = new File([blob], 'ranking-sabatinaquest.png', { type: 'image/png' });
@@ -1745,6 +1750,129 @@ const SUPER_ADMIN_EMAIL = 'robsonbraz67@gmail.com';
 
 const avt = (avatar: string) => avatar?.startsWith('data:') ? '📸' : (avatar || '👤');
 
+/* ===== SELETOR DE LIÇÃO (trilha + semana) =====
+ * O Sorteador e o Modo Ao Vivo nem sempre trabalham sobre a semana corrente:
+ * repor um sorteio atrasado, rodar uma partida com a lição do próximo sábado
+ * ou puxar as perguntas da trilha de adultos são coisas de todo mês. Antes
+ * disto, as duas telas ficavam presas na lição ativa do próprio perfil.
+ *
+ * A troca NÃO mexe no perfil nem no progresso de ninguém: é só o recorte
+ * daquela tela. O conteúdo da trilha é carregado sob demanda (ver data.ts),
+ * então trocar de trilha é assíncrono — daí o estado de carregando.
+ */
+export const acharLicaoDaSemana = (licoes: any[], semana?: string) => {
+  const visiveis = (licoes || []).filter((l: any) => !l.isAdminOnly && l.dias?.length);
+  if (!visiveis.length) return null;
+  const igual = semana && visiveis.find((l: any) => l.semana === semana);
+  if (igual) return igual;
+  const h = hojeLocalISO();
+  return visiveis.find((l: any) => h >= l.dias[0].data && h <= l.dias[l.dias.length - 1].data) || visiveis[0];
+};
+
+// "Lição 3 - Título (data)" → "Lição 3" para caber no botão de navegação.
+const rotuloCurto = (l: any) => (l?.titulo || '').split(' - ')[0] || l?.semana || '—';
+
+export const SeletorLicao = ({ track, licao, onChange, podeTrocarTrilha = false, nota, titulo = '📖 Lição' }: {
+  track: string;
+  licao: any;
+  onChange: (licao: any, track: string) => void;
+  podeTrocarTrilha?: boolean;
+  nota?: string;
+  titulo?: string;
+}) => {
+  const [licoes, setLicoes] = useState<any[]>(() => (getTrackLessons(track) || []).filter((l: any) => !l.isAdminOnly));
+  const [carregando, setCarregando] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    if (!isTrackLoaded(track)) setCarregando(true);
+    loadTrackLessons(track)
+      .then(ls => { if (vivo) setLicoes((ls || []).filter((l: any) => !l.isAdminOnly)); })
+      .catch(() => {})
+      .finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; };
+  }, [track]);
+
+  const trocarTrilha = async (t: Track) => {
+    if (t === track || carregando) return;
+    setCarregando(true);
+    let ls: any[] = [];
+    try { ls = await loadTrackLessons(t); } catch { /* fica vazio, cai no aviso */ }
+    setCarregando(false);
+    // Mesma semana na trilha nova quando ela existe; senão, a lição de hoje.
+    const nova = acharLicaoDaSemana(ls, licao?.semana);
+    if (!nova) { alert('Essa trilha ainda não tem lições publicadas.'); return; }
+    onChange(nova, t);
+  };
+
+  const idx = licoes.findIndex((l: any) => l.semana === licao?.semana);
+  const irPara = (i: number) => {
+    const alvo = licoes[i];
+    if (alvo) onChange(alvo, track);
+  };
+
+  const trilhas: Track[] = ['teen', 'adult'];
+
+  return (
+    <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:14, padding:'12px 14px', marginBottom:16}}>
+      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:8}}>
+        <div style={{fontSize:12, fontWeight:800, color:'var(--mut)', textTransform:'uppercase', letterSpacing:1}}>{titulo}</div>
+        {carregando && <div style={{fontSize:12, color:'var(--mut)'}}>⏳</div>}
+      </div>
+
+      {podeTrocarTrilha && (
+        <div style={{display:'flex', gap:6, marginBottom:10, flexWrap:'wrap'}}>
+          {trilhas.map(t => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => trocarTrilha(t)}
+              disabled={carregando}
+              style={{
+                flex:'1 1 44%', padding:'8px 6px', borderRadius:10, fontSize:12, fontWeight:800,
+                fontFamily:'Poppins,sans-serif', cursor: carregando ? 'wait' : 'pointer',
+                border: track === t ? '2px solid var(--gold)' : '1px solid var(--input-border)',
+                background: track === t ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
+                color: track === t ? 'var(--gold)' : 'var(--txt2)',
+              }}
+            >{TRACK_LABELS[t]}</button>
+          ))}
+        </div>
+      )}
+
+      <div style={{display:'flex', alignItems:'center', gap:8}}>
+        <button
+          type="button"
+          onClick={() => irPara(idx - 1)}
+          disabled={idx <= 0}
+          aria-label="Semana anterior"
+          style={{width:38, height:38, flexShrink:0, borderRadius:10, border:'1px solid var(--input-border)', background:'var(--input-bg)', color:'var(--txt2)', fontSize:16, fontWeight:900, cursor: idx <= 0 ? 'default' : 'pointer', opacity: idx <= 0 ? .4 : 1}}
+        >‹</button>
+        <select
+          value={licao?.semana || ''}
+          onChange={e => irPara(licoes.findIndex((l: any) => l.semana === e.target.value))}
+          style={{flex:1, minWidth:0, padding:'10px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13, fontWeight:700, outline:'none'}}
+        >
+          {idx < 0 && <option value={licao?.semana || ''}>{rotuloCurto(licao)}</option>}
+          {licoes.map((l: any) => (
+            <option key={l.semana} value={l.semana}>{rotuloCurto(l)} · {l.semana}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => irPara(idx + 1)}
+          disabled={idx < 0 || idx >= licoes.length - 1}
+          aria-label="Próxima semana"
+          style={{width:38, height:38, flexShrink:0, borderRadius:10, border:'1px solid var(--input-border)', background:'var(--input-bg)', color:'var(--txt2)', fontSize:16, fontWeight:900, cursor: (idx < 0 || idx >= licoes.length - 1) ? 'default' : 'pointer', opacity: (idx < 0 || idx >= licoes.length - 1) ? .4 : 1}}
+        >›</button>
+      </div>
+
+      <div style={{fontSize:12, color:'var(--txt2)', marginTop:8, lineHeight:1.45}}>{licao?.titulo || '—'}</div>
+      {nota && <div style={{fontSize:11, color:'var(--mut)', marginTop:6, lineHeight:1.45}}>{nota}</div>}
+    </div>
+  );
+};
+
 // Hook compartilhado do Sorteador — usado pela tela Sorteador (menu) e, antes,
 // duplicado dentro do Admin/TVMode. Fila sem repetição: sorteia todos os
 // elegíveis antes de repetir alguém.
@@ -1758,6 +1886,13 @@ const useSorteador = (licao: any) => {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  // Trocou a semana (ou a trilha): a lista carregada é de outro sorteio. Zerar
+  // aqui evita o pior caso — sortear entre os elegíveis da semana anterior
+  // achando que é a nova, sem nada na tela denunciando.
+  useEffect(() => {
+    setUsers([]); setGanhador(null); setQueue([]); setIdx(0);
+  }, [licao?.semana, licao?.trimestre]);
 
   const carregar = async () => {
     setLoading(true); setGanhador(null); setQueue([]);
@@ -1830,7 +1965,11 @@ const useSorteador = (licao: any) => {
 
 /* ===== SORTEADOR (tela própria, acessível pelo menu) ===== */
 export const Sorteador = ({ licao, jogador, onBack }: any) => {
-  const { users, ganhador, idx, animando, loading, carregar, iniciar } = useSorteador(licao);
+  // Lição do SORTEIO, não a do perfil: dá para repor o sorteio de uma semana
+  // que passou sem mexer no progresso de ninguém. Começa na lição ativa.
+  const [sel, setSel] = useState<{ licao: any; track: string }>({ licao, track: jogador?.track || 'teen' });
+  const podeTrocarTrilha = !!jogador?.isAdmin || !!jogador?.isProfessor;
+  const { users, ganhador, idx, animando, loading, carregar, iniciar } = useSorteador(sel.licao);
   return (
     <div className="scr" style={{paddingBottom:100}}>
       <div className="hdr">
@@ -1839,8 +1978,15 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
         <div/>
       </div>
       <div className="sorteador-wrap">
+        <SeletorLicao
+          track={sel.track}
+          licao={sel.licao}
+          podeTrocarTrilha={podeTrocarTrilha}
+          onChange={(l, t) => setSel({ licao: l, track: t })}
+          nota="Trocar aqui muda só o sorteio — seu perfil e seu progresso ficam como estão."
+        />
         <div style={{fontSize:13, color:'var(--mut)', marginBottom:12, textAlign:'center'}}>
-          Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{licao.semana}</strong>.
+          Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{sel.licao?.semana}</strong>.
         </div>
         <div style={{textAlign:'center'}}>
           <button onClick={carregar} disabled={loading} className={`btn btn-ghost ${loading ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px 16px', marginBottom:16, width:'auto', display:'inline-flex'}}>
@@ -3829,12 +3975,15 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
       )}
       <div style={{padding:'20px 16px', display:'flex', flexDirection:'column', gap:20, flex: 1}}>
 
-        {(MULTI_TRACK_ENABLED || MULTI_LOCATION_ENABLED || !locationLocked) && (
+        {(MULTI_TRACK_ENABLED || MULTI_LOCATION_ENABLED || !locationLocked || canManageLocations) && (
         <div style={{background:'var(--panel-bg)', padding: '20px 16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
           <div style={{fontWeight:800, marginBottom:16, color:'var(--txt2)'}}>🏠 Local de Estudo e Trilha</div>
-          {locationLocked && canManageLocations && MULTI_TRACK_ENABLED ? (
+          {locationLocked && canManageLocations ? (
             /* Admin/professor: local trava normal, mas a trilha fica livre pra
-               alternar sempre (uso próprio: testar/acompanhar outras trilhas). */
+               alternar sempre (uso próprio: testar/acompanhar outras trilhas).
+               NÃO depende de MULTI_TRACK_ENABLED: aquela flag esconde a trilha
+               do ALUNO, que precisa ficar na trilha da turma dele. Quem conduz
+               a escola precisa abrir as duas trilhas a qualquer momento. */
             <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.6}}>
               Local: <strong>{currentLocationName || '...'}</strong>
               <div style={{fontSize:11, color:'var(--mut)', margin:'10px 0 8px'}}>Sua trilha (admin/professor pode alternar a qualquer momento):</div>
