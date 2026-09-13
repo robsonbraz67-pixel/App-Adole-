@@ -1121,11 +1121,17 @@ const CardOracao = ({ dia }: any) => {
   const referencia = VERSOS_ORACAO[Math.abs(Number(dia?.id) || 0) % VERSOS_ORACAO.length];
   const { verso } = useVerso(referencia);
   return (
-    <div style={{animation:'fadeIn .5s ease 1.05s both',marginBottom:18,padding:16,borderRadius:16,background:'var(--panel-bg)',border:'1px solid var(--panel-border)',textAlign:'left'}}>
-      <div style={{fontSize:11,fontWeight:800,color:'var(--gold)',textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>🙏 Antes de sair, ore</div>
-      <div style={{fontSize:13,color:'var(--mut)',lineHeight:1.5,marginBottom:10}}>Um minuto de conversa com Deus fecha o estudo de hoje.</div>
-      {verso && <div style={{fontSize:15,fontStyle:'italic',lineHeight:1.65,color:'var(--txt2)',fontFamily:'Lora,Georgia,serif',marginBottom:8}}>"{verso.texto}"</div>}
-      <VersoLink valor={`— ${referencia}`} refBiblica={referencia} />
+    <div className="verse-card" style={{animation:'fadeUp .5s ease .75s both',textAlign:'left',padding:'24px 20px 20px',marginBottom:24}}>
+      <div style={{fontSize:13,fontWeight:900,color:'var(--gold)',textTransform:'uppercase',letterSpacing:1.5,marginBottom:12,fontFamily:'Poppins,sans-serif'}}>🙏 Antes de sair, ore</div>
+      {/* Sem internet e sem cache fica só a referência: melhor o convite à
+          oração sem o texto do que um buraco no meio da tela. */}
+      {verso
+        ? <div style={{fontSize:19,fontStyle:'italic',lineHeight:1.6,color:'var(--txt2)',fontFamily:'Lora,Georgia,serif',marginBottom:12}}>"{verso.texto}"</div>
+        : <div style={{fontSize:15,color:'var(--mut)',marginBottom:12}}>Abrindo o versículo de hoje…</div>}
+      <div style={{fontWeight:800,color:'var(--gold)',fontSize:14,marginBottom:12}}>
+        — <VersoLink valor={referencia} refBiblica={referencia} />
+      </div>
+      <div style={{fontSize:14,color:'var(--mut)',lineHeight:1.55}}>Um minuto de conversa com Deus fecha o estudo de hoje.</div>
     </div>
   );
 };
@@ -1144,8 +1150,11 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
       <Confetti show={true}/>
       <div style={{animation:'popIn .5s ease .2s both',fontSize:80,marginTop:20,display:'block',marginBottom:10}}>{ic}</div>
       <div style={{animation:'popIn .5s ease .4s both',fontWeight:900,fontSize:24,marginBottom:4}}>{mg}</div>
-      <div style={{animation:'fadeIn .5s ease .6s both',color:'var(--mut)',fontSize:14,marginBottom:26}}>{formatDiaSemana(dia.diaSemana)} — {dia.titulo}</div>
-      <div style={{animation:'fadeUp .5s ease .7s both',display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:22}}>
+      <div style={{animation:'fadeIn .5s ease .6s both',color:'var(--mut)',fontSize:14,marginBottom:22}}>{formatDiaSemana(dia.diaSemana)} — {dia.titulo}</div>
+      {/* O lembrete de oração vem ANTES do placar: o estudo termina em oração,
+          não na pontuação. */}
+      <CardOracao dia={dia} />
+      <div style={{animation:'fadeUp .5s ease .9s both',display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:22}}>
         {[{e:'✅',l:'Acertos',v:`${acertos}/${total}`},{e:'⭐',l:'XP Ganho',v:`+${xpTotal}`},{e:'⏱️',l:'Tempo médio',v:`${Math.round(tempoMedio)}s`}].map(s => (
           <div key={s.l} className="purple-card" style={{padding:'12px 6px',textAlign:'center'}}>
             <div style={{fontSize:22,marginBottom:4}}>{s.e}</div>
@@ -1155,22 +1164,21 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
         ))}
       </div>
       {punido && (
-        <div style={{animation:'fadeIn .5s ease .8s both',marginBottom:14,padding:'12px 16px',borderRadius:14,background:'rgba(227,28,61,.15)',border:'1.5px solid #E31C3D',textAlign:'left'}}>
+        <div style={{animation:'fadeIn .5s ease 1s both',marginBottom:14,padding:'12px 16px',borderRadius:14,background:'rgba(227,28,61,.15)',border:'1.5px solid #E31C3D',textAlign:'left'}}>
           <div style={{fontWeight:800,fontSize:14,marginBottom:4,color:'#E31C3D'}}>⚠️ XP zerado</div>
           <div style={{fontSize:13,color:'var(--txt2)',lineHeight:1.5}}>Este quiz foi fechado e reaberto antes de terminar — pontos do dia não contam quando isso acontece.</div>
         </div>
       )}
-      {prog.streak > 0 && <div style={{animation:'fadeIn .5s ease .9s both',marginBottom:14}}><div className="streak-badge" style={{fontSize:16,padding:'8px 20px'}}>🔥 Sequência: {prog.streak} dias!</div></div>}
+      {prog.streak > 0 && <div style={{animation:'fadeIn .5s ease 1.05s both',marginBottom:14}}><div className="streak-badge" style={{fontSize:16,padding:'8px 20px'}}>🔥 Sequência: {prog.streak} dias!</div></div>}
       {badges.length > 0 && (
-        <div style={{animation:'fadeIn .5s ease 1s both',marginBottom:22}}>
+        <div style={{animation:'fadeIn .5s ease 1.1s both',marginBottom:22}}>
           <div style={{fontSize:11,fontWeight:800,textTransform:'uppercase',letterSpacing:2,color:'var(--mut)',marginBottom:10}}>Conquistas do dia</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
             {badges.map(b => <div key={b.l} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.08)',border:'1.5px solid rgba(255,255,255,.12)',borderRadius:30,padding:'7px 16px',fontSize:14,fontWeight:800}}>{b.e} {b.l}</div>)}
           </div>
         </div>
       )}
-      <CardOracao dia={dia} />
-      <div style={{animation:'fadeIn .5s ease 1.1s both',display:'flex',flexDirection:'column',gap:12}}>
+      <div style={{animation:'fadeIn .5s ease 1.2s both',display:'flex',flexDirection:'column',gap:12}}>
         <button className="btn btn-gold" onClick={onRanking} style={{fontSize:17}}>🏆 VER RANKING</button>
         <button className="btn btn-ghost" onClick={onHome}>← VOLTAR AO INÍCIO</button>
       </div>
