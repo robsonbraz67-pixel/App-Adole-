@@ -2552,6 +2552,13 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
   // outra coleção, que ninguém além do dono lê (ver oracoesParticulares).
   const [soParaMim, setSoParaMim] = useState(false);
   const [particulares, setParticulares] = useState<OracaoParticular[]>([]);
+  // Escrever virou modal: a página é a LISTA. O editor aberto no topo empurrava
+  // os pedidos para baixo da dobra, e quem chega no mural chega para ler o que
+  // a turma pediu — pedir é o segundo movimento, não o primeiro.
+  const [compondo, setCompondo] = useState(false);
+  // Controles de quem conduz: uma linha, fechada. Eram dois painéis grandes
+  // acima da lista, e os dois falavam com uma pessoa da sala inteira.
+  const [liderancaAberta, setLiderancaAberta] = useState(false);
 
   const podeModerar = !!jogador?.isAdmin || !!jogador?.isProfessor;
 
@@ -2611,6 +2618,7 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
       setTexto('');
       setAnonimo(false);
       setCategoria('outro');
+      setCompondo(false);
       // O "só pra mim" NÃO se desmarca sozinho: quem está escrevendo uma
       // sequência de motivos particulares não pode ver o próximo escapar para
       // o mural da turma por causa de um reset silencioso.
@@ -2813,7 +2821,7 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
   // Um editor só para os dois destinos. A aba escolhe para onde vai; o toggle
   // existe para quem começou a escrever no mural e mudou de ideia no meio.
   const editor = (
-    <div className="oracao-novo">
+    <div className="oracao-novo" style={{marginBottom:0, background:'transparent', border:'none', padding:'0 2px'}}>
       <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', textTransform:'uppercase', letterSpacing:1, marginBottom:10, fontFamily:'Poppins,sans-serif'}}>
         {privado ? '🔒 Guarde um motivo seu' : '✍️ Peça oração'}
       </div>
@@ -2917,6 +2925,37 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
     );
   };
 
+  // Folha de escrever. Portal no body pelo mesmo motivo do modal do versículo:
+  // dentro do fluxo ela herda `overflow` e `transform` dos pais e fica presa.
+  const folhaDeEscrever = !compondo ? null : createPortal(
+    <div
+      onClick={() => setCompondo(false)}
+      style={{position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:9998, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:0}}
+    >
+      {/* `.glass` e não `--panel-bg`: aquela variável é rgba(...,.04) — 4% de
+          opacidade — e existe para um painel DENTRO da página, sobre um fundo
+          já opaco. Numa folha flutuante ela deixava o texto ilegível por cima
+          do escurecedor. É a mesma classe que o modal do recado usa. */}
+      <div
+        className="glass"
+        onClick={e => e.stopPropagation()}
+        style={{width:'100%', maxWidth:448, maxHeight:'88dvh', overflowY:'auto', borderRadius:'20px 20px 0 0', borderBottom:'none', padding:'8px 14px calc(18px + env(safe-area-inset-bottom))', animation:'fadeUp .18s ease'}}
+      >
+        {/* Puxador: diz que a folha sobe e desce antes de alguém tentar. */}
+        <div style={{display:'flex', justifyContent:'center', padding:'6px 0 10px'}}>
+          <div style={{width:38, height:4, borderRadius:4, background:'var(--b4)'}} />
+        </div>
+        {editor}
+        <button
+          onClick={() => setCompondo(false)}
+          className="btn btn-ghost btn-sm"
+          style={{width:'100%', marginTop:10, fontSize:13}}
+        >Cancelar</button>
+      </div>
+    </div>,
+    document.body,
+  );
+
   const abaSt = (ativo: boolean): React.CSSProperties => ({
     flex: 1,
     padding: '10px 8px',
@@ -2953,14 +2992,12 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
 
         {aba === 'particular' ? (
           <>
-            {editor}
-
             {particulares.length === 0 && (
               <div style={{textAlign:'center', padding:'36px 20px', color:'var(--mut)'}}>
                 <div style={{fontSize:44, marginBottom:12}}>🔒</div>
                 <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>Nada guardado ainda</div>
                 <div style={{fontSize:14, lineHeight:1.5}}>
-                  O que você escrever aqui volta a aparecer para você antes de abrir a lição — e só para você.
+                  Toque no ✍️ aqui embaixo. O que você escrever volta a aparecer para você antes de abrir a lição — e só para você.
                 </div>
               </div>
             )}
@@ -2993,32 +3030,65 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
           </div>
         ) : (
           <>
-            {conducao.conduz && conducao.turmas.length > 1 && (
-              <SeletorTurmaAtiva
-                turmas={conducao.turmas}
-                turmaId={conducao.turmaId}
-                onEscolher={conducao.escolher}
-                nota="Você está vendo o mural desta turma."
-              />
-            )}
+            {/* Tudo o que é de quem CONDUZ cabe nesta linha, fechada. Antes
+                eram dois painéis grandes entre o topo e o primeiro pedido —
+                e os dois falavam com uma pessoa de uma sala inteira. O número
+                vermelho é o único que insiste, porque é o que pede ação. */}
+            {conducao.conduz && (
+              <div style={{marginBottom:12}}>
+                <button
+                  onClick={() => setLiderancaAberta(v => !v)}
+                  aria-expanded={liderancaAberta}
+                  style={{width:'100%', display:'flex', alignItems:'center', gap:8, padding:'8px 10px', borderRadius:10, cursor:'pointer', background:'transparent', border:'1px solid var(--b4)', color:'var(--mut)', fontSize:12, fontWeight:700, fontFamily:'Poppins,sans-serif'}}
+                >
+                  <span style={{fontSize:13}}>🎓</span>
+                  <span style={{flex:1, textAlign:'left', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                    {conducao.turma?.nome || 'Turma'}
+                  </span>
+                  {semNinguem.length > 0 && (
+                    <span style={{background:'rgba(227,28,61,.16)', color:'#E31C3D', borderRadius:20, padding:'1px 7px', fontWeight:900}}>
+                      {semNinguem.length} sem oração
+                    </span>
+                  )}
+                  <span aria-hidden="true">{liderancaAberta ? '▴' : '▾'}</span>
+                </button>
 
-            {editor}
-
-            {/* Cabeçalho do mural. Os dois números saem do que já está em
-                memória — nenhuma leitura a mais. O nome da turma fica de fora
-                de propósito: para o aluno ele custaria um getTurma() a cada
-                abertura do mural, e quem conduz já o tem no seletor acima. */}
-            {pedidos.length > 0 && (
-              <div style={{display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap', margin:'0 0 12px', fontSize:12, color:'var(--mut)', fontWeight:700, textTransform:'uppercase', letterSpacing:1, fontFamily:'Poppins,sans-serif'}}>
-                <span>{pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''}</span>
-                {totalOracoes > 0 && <span style={{color:'var(--gold)'}}>🙏 {totalOracoes} oraç{totalOracoes !== 1 ? 'ões' : 'ão'}</span>}
+                {liderancaAberta && (
+                  <div style={{border:'1px solid var(--b4)', borderTop:'none', borderRadius:'0 0 10px 10px', padding:'10px', display:'flex', flexDirection:'column', gap:10}}>
+                    {conducao.turmas.length > 1 && (
+                      <select
+                        value={conducao.turmaId}
+                        onChange={e => conducao.escolher(e.target.value)}
+                        aria-label="Turma que estou conduzindo"
+                        style={{width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:12, fontWeight:700, outline:'none'}}
+                      >
+                        {conducao.turmas.map(t => (
+                          <option key={t.id} value={t.id}>{t.nome} · {TRACK_LABELS[t.track as Track] || t.track}</option>
+                        ))}
+                      </select>
+                    )}
+                    <div style={{display:'flex', gap:12, flexWrap:'wrap', fontSize:12, color:'var(--mut)'}}>
+                      <span><strong style={{color:'var(--txt2)'}}>{abertos.length}</strong> em aberto</span>
+                      <span><strong style={{color: semNinguem.length ? '#E31C3D' : 'var(--txt2)'}}>{semNinguem.length}</strong> sem ninguém orando</span>
+                      <span><strong style={{color:'var(--txt2)'}}>{respondidos.length}</strong> respondido{respondidos.length !== 1 ? 's' : ''}</span>
+                      {totalOracoes > 0 && <span style={{color:'var(--gold)'}}>🙏 {totalOracoes}</span>}
+                    </div>
+                    <button
+                      onClick={() => setSoAOrar(v => !v)}
+                      aria-pressed={soAOrar}
+                      style={{...chipSt(soAOrar), alignSelf:'flex-start'}}
+                    >
+                      {soAOrar ? '↩︎ Ver todos' : '🔎 Só os que ninguém orou'}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Filtro só aparece quando há o que filtrar: numa turma com três
                 pedidos, sete chips são mais barulho que ajuda. */}
             {pedidos.length > 3 && (
-              <div style={{margin:'4px 0 14px', overflowX:'auto', paddingBottom:4}}>
+              <div style={{margin:'0 0 14px', overflowX:'auto', paddingBottom:4}}>
                 {chipsCategoria(filtro, (c: any) => setFiltro(c), true)}
               </div>
             )}
@@ -3037,7 +3107,7 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
               <div style={{textAlign:'center', padding:'36px 20px', color:'var(--mut)'}}>
                 <div style={{fontSize:44, marginBottom:12}}>🕊️</div>
                 <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>O mural ainda está vazio</div>
-                <div style={{fontSize:14, lineHeight:1.5}}>Seja o primeiro a pedir — ou volte amanhã para orar por quem pedir.</div>
+                <div style={{fontSize:14, lineHeight:1.5}}>Toque no ✍️ aqui embaixo para ser o primeiro a pedir — ou volte amanhã para orar por quem pedir.</div>
               </div>
             )}
 
@@ -3067,28 +3137,6 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
               </>
             )}
 
-            {/* Visão de quem conduz. Não é um painel separado de propósito: o
-                professor precisa ver o mural COMO a turma vê, com um resumo em
-                cima — e não um relatório que ninguém abre no sábado de manhã. */}
-            {podeModerar && pedidos.length > 0 && (
-              <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:14, padding:'12px 14px', marginBottom:14}}>
-                <div style={{fontSize:12, fontWeight:800, color:'var(--mut)', textTransform:'uppercase', letterSpacing:1, marginBottom:8}}>🎓 De olho na turma</div>
-                <div style={{display:'flex', gap:14, flexWrap:'wrap', fontSize:13, color:'var(--txt2)', marginBottom:10}}>
-                  <span><strong style={{color:'var(--gold)'}}>{abertos.length}</strong> em aberto</span>
-                  <span><strong style={{color: semNinguem.length ? '#E31C3D' : 'var(--txt2)'}}>{semNinguem.length}</strong> sem ninguém orando</span>
-                  <span><strong style={{color:'var(--txt2)'}}>{respondidos.length}</strong> respondido{respondidos.length !== 1 ? 's' : ''}</span>
-                </div>
-                <button
-                  className={`btn btn-ghost btn-sm ${soAOrar ? '' : ''}`}
-                  onClick={() => setSoAOrar(v => !v)}
-                  aria-pressed={soAOrar}
-                  style={{width:'auto', fontSize:12, padding:'7px 12px', border: soAOrar ? '2px solid var(--gold)' : undefined, color: soAOrar ? 'var(--gold)' : undefined}}
-                >
-                  {soAOrar ? '↩︎ Ver todos os pedidos' : '🔎 Só os que ninguém orou'}
-                </button>
-              </div>
-            )}
-
             {visiveis.length > 0 && (
               <>
                 <div className="oracao-sec-titulo">
@@ -3115,6 +3163,25 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
           </>
         )}
       </div>
+
+      {/* Botão de escrever, flutuando acima da barra. Só aparece quando há
+          para onde escrever: sem turma, a aba da turma não tem destino, e um
+          botão que abre uma folha para dar erro é pior que botão nenhum. A
+          aba particular sempre tem — ela não depende de turma. */}
+      {(aba === 'particular' || (!conducao.carregando && !!turmaId)) && !compondo && (
+        <div className="oracao-fab-wrap">
+          <button
+            className="oracao-fab"
+            onClick={() => setCompondo(true)}
+            aria-label={aba === 'particular' ? 'Guardar um motivo seu' : 'Escrever um pedido no mural'}
+            title={aba === 'particular' ? 'Guardar um motivo seu' : 'Escrever um pedido'}
+          >
+            {aba === 'particular' ? '🔒' : '✍️'}
+          </button>
+        </div>
+      )}
+
+      {folhaDeEscrever}
 
       {recadoPara && (
         <RecadoModal
