@@ -143,6 +143,45 @@ service cloud.firestore {
         || exists(/databases/$(database)/documents/turmas/$(incoming().turmaId));
     }
 
+    // ===== Fase 6: o chapéu de quem CONDUZ =====
+    // `users/{uid}.turmaId` responde "de que turma eu faço parte". Quem conduz
+    // é outra pergunta, e a resposta sempre esteve em `turmas/{id}.professores`
+    // — só que ninguém perguntava a ela. Até aqui liderança era deduzida do
+    // turmaId do próprio perfil, e por isso um professor só conseguia conduzir
+    // UMA turma: o campo é único e, depois de definido, congelado
+    // (ownerTurmaAllowedOnUpdate).
+    //
+    // Por que `professores` é autoridade confiável: só o admin escreve nela —
+    // a regra de update de turmas deixa o professor mexer apenas em `nome` — e
+    // a única auto-inclusão que existe exige um convite de professor queimado
+    // por quem está escrevendo, apontando para aquela turma.
+    //
+    // Custa um exists() + um get() por avaliação. Toda chamada fica DEPOIS do
+    // teste de turma própria, num `||`: no caso comum (professor conduzindo a
+    // turma de que faz parte) o curto-circuito paga zero.
+    function conduzoATurma(turmaId) {
+      return isProfessor()
+        && turmaId != ''
+        && exists(/databases/$(database)/documents/turmas/$(turmaId))
+        && (request.auth.uid in get(/databases/$(database)/documents/turmas/$(turmaId)).data.get('professores', []));
+    }
+
+    function ownInviteCode() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('inviteCode', '');
+    }
+
+    // O convite de professor guardado no MEU perfil aponta para esta turma? É o
+    // que deixa alguém entrar sozinho na lista `professores` de uma turma que
+    // não é a dele — o caminho da segunda turma. Nenhum poder novo: é a mesma
+    // autoridade que o promoveu a professor, relida.
+    function meuConviteDeProfessorAponta(turmaId) {
+      return isProfessor()
+        && ownInviteCode() != ''
+        && exists(/databases/$(database)/documents/teacherInvites/$(ownInviteCode()))
+        && get(/databases/$(database)/documents/teacherInvites/$(ownInviteCode())).data.get('usedBy', '') == request.auth.uid
+        && get(/databases/$(database)/documents/teacherInvites/$(ownInviteCode())).data.turmaId == turmaId;
+    }
+
     // Professor com escopo de turma (Fase 3b): enxerga o perfil de quem está
     // na MESMA turma que ele, e mais ninguém. Antes disto, isProfessor lia o
     // sistema inteiro.
@@ -157,10 +196,13 @@ service cloud.firestore {
     //    real na tela de gestão.
     // 2. Sem o `!= ''`, um professor SEM turma casaria com todo perfil que
     //    também está sem turma — que hoje seria meio sistema.
+    // 3. Desde a Fase 6 são DUAS fontes: a turma do perfil e as turmas que ele
+    //    conduz. A segunda vem depois no `||` de propósito — é a que custa
+    //    leitura, e o caso comum nem chega nela.
     function professorDaMesmaTurma(dados) {
       return isProfessor()
-        && ownTurmaId() != ''
-        && dados.get('turmaId', '') == ownTurmaId();
+        && ((ownTurmaId() != '' && dados.get('turmaId', '') == ownTurmaId())
+            || conduzoATurma(dados.get('turmaId', '')));
     }
 
     match /users/{userId} {
@@ -201,6 +243,7 @@ service cloud.firestore {
         && incoming().id == existing().id
         && incoming().email == existing().email
         && teacherInviteBurnedByMe()
+        && turmaDoPerfilOkNoResgate()
         && isValidUser(incoming()));
 
       allow delete: if isUserAdmin();
@@ -269,7 +312,7 @@ service cloud.firestore {
         // Só pode ACRESCENTAR a si mesmo: hasAll() garante que ninguém sai, e
         // size() + 1 garante que só um nome entra — o dele.
         || (isProfessor()
-          && ownTurmaId() == turmaId
+          && (ownTurmaId() == turmaId || meuConviteDeProfessorAponta(turmaId))
           && incoming().diff(existing()).affectedKeys().hasOnly(['professores', 'updatedAt'])
           && incoming().professores.hasAll(existing().professores)
           && incoming().professores.size() == existing().professores.size() + 1
@@ -331,7 +374,7 @@ service cloud.firestore {
     // sem depender de teacherAssignments. O antigo continua valendo — quem já
     // tinha local atribuído não perde nada.
     function professorOwnsTurma(turmaId) {
-      return isProfessor() && ownTurmaId() == turmaId;
+      return isProfessor() && (ownTurmaId() == turmaId || conduzoATurma(turmaId));
     }
 
     match /inviteCodes/{codeId} {
@@ -434,8 +477,25 @@ service cloud.firestore {
       return incoming().keys().hasAny(['inviteCode'])
         && incoming().inviteCode is string
         && exists(/databases/$(database)/documents/teacherInvites/$(incoming().inviteCode))
-        && get(/databases/$(database)/documents/teacherInvites/$(incoming().inviteCode)).data.get('usedBy', '') == request.auth.uid
-        && get(/databases/$(database)/documents/teacherInvites/$(incoming().inviteCode)).data.turmaId == incoming().turmaId;
+        && get(/databases/$(database)/documents/teacherInvites/$(incoming().inviteCode)).data.get('usedBy', '') == request.auth.uid;
+    }
+
+    function teacherInviteTurma() {
+      return get(/databases/$(database)/documents/teacherInvites/$(incoming().inviteCode)).data.turmaId;
+    }
+
+    // A turma do PERFIL é a de que a pessoa faz parte, e resgatar convite não a
+    // move (Fase 6): quem já tem turma vira professor da turma do convite
+    // entrando em `turmas/{id}.professores`, sem trocar de turma. Antes disto,
+    // o segundo convite arrastava a matrícula junto e largava a primeira turma
+    // para trás — a pessoa perdia o mural e o ranking de que fazia parte.
+    //
+    // Quem ainda não tem turma continua herdando a do convite: é o caminho do
+    // professor que entra no app pelo convite, sem matrícula anterior.
+    function turmaDoPerfilOkNoResgate() {
+      return existing().keys().hasAny(['turmaId'])
+        ? incoming().get('turmaId', '') == existing().turmaId
+        : (!incoming().keys().hasAny(['turmaId']) || incoming().turmaId == teacherInviteTurma());
     }
 
     // ===== Estudo em Dupla (Etapa 4) =====
@@ -1000,6 +1060,249 @@ service cloud.firestore {
         && incoming().diff(existing()).affectedKeys().hasOnly(['status'])
         && incoming().status in ['novo', 'lido', 'resolvido'];
       allow delete: if isUserAdmin();
+    }
+
+    // ===== Mural de orações (pedidos da turma) =====
+    // O escopo é a TURMA, e não a igreja nem o app inteiro: é o grupo que se
+    // conhece de verdade, e é o mesmo recorte que o professor já enxerga nas
+    // outras regras. Um mural aberto ao sistema seria gente estranha lendo
+    // pedido pessoal de adolescente.
+    //
+    // Sobre o "anônimo": ele esconde o nome DA TURMA, não da liderança. O
+    // autorId continua no documento porque é o que autoriza o próprio autor a
+    // apagar o pedido e o que permite ao professor saber quem precisa de ajuda
+    // — e a tela diz isso em voz alta, para ninguém escrever achando o
+    // contrário. Nome e avatar, esses sim, não podem NEM ESTAR no doc de um
+    // pedido anônimo: o mural é lido pela turma inteira, e um campo desses ali
+    // entregaria quem escreveu mesmo sem a tela mostrá-lo.
+    function minhaTurma() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? ownTurmaId()
+        : '';
+    }
+
+    function isValidPedidoOracao(data) {
+      return data.keys().hasAll(['autorId', 'turmaId', 'texto', 'anonimo', 'oraram', 'respondido', 'criadoEm'])
+        && data.keys().hasOnly(['autorId', 'autorNome', 'autorAvatar', 'turmaId', 'locationId', 'texto', 'anonimo', 'categoria', 'oraram', 'coracoes', 'curtidas', 'respondido', 'criadoEm'])
+        && data.autorId is string
+        && data.turmaId is string && data.turmaId.size() > 0 && data.turmaId.size() <= 200
+        && (!data.keys().hasAny(['locationId']) || (data.locationId is string && data.locationId.size() <= 200))
+        && data.texto is string && data.texto.size() > 0 && data.texto.size() <= 500
+        && data.anonimo is bool
+        // Opcional, e é o que permite os chips de filtro na tela. Pedido sem
+        // categoria (todos os de hoje) continua válido e continua aparecendo:
+        // a tela trata ausência como "Outro", nunca como "não pertence a nada".
+        && (!data.keys().hasAny(['categoria']) || data.categoria in ['saude', 'familia', 'escola', 'amizades', 'fe', 'outro'])
+        && (data.anonimo
+              ? !data.keys().hasAny(['autorNome', 'autorAvatar'])
+              : (data.autorNome is string && data.autorNome.size() > 0 && data.autorNome.size() <= 50
+                 && data.autorAvatar is string && data.autorAvatar.size() <= 1048576))
+        // Nasce sem ninguém tendo orado e sem estar respondido: as duas coisas
+        // só mudam depois, pelas regras de update abaixo.
+        && data.oraram is list && data.oraram.size() == 0
+        // Coração e curtida são opcionais no documento: pedidos criados antes
+        // de elas existirem continuam válidos, e quem os grava tem de gravá-los
+        // vazios — reação nasce de um toque, nunca de uma criação.
+        && (!data.keys().hasAny(['coracoes']) || (data.coracoes is list && data.coracoes.size() == 0))
+        && (!data.keys().hasAny(['curtidas']) || (data.curtidas is list && data.curtidas.size() == 0))
+        && data.respondido == false
+        && data.criadoEm == request.time;
+    }
+
+    // Reagir (🙏 orei, ❤️ coração, 👍 curtida): qualquer um da turma entra ou
+    // sai da lista, e SÓ com o próprio uid. Sem conferir tamanho E pertinência,
+    // uma única gravação encheria o contador de uids inventados — ou apagaria
+    // a reação dos outros.
+    function entraOuSaiSozinho(antes, depois) {
+      return depois is list
+        && depois.size() <= 300
+        && (
+          (depois.hasAll(antes)
+            && depois.size() == antes.size() + 1
+            && depois.hasAll([request.auth.uid])
+            && !antes.hasAny([request.auth.uid]))
+          ||
+          (antes.hasAll(depois)
+            && depois.size() == antes.size() - 1
+            && !depois.hasAny([request.auth.uid])
+            && antes.hasAll([request.auth.uid]))
+        );
+    }
+
+    // Uma reação por gravação. Deixar mexer em duas de uma vez abriria a porta
+    // para "entro no coração E saio da oração alheia" no mesmo update.
+    function soMexeNaPropriaReacao() {
+      return incoming().diff(existing()).affectedKeys().size() == 1
+        && (
+          (incoming().diff(existing()).affectedKeys().hasOnly(['oraram'])
+            && entraOuSaiSozinho(existing().get('oraram', []), incoming().oraram))
+          ||
+          (incoming().diff(existing()).affectedKeys().hasOnly(['coracoes'])
+            && entraOuSaiSozinho(existing().get('coracoes', []), incoming().coracoes))
+          ||
+          (incoming().diff(existing()).affectedKeys().hasOnly(['curtidas'])
+            && entraOuSaiSozinho(existing().get('curtidas', []), incoming().curtidas))
+        );
+    }
+
+    match /pedidosOracao/{id} {
+      // `list` é avaliado documento a documento contra ESTA condição, e a
+      // consulta que não couber nela é recusada inteira (não filtrada) — por
+      // isso o cliente pergunta sempre por where('turmaId','==', a minha).
+      // Ver listenToPedidosOracao em firebase.ts.
+      allow get, list: if isAuthenticated()
+        && (existing().turmaId == minhaTurma()
+            || isUserAdmin()
+            || conduzoATurma(existing().turmaId));
+
+      allow create: if isAuthenticated()
+        && incoming().autorId == request.auth.uid
+        // Quem conduz publica na turma que conduz, sem precisar fazer parte
+        // dela: e o professor de duas turmas deixando um pedido no mural da
+        // segunda, que nao e a turma do perfil dele.
+        && ((minhaTurma() != '' && incoming().turmaId == minhaTurma())
+            || conduzoATurma(incoming().turmaId))
+        && isValidPedidoOracao(incoming());
+
+      // Duas edições possíveis, e nada além delas: a turma marca "orei", e só
+      // o autor marca como respondido. O texto é imutável — pedido que muda
+      // depois de a turma orar por ele não é mais o mesmo pedido.
+      allow update: if isAuthenticated()
+        && (existing().turmaId == minhaTurma() || conduzoATurma(existing().turmaId))
+        && (
+          soMexeNaPropriaReacao()
+          || (isOwner(existing().autorId)
+              && incoming().diff(existing()).affectedKeys().hasOnly(['respondido'])
+              && incoming().respondido is bool)
+        );
+
+      // Apagam: quem escreveu, o professor da turma e o admin.
+      allow delete: if isOwner(existing().autorId)
+        || isUserAdmin()
+        || professorDaMesmaTurma(existing());
+    }
+
+    // ===== Recados de apoio =====
+    // Nasceu de "mandar uma mensagem para dar forças". NÃO é um chat aberto
+    // entre alunos, de propósito: o recado só existe pendurado num pedido de
+    // oração, só chega a QUEM PUBLICOU aquele pedido, não tem resposta
+    // encadeada, e quem escreve assina sempre. Um chat livre entre menores de
+    // idade, sem moderação, é exatamente o que uma escola sabatina não pode
+    // hospedar — e cada uma dessas quatro travas está aqui embaixo.
+    //
+    // "Privado" aqui quer dizer: os colegas não leem. O professor da turma e o
+    // admin leem, e a tela avisa isso antes de a pessoa escrever.
+    function pedidoDaMinhaTurma(pedidoId) {
+      return exists(/databases/$(database)/documents/pedidosOracao/$(pedidoId))
+        && (get(/databases/$(database)/documents/pedidosOracao/$(pedidoId)).data.turmaId == minhaTurma()
+            || conduzoATurma(get(/databases/$(database)/documents/pedidosOracao/$(pedidoId)).data.turmaId));
+    }
+
+    function autorDoPedido(pedidoId) {
+      return get(/databases/$(database)/documents/pedidosOracao/$(pedidoId)).data.autorId;
+    }
+
+    function isValidRecado(data) {
+      return data.keys().hasAll(['pedidoId', 'paraId', 'deId', 'deNome', 'deAvatar', 'texto', 'turmaId', 'lida', 'criadoEm'])
+        && data.keys().hasOnly(['pedidoId', 'paraId', 'deId', 'deNome', 'deAvatar', 'texto', 'turmaId', 'lida', 'criadoEm'])
+        && data.pedidoId is string && data.pedidoId.size() > 0 && data.pedidoId.size() <= 200
+        && data.paraId is string && data.paraId.size() > 0
+        && data.deId is string && data.deId.size() > 0
+        // Quem manda assina. Recado anônimo para um adolescente é o formato
+        // clássico do bullying — o anonimato do mural vale para PEDIR, não
+        // para escrever na caixa de alguém.
+        && data.deNome is string && data.deNome.size() > 0 && data.deNome.size() <= 50
+        && data.deAvatar is string && data.deAvatar.size() <= 1048576
+        && data.texto is string && data.texto.size() > 0 && data.texto.size() <= 300
+        && data.turmaId is string && data.turmaId.size() > 0 && data.turmaId.size() <= 200
+        && data.lida == false
+        && data.criadoEm == request.time;
+    }
+
+    // ===== Motivos de oração particulares =====
+    // COLEÇÃO SEPARADA, e não um campo `privado` dentro de pedidosOracao. A
+    // diferença não é de estilo:
+    //
+    // 1. `allow list` é tudo-ou-nada contra a consulta. Com um booleano no
+    //    mesmo lugar, a consulta da turma teria de carregar
+    //    `where('privado','==',false)` sempre, e bastaria um esquecimento num
+    //    lugar do cliente para a leitura inteira ser recusada — ou, pior, para
+    //    um pedido particular entrar num resultado que a turma lê.
+    // 2. Documento antigo não tem o campo, e `where('privado','==',false)` NÃO
+    //    devolve documento sem o campo: todo pedido já publicado sumiria do
+    //    mural no dia da virada (Princípio 3). Coleção separada não migra nada.
+    // 3. Aqui a privacidade é estrutural: não existe leitor além do dono, então
+    //    não há regra para errar.
+    //
+    // NÃO há saída de admin nem de professor, de propósito. A tela promete
+    // "só você vê" — e uma promessa dessas, feita a um adolescente, ou é
+    // verdadeira na regra ou não devia ser feita. O pedido que ele QUER que a
+    // liderança leia é o do mural, que continua ali do lado.
+    function isValidOracaoParticular(data) {
+      return data.keys().hasAll(['autorId', 'texto', 'respondida', 'criadoEm'])
+        && data.keys().hasOnly(['autorId', 'texto', 'categoria', 'respondida', 'criadoEm'])
+        && data.autorId is string && data.autorId.size() > 0
+        && data.texto is string && data.texto.size() > 0 && data.texto.size() <= 500
+        && (!data.keys().hasAny(['categoria']) || data.categoria in ['saude', 'familia', 'escola', 'amizades', 'fe', 'outro'])
+        && data.respondida is bool
+        && data.criadoEm == request.time;
+    }
+
+    match /oracoesParticulares/{id} {
+      // A consulta do cliente é where('autorId','==', eu) — índice de campo
+      // único, automático. A ordenação é no cliente: são poucos documentos, e
+      // um orderBy aqui pediria índice composto sem necessidade.
+      allow get, list: if isAuthenticated() && isOwner(existing().autorId);
+
+      allow create: if isOwner(incoming().autorId)
+        && isValidOracaoParticular(incoming())
+        && incoming().respondida == false;
+
+      // Só o "já foi respondida" muda. O texto é imutável pela mesma razão do
+      // mural: motivo que se reescreve depois não é mais o mesmo motivo.
+      allow update: if isOwner(existing().autorId)
+        && isOwner(incoming().autorId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['respondida'])
+        && incoming().respondida is bool;
+
+      allow delete: if isOwner(existing().autorId);
+    }
+
+    match /recadosApoio/{id} {
+      // Destinatário, remetente, professor da turma e admin. A consulta do
+      // aluno é where('paraId','==', eu) — `list` é tudo-ou-nada contra ela.
+      allow get, list: if isAuthenticated()
+        && (existing().paraId == request.auth.uid
+            || existing().deId == request.auth.uid
+            || isUserAdmin()
+            || professorDaMesmaTurma(existing()));
+
+      allow create: if isAuthenticated()
+        && incoming().deId == request.auth.uid
+        && ((minhaTurma() != '' && incoming().turmaId == minhaTurma())
+            || conduzoATurma(incoming().turmaId))
+        && isValidRecado(incoming())
+        // O recado só existe preso a um pedido da MINHA turma, e só vai para
+        // quem publicou aquele pedido. É isto que impede o recado de virar
+        // mensagem direta para qualquer pessoa do app.
+        && pedidoDaMinhaTurma(incoming().pedidoId)
+        && incoming().paraId == autorDoPedido(incoming().pedidoId)
+        && incoming().paraId != request.auth.uid;
+
+      // Só o destinatário marca como lido. Nada mais muda: recado é imutável,
+      // para que não possa ser reescrito depois de lido.
+      allow update: if isAuthenticated()
+        && existing().paraId == request.auth.uid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['lida'])
+        && incoming().lida is bool;
+
+      // Quem recebeu apaga o que não quer guardar; quem mandou se arrepende;
+      // professor e admin moderam.
+      allow delete: if isAuthenticated()
+        && (existing().paraId == request.auth.uid
+            || existing().deId == request.auth.uid
+            || isUserAdmin()
+            || professorDaMesmaTurma(existing()));
     }
 
   }

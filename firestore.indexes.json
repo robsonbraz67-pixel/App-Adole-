@@ -15,6 +15,30 @@
         { "fieldPath": "locationId", "order": "ASCENDING" },
         { "fieldPath": "week", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "pedidosOracao",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "turmaId", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "recadosApoio",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "paraId", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "recadosApoio",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "turmaId", "order": "ASCENDING" },
+        { "fieldPath": "criadoEm", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -18,6 +18,8 @@ convite — sem parar o sistema que já está em uso.
 | Escopo do ranking | Três níveis: **turma**, **igreja**, **geral**. | 2026-09-10 |
 | Conteúdo das lições | Continua **embarcado no código** (custo zero de leitura, funciona offline). Importado a cada trimestre. | 2026-09-10 |
 | Exclusão de turma | Não existe. Turma se **arquiva** (`active: false`) para não orfanar histórico. | 2026-09-10 |
+| Quem conduz uma turma | `turmas/{id}.professores`, **não** `users/{uid}.turmaId`. O perfil diz de que turma a pessoa faz parte; a lista diz quem conduz. Um professor conduz várias. | 2026-09-13 |
+| Turma sendo conduzida | Estado de tela (`localStorage`), nunca do perfil — senão volta o campo com dois significados. | 2026-09-13 |
 
 ---
 
@@ -695,6 +697,112 @@ anterior, e desfazer isso seria reverter uma decisão de conteúdo sem motivo.
 
 ---
 
+## Fase 6 — Quem conduz e quem faz parte
+
+**Entrega:** professor e admin acompanham mais de uma turma (painel, sorteio,
+mural) sem que isso interfira no que eles próprios estudam.
+**Modelo:** Opus 5 (regra + dados), UI no mesmo passo.
+
+### O nó
+
+`users/{uid}.turmaId` significava duas coisas ao mesmo tempo:
+
+| Pergunta | Onde era respondida |
+|---|---|
+| De que turma eu **faço parte**? | `users/{uid}.turmaId` |
+| Que turma eu **conduzo**? | `users/{uid}.turmaId`, de novo |
+
+O campo é **um só** e, depois de definido, **congelado** (`ownerTurmaAllowedOnUpdate`,
+e mudar de turma é ato de admin). Logo: um professor conduzia exatamente uma
+turma, para sempre. Três sintomas saíam daí:
+
+1. Professor de duas classes não tinha como acompanhar a segunda.
+2. O sorteio pescava na **semana inteira do sistema** (`getWeeklyRanking` sem
+   recorte): com duas igrejas no ar, o prêmio saía para um nome que ninguém
+   daquela sala conhecia.
+3. O mural era o da turma **dele**, não o das turmas **dele**.
+
+A trilha já não fazia parte do nó: `handleSwitchTrack` (App.tsx) mexe só no
+perfil, e o painel já lia `turma.track` em vez da trilha do professor. Esta fase
+é o mesmo movimento, aplicado à turma.
+
+### A decisão
+
+**A autoridade de quem conduz passa a ser `turmas/{id}.professores`** — que já
+existia e já era segura: só o admin escreve nela (o professor edita apenas
+`nome`), e a única auto-inclusão exige um convite de professor queimado por
+quem está escrevendo, apontando para aquela turma.
+
+`users/{uid}.turmaId` volta a significar **só matrícula**.
+
+A turma que está sendo conduzida é **estado de tela** (`localStorage`), nunca do
+perfil. Gravá-la no perfil traria de volta exatamente o nó que esta fase desfaz:
+um campo com dois significados.
+
+### Passos
+
+1. **Regra primeiro** (Princípio 1), toda somada com `||` — nada removido:
+   - `conduzoATurma(turmaId)`: sou professor e estou em `professores` daquela turma;
+   - `professorDaMesmaTurma()` passa a aceitar as turmas conduzidas — o que
+     estende de uma vez `users` (get/list), `pedidosOracao` (delete) e
+     `recadosApoio` (get/list/delete);
+   - `pedidosOracao` get/list/create/update e `recadosApoio` create aceitam a
+     turma conduzida;
+   - `professorOwnsTurma()` (código de matrícula) idem.
+2. **O resgate de convite deixa de mover a matrícula.** Era o efeito colateral
+   que tornava a segunda turma impossível: quem já estava numa turma e resgatava
+   um convite de outra **perdia** o mural e o ranking da primeira. Agora quem já
+   tem turma vira professor da turma do convite entrando em `professores`, sem
+   trocar de turma; quem ainda não tem continua herdando a do convite
+   (`turmaDoPerfilOkNoResgate`, e `meuConviteDeProfessorAponta` para a entrada
+   na lista).
+3. **Dados:** `getTurmasQueConduzo` (admin → todas as ativas; professor →
+   `array-contains` + a turma do próprio perfil) e `getWeeklyRankingDaTurma`.
+4. **Abstração:** `useTurmaAtiva` + `SeletorTurmaAtiva` (`components.tsx`). Com
+   uma turma só, o seletor não vira `<select>` — vira uma linha de texto.
+5. **Telas:** Sorteador (turma recorta os elegíveis e define a trilha de
+   partida), Painel do Professor (multi-turma) e Mural (turma conduzida +
+   "de olho na turma": quantos em aberto, quantos **sem ninguém orando**, filtro).
+
+### O que NÃO mudou, de propósito
+
+- **Custo:** nenhum índice novo. O recorte do sorteio usa o índice
+  `progress(turmaId, week)` que a Fase 4 já declarou, e o do mural usa
+  `pedidosOracao(turmaId, criadoEm)`.
+- **Anonimato do mural:** intacto. `autorId` continua no documento e a tela
+  continua dizendo, com todas as letras, que a liderança sabe quem escreveu.
+- **Mover aluno de turma** segue sendo ato de admin, conduza o professor
+  quantas turmas conduzir.
+- **Progresso do professor** continua carimbado com o `turmaId` dele. Já é
+  filtrado do ranking por `isProfessor`; mexer nisso seria migração com ganho zero.
+- **A segunda turma de um professor** entra pelo painel do admin (🏫 Turmas →
+  editar → Professores), que já existia.
+
+### Verificação
+
+`npm run test:rules` — 31 testes novos em `tests/rules/conduzir-turmas.test.ts`,
+total 175. Metade deles prova o que **não** se alargou: quem está em
+`professores` sem ser professor não ganha nada, professor não lê turma que não
+conduz, não lista o sistema inteiro, não enxerga quem está sem turma, e o
+convite abre a porta de UMA turma — a dele —, não de qualquer uma.
+
+Degradação: `getWeeklyRankingDaTurma` cai para a semana inteira se a consulta
+recortada falhar. Mesma escolha de `listenToWeekProgress` — um sorteio vazio
+parece "ninguém estudou", e não "a consulta falhou".
+
+### Rollback
+
+As regras são aditivas: republicar o `firestore.rules` anterior devolve o
+comportamento de antes sem invalidar dado nenhum. No cliente, quem conduz uma
+turma só vê exatamente a tela de antes — o caminho novo só aparece com duas.
+
+A exceção é o passo 2: um professor que já tenha resgatado convite **depois**
+desta fase está em `professores` sem ter o `turmaId` daquela turma, e voltar as
+regras atrás o faria perder o acesso a ela. Correção: o admin o coloca na turma
+pelo painel, ou se republica esta versão.
+
+---
+
 ## Anexo A — Modelo de dados alvo
 
 ```
@@ -712,7 +820,7 @@ turmas/{id}                  NOVA
 teacherInvites/{CODIGO}      NOVA
   locationId, turmaId, active, createdBy, createdAt, expiresAt, usedBy?
 
-users/{uid}                  + turmaId (opcional)
+users/{uid}                  + turmaId (opcional) — MATRÍCULA, não liderança (Fase 6)
 inviteCodes/{CODIGO}         + turmaId (opcional)
 progress/{...}               + turmaId (opcional)
 ```
@@ -730,6 +838,8 @@ herda as duas.
 | Custo de leitura do ranking | Fase 4: escopo por turma, ~66× menos leituras |
 | Estreitar professor trava professor real | Fase 3: flag + testes do que foi removido |
 | Turma excluída orfana histórico | Arquivar (`active: false`), nunca excluir |
+| Liderança deduzida do perfil trava o professor em UMA turma | Fase 6: a autoridade é `turmas/{id}.professores` |
+| Resgate de convite arrastava a matrícula e largava a turma anterior | Fase 6: `turmaDoPerfilOkNoResgate` congela o `turmaId` de quem já tem turma |
 
 ## Anexo C — Como testar sem custo
 
