@@ -244,6 +244,7 @@ export const createTurma = async (
     createdBy,
     createdAt: serverTimestamp(),
   });
+  invalidarTurmasQueConduzo();
   return ref.id;
 };
 
@@ -258,6 +259,10 @@ export const updateTurma = async (
   if (patch.locationId !== undefined) checarLocationTurma(patch.locationId);
   if (patch.professores !== undefined) checarProfessoresTurma(patch.professores);
   await updateDoc(doc(db, 'turmas', turmaId), { ...limpo, updatedAt: serverTimestamp() });
+  // Mexer na lista de professores muda quem conduz o quê (Fase 6): o cache
+  // precisa cair junto, senão o admin salva a turma e o seletor continua
+  // mostrando a lista velha por um minuto.
+  invalidarTurmasQueConduzo();
 };
 
 // Turma se ARQUIVA, nunca se exclui: os documentos de progresso carregam
@@ -265,6 +270,7 @@ export const updateTurma = async (
 // (`delete: if false`) — aqui só existe o caminho certo.
 export const arquivarTurma = async (turmaId: string, active: boolean) => {
   await updateDoc(doc(db, 'turmas', turmaId), { active, updatedAt: serverTimestamp() });
+  invalidarTurmasQueConduzo();
 };
 
 // ===== Backfill de turmas rodando no navegador do admin (Fase 2) =====
@@ -538,21 +544,35 @@ export const resgatarConviteProfessor = async (codigo: string, jogador: any) => 
     usedAt: serverTimestamp(),
   });
 
+  // turmaId só vai quando ainda NÃO existe (Fase 6). Quem já está matriculado
+  // numa turma vira professor da turma do convite pela lista `professores`, e
+  // continua fazendo parte da sua: antes disto, o segundo convite arrastava a
+  // matrícula junto e a pessoa perdia o mural e o ranking de que fazia parte.
+  // A regra impõe o mesmo (turmaDoPerfilOkNoResgate) — aqui é o caminho certo.
   await updateDoc(doc(db, 'users', jogador.id), {
     isProfessor: true,
-    turmaId: convite.turmaId,
+    ...(jogador.turmaId ? {} : { turmaId: convite.turmaId }),
     inviteCode: code,
   });
 
-  try {
-    if (!(turma.professores || []).includes(jogador.id)) {
+  // Agora que a lista é a AUTORIDADE de quem conduz (e não mais o turmaId do
+  // perfil), entrar nela deixou de ser cosmético: para quem já tinha turma, é
+  // a única coisa que o torna professor daquela turma. Por isso o erro sobe em
+  // vez de ser engolido — mas depois do perfil, que é o que concede o papel.
+  const jaNaLista = (turma.professores || []).includes(jogador.id);
+  if (!jaNaLista) {
+    try {
       await updateDoc(doc(db, 'turmas', convite.turmaId), {
         professores: [...(turma.professores || []), jogador.id],
         updatedAt: serverTimestamp(),
       });
+      invalidarTurmasQueConduzo();
+    } catch (e) {
+      console.error('entrar na lista de professores', e);
+      if (jogador.turmaId && jogador.turmaId !== convite.turmaId) {
+        throw new Error('Você virou professor, mas não foi possível ligar você à turma do convite. Peça a um admin para te adicionar a ela.');
+      }
     }
-  } catch {
-    // Não é motivo para dizer que o resgate falhou: o perfil já é o que vale.
   }
 
   return { turmaId: convite.turmaId, turmaNome: turma.nome as string };
@@ -588,6 +608,88 @@ export const matricularPorCodigoDaTurma = async (codigo: string, jogador: any) =
 
   await updateDoc(doc(db, 'users', jogador.id), patch);
   return { turmaId: convite.turmaId, turmaNome: turma.nome as string };
+};
+
+// ===== Fase 6: as turmas que eu CONDUZO =====
+// `jogador.turmaId` diz de que turma a pessoa FAZ PARTE. Conduzir é outra
+// coisa, e mora em `turmas/{id}.professores` — um professor pode conduzir
+// várias, inclusive turmas de que não faz parte.
+//
+// Três fontes, nesta ordem, e a ordem tem motivo:
+//
+// 1. Admin conduz todas as ativas. Ele já lê a coleção inteira, e é assim que
+//    acompanha qualquer turma sem precisar entrar na lista de ninguém.
+// 2. `array-contains` na lista de professores — o caminho normal.
+// 3. A turma do PRÓPRIO PERFIL, mesmo que ele não esteja na lista dela.
+//    Parece redundante e não é: resgatarConviteProfessor adiciona à lista
+//    dentro de um try/catch que pode falhar em silêncio (e falhava, antes de
+//    2026-09-13). Existe professor real em produção com turmaId e fora de
+//    `professores` — e a regra continua atendendo esse caso por ownTurmaId().
+//    Sem o passo 3, o painel diria a ele "você não conduz turma nenhuma".
+// Três telas chamam isto (painel, sorteio, mural), e o admin paga a coleção
+// inteira de turmas em cada uma. Um minuto de cache corta a repetição sem
+// esconder por muito tempo a turma que ele acabou de criar no painel ao lado.
+let cacheConduzo: { chave: string; em: number; turmas: Turma[] } | null = null;
+const CACHE_CONDUZO_MS = 60_000;
+
+export const invalidarTurmasQueConduzo = () => { cacheConduzo = null; };
+
+export const getTurmasQueConduzo = async (jogador: any): Promise<Turma[]> => {
+  if (!jogador?.isAdmin && !jogador?.isProfessor) return [];
+
+  const chave = `${jogador.id}|${!!jogador.isAdmin}|${jogador.turmaId || ''}`;
+  if (cacheConduzo && cacheConduzo.chave === chave && Date.now() - cacheConduzo.em < CACHE_CONDUZO_MS) {
+    return cacheConduzo.turmas;
+  }
+  const guardar = (turmas: Turma[]) => {
+    cacheConduzo = { chave, em: Date.now(), turmas };
+    return turmas;
+  };
+
+  if (jogador.isAdmin) return guardar((await getTurmas()).filter(t => t.active !== false));
+
+  const porLista: Turma[] = [];
+  try {
+    const snap = await getDocs(query(collection(db, 'turmas'), where('professores', 'array-contains', jogador.id)));
+    snap.forEach(d => porLista.push({ id: d.id, ...(d.data() as any) }));
+  } catch (e) {
+    // Consulta recusada ou sem índice não pode apagar a turma do perfil.
+    console.error('getTurmasQueConduzo', e);
+  }
+
+  if (jogador.turmaId && !porLista.some(t => t.id === jogador.turmaId)) {
+    const minha = await getTurma(jogador.turmaId).catch(() => null);
+    if (minha) porLista.push(minha);
+  }
+
+  return guardar(
+    porLista
+      .filter(t => t.active !== false)
+      .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR')),
+  );
+};
+
+// Participantes do sorteio recortados por turma. Usa o índice composto
+// (turmaId + week) que a Fase 4 já declarou — nenhum índice novo.
+//
+// Sem turma, cai no comportamento antigo (a semana inteira): é o que mantém
+// o sorteio funcionando para quem ainda não tem turma nenhuma.
+export const getWeeklyRankingDaTurma = async (week: string, turmaId?: string) => {
+  if (!turmaId) return getWeeklyRanking(week);
+  try {
+    const [snap, adminIds] = await Promise.all([
+      getDocs(query(collection(db, 'progress'), where('turmaId', '==', turmaId), where('week', '==', week))),
+      getAdminIds(),
+    ]);
+    return aggregateWeekRanking(rowsFromSnap(snap, adminIds));
+  } catch (e) {
+    // Mesma escolha de listenToWeekProgress: índice indisponível derruba a
+    // consulta INTEIRA, e um sorteio com lista vazia parece "ninguém estudou"
+    // em vez de "a consulta falhou". Cair para a semana toda custa leitura e
+    // mostra gente demais — o que dá para ver e corrigir.
+    console.error('getWeeklyRankingDaTurma: caindo para a semana inteira', e);
+    return getWeeklyRanking(week);
+  }
 };
 
 export const getAdminIds = async (): Promise<Set<string>> => {
@@ -1194,3 +1296,248 @@ export const marcarRelatoStatus = async (id: string, status: 'lido' | 'resolvido
 export const excluirRelato = async (id: string) => {
   await deleteDoc(doc(db, 'userReports', id));
 };
+
+// ===== Mural de orações (pedidos da turma) =====
+// Coleção própria, e não uma subcoleção de turmas/: a consulta é por turma +
+// data e precisa do índice composto (ver firestore.indexes.json).
+//
+// O "anônimo" esconde o nome DA TURMA, não da liderança — autorId continua no
+// documento, porque é ele que autoriza o autor a apagar o próprio pedido e o
+// professor a saber quem precisa de ajuda. A tela diz isso com todas as
+// letras; ver MuralOracoes em components.tsx.
+export type PedidoOracao = {
+  id: string;
+  autorId: string;
+  autorNome?: string;
+  autorAvatar?: string;
+  anonimo: boolean;
+  categoria?: CategoriaOracao;
+  turmaId: string;
+  locationId?: string;
+  texto: string;
+  oraram: string[];
+  coracoes?: string[];
+  curtidas?: string[];
+  respondido: boolean;
+  criadoEm?: any;
+};
+
+// As três reações vivem em listas separadas (e não num mapa) porque a regra
+// precisa provar, campo a campo, que cada um só mexeu no PRÓPRIO uid.
+export type ReacaoPedido = 'oraram' | 'coracoes' | 'curtidas';
+
+// ===== Categorias =====
+// Os ids são internos e ficam (Princípio 2 do PLANO-EXPANSAO): eles vão para o
+// documento e estão na regra (`data.categoria in [...]`). Só o rótulo muda.
+//
+// A lista é fechada de propósito. "Outro" existe para o que não cabe nos cinco
+// — um campo livre viraria uma nuvem de categorias com uma pessoa em cada.
+export type CategoriaOracao = 'saude' | 'familia' | 'escola' | 'amizades' | 'fe' | 'outro';
+
+export const CATEGORIAS_ORACAO: { id: CategoriaOracao; rotulo: string; emoji: string }[] = [
+  { id: 'saude',    rotulo: 'Saúde',     emoji: '💚' },
+  { id: 'familia',  rotulo: 'Família',   emoji: '🏠' },
+  { id: 'escola',   rotulo: 'Escola',    emoji: '📚' },
+  { id: 'amizades', rotulo: 'Amizades',  emoji: '🤝' },
+  { id: 'fe',       rotulo: 'Fé',        emoji: '✝️' },
+  { id: 'outro',    rotulo: 'Outro',     emoji: '💬' },
+];
+
+const CATEGORIAS_VALIDAS = new Set(CATEGORIAS_ORACAO.map(c => c.id));
+
+// Pedido antigo não tem categoria, e isso nunca pode virar "sumiu": cai em
+// 'outro', que é onde ele já estaria se tivesse sido escrito hoje.
+export const categoriaDe = (c?: string): CategoriaOracao =>
+  (c && CATEGORIAS_VALIDAS.has(c as CategoriaOracao)) ? (c as CategoriaOracao) : 'outro';
+
+export const rotuloCategoria = (c?: string) =>
+  CATEGORIAS_ORACAO.find(x => x.id === categoriaDe(c))!;
+
+export type RecadoApoio = {
+  id: string;
+  pedidoId: string;
+  paraId: string;
+  deId: string;
+  deNome: string;
+  deAvatar: string;
+  texto: string;
+  turmaId: string;
+  lida: boolean;
+  criadoEm?: any;
+};
+
+export const RECADO_TEXTO_MAX = 300;
+
+export const PEDIDO_TEXTO_MAX = 500;
+
+// Teto do que a tela mostra. A turma tem dezenas de pessoas, não milhares:
+// 60 pedidos cobrem meses de mural e seguram o custo da assinatura.
+const MURAL_LIMITE = 60;
+
+export const listenToPedidosOracao = (turmaId: string, cb: (lista: PedidoOracao[]) => void) => {
+  const q = query(
+    collection(db, 'pedidosOracao'),
+    where('turmaId', '==', turmaId),
+    orderBy('criadoEm', 'desc'),
+    limit(MURAL_LIMITE),
+  );
+  return onSnapshot(q, snap => {
+    const lista: PedidoOracao[] = [];
+    snap.forEach(d => lista.push({ id: d.id, ...(d.data() as any) }));
+    cb(lista);
+  }, e => console.error('mural de orações', e));
+};
+
+// `turmaId` explícito é o caso de quem conduz: o professor publica no mural da
+// turma que está conduzindo, que nem sempre é a turma do perfil dele.
+export const criarPedidoOracao = async (
+  jogador: any,
+  texto: string,
+  anonimo: boolean,
+  turmaId?: string,
+  categoria?: CategoriaOracao,
+) => {
+  const alvo = turmaId || jogador?.turmaId;
+  if (!alvo) throw new Error('sem turma');
+  const ref = doc(collection(db, 'pedidosOracao'));
+  await setDoc(ref, {
+    autorId: jogador.id,
+    // Pedido anônimo não LEVA nome nem avatar. Esconder na renderização não
+    // bastaria: o mural inteiro é lido pela turma, e o campo estaria ali.
+    // (As regras recusam a gravação que tentar mandá-los mesmo assim.)
+    ...(anonimo ? {} : { autorNome: jogador.nome || '', autorAvatar: jogador.avatar || '' }),
+    anonimo,
+    // Só vai quando existe: a regra aceita o documento sem o campo (é o caso
+    // de todo pedido já publicado), mas recusa um valor fora da lista.
+    ...(categoria ? { categoria } : {}),
+    turmaId: alvo,
+    ...(jogador.locationId ? { locationId: jogador.locationId } : {}),
+    texto: texto.trim().slice(0, PEDIDO_TEXTO_MAX),
+    oraram: [],
+    coracoes: [],
+    curtidas: [],
+    respondido: false,
+    criadoEm: serverTimestamp(),
+  });
+  return ref.id;
+};
+
+// Quem reagiu fica guardado por uid (e não como um contador solto) por dois
+// motivos: dá para mostrar "você já orou" ao voltar de outro aparelho, e a
+// regra consegue provar que cada um só mexe no próprio uid.
+//
+// Uma reação por gravação — é o que a regra aceita (ver soMexeNaPropriaReacao).
+export const reagirAoPedido = async (pedidoId: string, campo: ReacaoPedido, userId: string, ativo: boolean) => {
+  await updateDoc(doc(db, 'pedidosOracao', pedidoId), {
+    [campo]: ativo ? arrayUnion(userId) : arrayRemove(userId),
+  });
+};
+
+export const marcarPedidoRespondido = async (pedidoId: string, respondido: boolean) => {
+  await updateDoc(doc(db, 'pedidosOracao', pedidoId), { respondido });
+};
+
+export const excluirPedidoOracao = async (pedidoId: string) =>
+  deleteDoc(doc(db, 'pedidosOracao', pedidoId));
+
+// ===== Recados de apoio =====
+// Não é um chat: o recado nasce pendurado num pedido de oração, vai só para
+// quem publicou aquele pedido, é assinado por quem escreve e não tem resposta
+// encadeada. O porquê de cada uma dessas travas está na regra de
+// `recadosApoio` (firestore.rules).
+const RECADOS_LIMITE = 40;
+
+export const listenToRecados = (paraId: string, cb: (lista: RecadoApoio[]) => void) => {
+  const q = query(
+    collection(db, 'recadosApoio'),
+    where('paraId', '==', paraId),
+    orderBy('criadoEm', 'desc'),
+    limit(RECADOS_LIMITE),
+  );
+  return onSnapshot(q, snap => {
+    const lista: RecadoApoio[] = [];
+    snap.forEach(d => lista.push({ id: d.id, ...(d.data() as any) }));
+    cb(lista);
+  }, e => console.error('recados de apoio', e));
+};
+
+// A turma do RECADO é a do pedido, não a do perfil de quem escreve: é o que
+// deixa quem conduz responder a um pedido de turma de que não faz parte. A
+// regra confere as duas pontas (o pedido existe, é daquela turma, e eu ou faço
+// parte dela ou a conduzo).
+export const enviarRecado = async (jogador: any, pedido: { id: string; autorId: string; turmaId?: string }, texto: string) => {
+  const alvo = pedido.turmaId || jogador?.turmaId;
+  if (!alvo) throw new Error('sem turma');
+  const ref = doc(collection(db, 'recadosApoio'));
+  await setDoc(ref, {
+    pedidoId: pedido.id,
+    paraId: pedido.autorId,
+    deId: jogador.id,
+    // Sempre assinado: ver o comentário de isValidRecado nas regras.
+    deNome: jogador.nome || '',
+    deAvatar: jogador.avatar || '',
+    texto: texto.trim().slice(0, RECADO_TEXTO_MAX),
+    turmaId: alvo,
+    lida: false,
+    criadoEm: serverTimestamp(),
+  });
+  return ref.id;
+};
+
+// ===== Motivos de oração particulares =====
+// Coleção à parte, e não um campo dentro de pedidosOracao. As três razões estão
+// na regra (firestore.rules, match /oracoesParticulares), e a que decide é esta:
+// `allow list` é tudo-ou-nada contra a consulta, então um booleano de
+// privacidade dentro do mural transformaria cada consulta esquecida num
+// vazamento ou numa tela vazia. Aqui não existe leitor além do dono.
+//
+// Ninguém mais lê: nem a turma, nem o professor, nem o admin. É o que a tela
+// promete antes de a pessoa escrever.
+export type OracaoParticular = {
+  id: string;
+  autorId: string;
+  texto: string;
+  categoria?: CategoriaOracao;
+  respondida: boolean;
+  criadoEm?: any;
+};
+
+export const PARTICULAR_TEXTO_MAX = 500;
+
+// Sem orderBy na consulta de propósito: ordenar no servidor pediria um índice
+// composto (autorId + criadoEm) para uma lista que tem dezenas de itens, não
+// milhares. A ordenação sai aqui, de graça.
+export const listenToOracoesParticulares = (userId: string, cb: (lista: OracaoParticular[]) => void) => {
+  const q = query(collection(db, 'oracoesParticulares'), where('autorId', '==', userId));
+  return onSnapshot(q, snap => {
+    const lista: OracaoParticular[] = [];
+    snap.forEach(d => lista.push({ id: d.id, ...(d.data() as any) }));
+    lista.sort((a, b) => (b.criadoEm?.toMillis?.() || 0) - (a.criadoEm?.toMillis?.() || 0));
+    cb(lista);
+  }, e => console.error('motivos particulares', e));
+};
+
+export const criarOracaoParticular = async (jogador: any, texto: string, categoria?: CategoriaOracao) => {
+  if (!jogador?.id) throw new Error('sem usuário');
+  const ref = doc(collection(db, 'oracoesParticulares'));
+  await setDoc(ref, {
+    autorId: jogador.id,
+    texto: texto.trim().slice(0, PARTICULAR_TEXTO_MAX),
+    ...(categoria ? { categoria } : {}),
+    respondida: false,
+    criadoEm: serverTimestamp(),
+  });
+  return ref.id;
+};
+
+export const marcarParticularRespondida = async (id: string, respondida: boolean) =>
+  updateDoc(doc(db, 'oracoesParticulares', id), { respondida });
+
+export const excluirOracaoParticular = async (id: string) =>
+  deleteDoc(doc(db, 'oracoesParticulares', id));
+
+export const marcarRecadoLido = async (recadoId: string) =>
+  updateDoc(doc(db, 'recadosApoio', recadoId), { lida: true });
+
+export const excluirRecado = async (recadoId: string) =>
+  deleteDoc(doc(db, 'recadosApoio', recadoId));

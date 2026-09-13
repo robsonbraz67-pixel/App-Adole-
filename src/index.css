@@ -638,11 +638,22 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 .fab-top.show{opacity:1;transform:translateY(0);pointer-events:auto}
 
 /* ===== NAVBAR DE ÍCONES ===== */
-.nav-row{display:flex;justify-content:space-around;align-items:center}
-.nav-it{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:6px 12px;border-radius:12px;font-family:'Poppins',sans-serif;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);transition:color .15s,background .15s,transform .1s}
-.nav-it .nav-ic{font-size:22px;line-height:1}
+/* Sete itens (o 🙏 entrou com o mural) não cabem com largura livre num
+   celular de 360-375px: a barra estourava e o Perfil saía da tela. Cada
+   item passa a dividir a largura em partes iguais e encolher junto. */
+.nav-row{display:flex;justify-content:space-between;align-items:center}
+.nav-it{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:6px 2px;border-radius:12px;font-family:'Poppins',sans-serif;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;white-space:nowrap;color:var(--mut);transition:color .15s,background .15s,transform .1s}
+.nav-it .nav-ic{font-size:20px;line-height:1;position:relative;display:inline-block}
+/* O 🙏 chama a atenção sozinho: pulsação lenta e curta, longe do pisca-pisca.
+   Quem pediu menos animação no sistema recebe o ícone parado (regra abaixo). */
+@keyframes pulsaOracao{0%,72%,100%{transform:scale(1)}80%{transform:scale(1.18)}88%{transform:scale(.97)}}
+.nav-ic-pulsa{animation:pulsaOracao 2.6s ease-in-out infinite;transform-origin:center}
+.nav-it.active .nav-ic-pulsa{animation:none}
+.nav-dot{position:absolute;top:-2px;right:-5px;width:8px;height:8px;border-radius:50%;background:#E5006D;box-shadow:0 0 0 2px var(--nav-bg)}
+@media (prefers-reduced-motion:reduce){.nav-ic-pulsa{animation:none}}
+/* Telas mais largas continuam com a barra folgada de antes. */
+@media (min-width:400px){.nav-it{font-size:9px;letter-spacing:.5px;padding:6px 6px}.nav-it .nav-ic{font-size:22px}}
 .nav-it.active{color:var(--gold);background:rgba(247,198,0,.14);box-shadow:inset 0 0 0 1.5px rgba(247,198,0,.35)}
-.nav-it:active{transform:scale(.92)}
 .nav-it:active{transform:scale(.92)}
 
 /* Divisória discreta entre semanas */
@@ -829,3 +840,28 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
   html.telao .podium .pod-col .pod-pts{font-size:clamp(17px,2.2vh,28px)}
   html.telao .podium .pod-col.um .pod-pts{font-size:clamp(20px,2.6vh,32px)}
 }
+
+/* ===== MURAL DE ORAÇÕES ===== */
+.oracao-novo{background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:16px;padding:16px;margin-bottom:22px}
+.oracao-sec-titulo{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--mut);font-family:'Poppins',sans-serif;margin:18px 2px 10px}
+.oracao-card{background:var(--card);border:1.5px solid var(--b4);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+.oracao-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.oracao-avatar{width:34px;height:34px;flex:0 0 34px;border-radius:50%;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;font-size:19px;overflow:hidden}
+.oracao-avatar img{width:100%;height:100%;object-fit:cover}
+.oracao-nome{font-size:14px;font-weight:800;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.oracao-quando{font-size:11px;color:var(--mut);font-weight:700}
+.oracao-apagar{background:none;border:none;cursor:pointer;font-size:15px;opacity:.5;padding:4px 2px;line-height:1}
+.oracao-apagar:active{opacity:1}
+.oracao-texto{font-size:15px;line-height:1.6;color:var(--txt2);font-family:'Lora',Georgia,serif;white-space:pre-wrap;word-break:break-word}
+.oracao-resp{margin-top:10px;font-size:12px;font-weight:800;color:#2ECC71}
+.oracao-acoes{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}
+.oracao-reacao{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.05);border:1.5px solid var(--b4);color:var(--mut);border-radius:30px;padding:7px 13px;font-size:13px;font-weight:800;font-family:'Poppins',sans-serif;cursor:pointer;transition:transform .1s,background .15s,border-color .15s,color .15s}
+.oracao-reacao .oracao-reacao-ic{font-size:15px;line-height:1}
+.oracao-reacao .oracao-reacao-n{font-size:12px;font-weight:900;opacity:.85}
+.oracao-reacao.ativo{background:rgba(30,158,134,.28);border-color:var(--teal);color:var(--txt2)}
+.oracao-reacao:active{transform:scale(.93)}
+.oracao-recado-btn{background:rgba(229,0,109,.1);border:1.5px solid rgba(229,0,109,.32);color:var(--txt2);border-radius:30px;padding:7px 14px;font-size:13px;font-weight:800;font-family:'Poppins',sans-serif;cursor:pointer;transition:transform .1s}
+.oracao-recado-btn:active{transform:scale(.95)}
+.oracao-resp-btn{margin-left:auto;background:none;border:1px solid var(--b4);color:var(--mut);border-radius:30px;padding:6px 12px;font-size:12px;font-weight:800;font-family:'Poppins',sans-serif;cursor:pointer}
+.oracao-resp-btn:active{color:var(--txt2)}
+.recado-card{background:var(--card);border:1.5px solid rgba(229,0,109,.3);border-radius:16px;padding:14px 16px;margin-bottom:12px}

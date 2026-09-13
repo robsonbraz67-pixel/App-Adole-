@@ -92,7 +92,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio } from './firebase';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -550,15 +550,33 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
 };
 
 /* ===== NAVBAR FIXA (global, renderizada pelo App em todas as telas exceto Quiz) ===== */
-export const BottomNav = ({ active, diaAtual, onHome, onRanking, onEstudo, onConfig, onDupla, onSorteador }: any) => {
+// O 🎰 Sorteio saiu daqui (nova aba do Mural): ele é ferramenta de quem
+// conduz, e ficava na barra de TODO adolescente, que não tem o que fazer com
+// ele. Continua inteiro — a porta agora é o painel de quem conduz.
+export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstudo, onConfig, onDupla, onMural }: any) => {
+  // Contadores vêm do resumo que o mural deixa no aparelho — o marcador
+  // vermelho não custa UMA leitura do Firestore. Quem nunca abriu o mural não
+  // tem resumo e vê só o ícone pulsando, que já é o convite.
+  const resumo: ResumoMural | null = gs(muralCacheKey(jogador?.turmaId), null);
+  const pendentes = (resumo?.aOrar || 0) + (resumo?.recados || 0);
   return (
     <div className="bot-nav" style={{padding:'6px 8px 14px'}}>
       <div className="nav-row">
         <button className={`nav-it ${active === 'home' ? 'active' : ''}`} onClick={onHome} aria-label="Início"><span className="nav-ic">🏠</span>Início</button>
+        {/* Segundo lugar, logo ao lado do Início, e o ícone pulsa: orar pelos
+            outros é o que a escola quer que se veja primeiro. A pulsação para
+            sozinha para quem pediu menos animação no sistema (ver o
+            prefers-reduced-motion no index.css). */}
+        <button className={`nav-it ${active === 'oracoes' ? 'active' : ''}`} onClick={onMural} aria-label="Mural de orações">
+          <span className="nav-ic nav-ic-pulsa">
+            🙏
+            {pendentes > 0 && <span className="nav-dot" aria-hidden="true" />}
+          </span>
+          Mural
+        </button>
         <button className={`nav-it ${active === 'ranking' ? 'active' : ''}`} onClick={onRanking} aria-label="Ranking"><span className="nav-ic">🏆</span>Ranking</button>
         {diaAtual && <button className={`nav-it ${active === 'estudo' ? 'active' : ''}`} onClick={() => onEstudo(diaAtual)} aria-label="Praticar"><span className="nav-ic">📖</span>Praticar</button>}
         <button className={`nav-it ${active === 'dupla' ? 'active' : ''}`} onClick={onDupla} aria-label="Dupla"><span className="nav-ic">👥</span>Dupla</button>
-        <button className={`nav-it ${active === 'sorteador' ? 'active' : ''}`} onClick={onSorteador} aria-label="Sorteio"><span className="nav-ic">🎰</span>Sorteio</button>
         <button className={`nav-it ${active === 'config' ? 'active' : ''}`} onClick={onConfig} aria-label="Perfil"><span className="nav-ic">⚙️</span>Perfil</button>
       </div>
     </div>
@@ -566,7 +584,7 @@ export const BottomNav = ({ active, diaAtual, onHome, onRanking, onEstudo, onCon
 };
 
 /* ===== ESTUDO ===== */
-export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, onDayUpdated, onQuiz, onBack }: any) => {
+export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, onDayUpdated, onQuiz, onBack, onMural }: any) => {
   const initHistory = prog.history?.[dia.id] || {};
   const [notes, setNotes] = useState(initHistory.nota || '');
   const [hl, setHl] = useState<any>(initHistory.hl || {});
@@ -766,6 +784,7 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, on
           onSaved={(updated: any) => { onDayUpdated?.(updated); setEditOpen(false); }}
         />
       )}
+      <LembreteOracao jogador={jogador} onAbrirMural={onMural} />
       <div style={{padding:'10px 20px',background:'var(--hdr-bg)'}}>
         <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
           <span style={{fontSize:12,color:'var(--mut)',fontWeight:700,fontFamily:'Poppins,sans-serif'}}>Progresso de leitura</span>
@@ -775,6 +794,9 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, on
       </div>
       <div ref={ref} onScroll={onScroll} style={{flex:1,overflowY:'auto',padding:'20px 16px 120px'}}>
         <div style={{fontWeight:900,fontSize:22,marginBottom:20,lineHeight:1.2,color:'var(--txt2)'}}>{dia.titulo}</div>
+        {/* Antes do texto do dia: orar pela turma. Sai pelo resto do dia assim
+            que a pessoa abre o mural ou dispensa (ver ConviteMural). */}
+        {onMural && <ConviteMural jogador={jogador} onMural={() => wrapLeave(onMural)} />}
         {paras.map((p: string, i: number) => renderP(p, i))}
         <div className="verse-card" style={{marginTop:16,marginBottom:24}}>
           <div style={{fontSize:11,fontWeight:800,color:'var(--gold)',textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>💡 Versículo-chave</div>
@@ -1136,7 +1158,7 @@ const CardOracao = ({ dia }: any) => {
   );
 };
 
-export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
+export const Resultado = ({ res, dia, prog, onRanking, onHome, onMural }: any) => {
   const { acertos, total, xpTotal, tempoMedio, punido } = res;
   const { ic, mg } = getMsgRes(acertos, total);
   
@@ -1154,6 +1176,13 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
       {/* O lembrete de oração vem ANTES do placar: o estudo termina em oração,
           não na pontuação. */}
       <CardOracao dia={dia} />
+      {/* O convite continua: orar sozinho e depois orar pelos outros são o
+          mesmo movimento — por isso o mural entra aqui, colado no lembrete. */}
+      {onMural && (
+        <button className="btn btn-ghost" onClick={onMural} style={{animation:'fadeIn .5s ease .85s both', marginBottom:22, fontSize:14}}>
+          🙏 ORAR PELOS PEDIDOS DA TURMA
+        </button>
+      )}
       <div style={{animation:'fadeUp .5s ease .9s both',display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:22}}>
         {[{e:'✅',l:'Acertos',v:`${acertos}/${total}`},{e:'⭐',l:'XP Ganho',v:`+${xpTotal}`},{e:'⏱️',l:'Tempo médio',v:`${Math.round(tempoMedio)}s`}].map(s => (
           <div key={s.l} className="purple-card" style={{padding:'12px 6px',textAlign:'center'}}>
@@ -1996,10 +2025,111 @@ export const SeletorLicao = ({ track, licao, onChange, podeTrocarTrilha = false,
   );
 };
 
+/* ===== A TURMA QUE ESTOU CONDUZINDO (Fase 6) =====
+ * `jogador.turmaId` responde "de que turma eu faço parte" — é matrícula, e é
+ * uma só. Conduzir é outra pergunta: um professor pode conduzir mais de uma
+ * turma, e pode conduzir uma turma de que não faz parte. A autoridade disso é
+ * `turmas/{id}.professores`, não o perfil (ver conduzoATurma nas regras).
+ *
+ * A turma conduzida é estado de TELA, e nunca vai para o perfil — de propósito.
+ * Gravá-la em users/{uid} traria de volta exatamente o nó que a Fase 6 desfaz:
+ * um campo significando duas coisas. Ela vive no aparelho; sumir dali não
+ * perde nada, só volta para a primeira da lista.
+ *
+ * O mesmo hook serve o admin (conduz todas as turmas ativas) e o professor
+ * (conduz as suas). Quem não é nem um nem outro recebe lista vazia, e as telas
+ * caem no caminho de sempre — o da turma do perfil.
+ */
+const CHAVE_TURMA_CONDUZIDA = 'turma_conduzida';
+
+export const useTurmaAtiva = (jogador: any) => {
+  // Quem não é professor nem admin não conduz nada, e isso se sabe sem ler o
+  // banco: começar em `[]` (e não em `null`) tira o aluno do estado de
+  // carregando, que existe só para quem conduz.
+  const conduzAlgo = !!jogador?.isAdmin || !!jogador?.isProfessor;
+  const [turmas, setTurmas] = useState<Turma[] | null>(() => (conduzAlgo ? null : []));
+  const [turmaId, setTurmaId] = useState<string>(() => gs(CHAVE_TURMA_CONDUZIDA, '') || '');
+
+  useEffect(() => {
+    if (!conduzAlgo) { setTurmas([]); return; }
+    let vivo = true;
+    getTurmasQueConduzo(jogador)
+      .then(ts => {
+        if (!vivo) return;
+        setTurmas(ts);
+        // A escolha guardada no aparelho só vale enquanto ainda estiver na
+        // lista: professor tirado de uma turma não pode continuar preso a ela
+        // na tela. Caindo fora, o padrão é a turma do próprio perfil.
+        setTurmaId(atual => {
+          if (atual && ts.some(t => t.id === atual)) return atual;
+          return ts.find(t => t.id === jogador?.turmaId)?.id || ts[0]?.id || '';
+        });
+      })
+      .catch(e => { if (vivo) { console.error('turmas que conduzo', e); setTurmas([]); } });
+    return () => { vivo = false; };
+  }, [conduzAlgo, jogador?.id, jogador?.isAdmin, jogador?.isProfessor, jogador?.turmaId]);
+
+  const escolher = useCallback((id: string) => {
+    setTurmaId(id);
+    ss(CHAVE_TURMA_CONDUZIDA, id);
+  }, []);
+
+  const lista = turmas || [];
+  return {
+    turmas: lista,
+    turma: lista.find(t => t.id === turmaId) || null,
+    turmaId,
+    escolher,
+    carregando: turmas === null,
+    conduz: lista.length > 0,
+  };
+};
+
+// Uma turma só (o caso de quase todo professor) não vira `<select>`: virava um
+// menu de uma opção, que só faz a pessoa perguntar o que mais tem ali dentro.
+export const SeletorTurmaAtiva = ({ turmas, turmaId, onEscolher, nota }: {
+  turmas: Turma[];
+  turmaId: string;
+  onEscolher: (id: string) => void;
+  nota?: string;
+}) => {
+  if (!turmas.length) return null;
+  const atual = turmas.find(t => t.id === turmaId);
+  const rotuloTrilha = (t: Turma) => TRACK_LABELS[t.track as Track] || t.track;
+
+  return (
+    <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:14, padding:'12px 14px', marginBottom:16}}>
+      <div style={{fontSize:12, fontWeight:800, color:'var(--mut)', textTransform:'uppercase', letterSpacing:1, marginBottom:8}}>🎓 Conduzindo</div>
+      {turmas.length === 1 ? (
+        <div style={{fontSize:14, fontWeight:800, color:'var(--txt2)'}}>
+          {atual?.nome || turmas[0].nome}
+          <span style={{fontSize:12, fontWeight:600, color:'var(--mut)'}}> · {rotuloTrilha(atual || turmas[0])}</span>
+        </div>
+      ) : (
+        <select
+          value={turmaId}
+          onChange={e => onEscolher(e.target.value)}
+          aria-label="Turma que estou conduzindo"
+          style={{width:'100%', padding:'10px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13, fontWeight:700, outline:'none'}}
+        >
+          {turmas.map(t => (
+            <option key={t.id} value={t.id}>{t.nome} · {rotuloTrilha(t)}</option>
+          ))}
+        </select>
+      )}
+      {nota && <div style={{fontSize:11, color:'var(--mut)', marginTop:8, lineHeight:1.45}}>{nota}</div>}
+    </div>
+  );
+};
+
 // Hook compartilhado do Sorteador — usado pela tela Sorteador (menu) e, antes,
 // duplicado dentro do Admin/TVMode. Fila sem repetição: sorteia todos os
 // elegíveis antes de repetir alguém.
-const useSorteador = (licao: any) => {
+//
+// `turmaId` recorta os elegíveis (Fase 6). Sem ele, o sorteio pescava na
+// semana INTEIRA do sistema: com duas igrejas no ar, a turma de uma via o
+// prêmio sair para um nome que ninguém daquela sala conhecia.
+const useSorteador = (licao: any, turmaId?: string) => {
   const [users, setUsers] = useState<any[]>([]);
   const [ganhador, setGanhador] = useState<any | null>(null);
   const [idx, setIdx] = useState(0);
@@ -2015,12 +2145,12 @@ const useSorteador = (licao: any) => {
   // achando que é a nova, sem nada na tela denunciando.
   useEffect(() => {
     setUsers([]); setGanhador(null); setQueue([]); setIdx(0);
-  }, [licao?.semana, licao?.trimestre]);
+  }, [licao?.semana, licao?.trimestre, turmaId]);
 
   const carregar = async () => {
     setLoading(true); setGanhador(null); setQueue([]);
     try {
-      const rank = await getWeeklyRanking(licao.semana);
+      const rank = await getWeeklyRankingDaTurma(licao.semana, turmaId);
       setUsers(rank.filter((u: any) => !u.isAdmin && !u.isProfessor && u.dias === 7));
     } catch { /* silent */ }
     setLoading(false);
@@ -2092,7 +2222,30 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   // que passou sem mexer no progresso de ninguém. Começa na lição ativa.
   const [sel, setSel] = useState<{ licao: any; track: string }>({ licao, track: jogador?.track || 'teen' });
   const podeTrocarTrilha = !!jogador?.isAdmin || !!jogador?.isProfessor;
-  const { users, ganhador, idx, animando, loading, carregar, iniciar } = useSorteador(sel.licao);
+  const conducao = useTurmaAtiva(jogador);
+
+  // Quem conduz sorteia na turma que está conduzindo; quem não conduz sorteia
+  // na turma de que faz parte. O aluno cai no mesmo caminho de sempre.
+  const turmaDoSorteio = conducao.conduz ? conducao.turmaId : jogador?.turmaId;
+  const { users, ganhador, idx, animando, loading, carregar, iniciar } = useSorteador(sel.licao, turmaDoSorteio);
+
+  // Trocar a turma troca a trilha do sorteio junto: a turma É de uma trilha
+  // (turmas/{id}.track), e sortear a turma de adolescentes entre quem estudou
+  // a lição de adultos não é um caso de uso, é um engano. A trilha continua
+  // trocável à mão logo abaixo — a turma só escolhe o ponto de partida.
+  const trilhaDaTurma = conducao.turma?.track;
+  useEffect(() => {
+    if (!trilhaDaTurma || trilhaDaTurma === sel.track) return;
+    let vivo = true;
+    loadTrackLessons(trilhaDaTurma)
+      .then(ls => {
+        if (!vivo) return;
+        const nova = acharLicaoDaSemana(ls, sel.licao?.semana);
+        if (nova) setSel({ licao: nova, track: trilhaDaTurma });
+      })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [trilhaDaTurma]);
   return (
     <div className="scr" style={{paddingBottom:100}}>
       <div className="hdr">
@@ -2101,6 +2254,14 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
         <div/>
       </div>
       <div className="sorteador-wrap">
+        {conducao.conduz && (
+          <SeletorTurmaAtiva
+            turmas={conducao.turmas}
+            turmaId={conducao.turmaId}
+            onEscolher={conducao.escolher}
+            nota="O sorteio é entre os alunos desta turma. Trocar de turma aqui não mexe no seu perfil."
+          />
+        )}
         <SeletorLicao
           track={sel.track}
           licao={sel.licao}
@@ -2109,7 +2270,10 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
           nota="Trocar aqui muda só o sorteio — seu perfil e seu progresso ficam como estão."
         />
         <div style={{fontSize:13, color:'var(--mut)', marginBottom:12, textAlign:'center'}}>
-          Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{sel.licao?.semana}</strong>.
+          Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{sel.licao?.semana}</strong>
+          {conducao.turma
+            ? <> na turma <strong style={{color:'var(--txt2)'}}>{conducao.turma.nome}</strong>.</>
+            : turmaDoSorteio ? ' na sua turma.' : '.'}
         </div>
         <div style={{textAlign:'center'}}>
           <button onClick={carregar} disabled={loading} className={`btn btn-ghost ${loading ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px 16px', marginBottom:16, width:'auto', display:'inline-flex'}}>
@@ -2168,6 +2332,797 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
           </>
         )}
       </div>
+    </div>
+  );
+};
+
+/* ===== MURAL DE ORAÇÕES ===== */
+// Pedidos de oração da TURMA. Escopo, anonimato e quem pode apagar estão
+// explicados na regra de `pedidosOracao` (firestore.rules) — a tela aqui só
+// honra o que ela permite, inclusive dizendo em voz alta que "anônimo"
+// esconde o nome dos COLEGAS, não o da liderança.
+
+const muralCacheKey = (turmaId?: string) => 'mural_' + (turmaId || 'sem-turma');
+
+// Resumo do mural guardado no aparelho por quem o abre. É o que deixa a tela
+// de Estudo convidar à oração com um número real sem gastar UMA leitura
+// sequer — quem nunca abriu o mural recebe o convite genérico.
+export type ResumoMural = { total: number; aOrar: number; recados: number; em: number };
+
+const quandoFoi = (criadoEm: any) => {
+  // Timestamp do Firestore vivo (toMillis) ou o mesmo depois de passar pelo
+  // localStorage, onde vira { seconds, nanoseconds } puro.
+  const ms = criadoEm?.toMillis ? criadoEm.toMillis() : (criadoEm?.seconds ? criadoEm.seconds * 1000 : 0);
+  if (!ms) return 'agora';
+  const seg = Math.max(0, Date.now() - ms) / 1000;
+  if (seg < 90) return 'agora';
+  if (seg < 3600) return `há ${Math.floor(seg / 60)} min`;
+  if (seg < 86400) return `há ${Math.floor(seg / 3600)} h`;
+  const dias = Math.floor(seg / 86400);
+  return dias === 1 ? 'ontem' : `há ${dias} dias`;
+};
+
+// Convite que aparece ao abrir o estudo do dia: orar pelos outros antes de
+// estudar. Some pelo resto do dia assim que a pessoa vai ao mural ou dispensa
+// — lembrete que insiste vira paisagem.
+export const ConviteMural = ({ jogador, onMural }: any) => {
+  const chaveDoDia = 'muralConviteVisto_' + hojeLocalISO();
+  const [visivel, setVisivel] = useState(() => !!jogador?.turmaId && !gs(chaveDoDia, false));
+  const resumo: ResumoMural | null = gs(muralCacheKey(jogador?.turmaId), null);
+  if (!visivel) return null;
+  const dispensar = () => { ss(chaveDoDia, true); setVisivel(false); };
+  const aOrar = resumo?.aOrar || 0;
+  return (
+    <div style={{marginBottom:20, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.28)', borderRadius:16, padding:'14px 16px'}}>
+      <div style={{fontSize:12, fontWeight:800, color:'var(--teal)', marginBottom:6, textTransform:'uppercase', letterSpacing:1, fontFamily:'Poppins,sans-serif'}}>🙏 Antes de estudar</div>
+      <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.5, marginBottom:12}}>
+        {aOrar > 0
+          ? <>A turma deixou <strong>{aOrar} pedido{aOrar !== 1 ? 's' : ''}</strong> que você ainda não orou. Comece o dia orando por alguém.</>
+          : <>Passe no mural e veja pelo que a turma está pedindo oração hoje.</>}
+      </div>
+      <div style={{display:'flex', gap:8}}>
+        <button className="btn btn-gold btn-sm" onClick={() => { ss(chaveDoDia, true); onMural(); }} style={{width:'auto', fontSize:13, padding:'8px 14px', margin:0}}>Abrir o mural</button>
+        <button className="btn btn-ghost btn-sm" onClick={dispensar} style={{width:'auto', fontSize:13, padding:'8px 14px', margin:0}}>Agora não</button>
+      </div>
+    </div>
+  );
+};
+
+const REACOES: { campo: ReacaoPedido; emoji: string; rotulo: string }[] = [
+  { campo: 'oraram',   emoji: '🙏', rotulo: 'Orei por você' },
+  { campo: 'coracoes', emoji: '❤️', rotulo: 'Estou com você' },
+  { campo: 'curtidas', emoji: '👍', rotulo: 'Curti' },
+];
+
+// Recado de apoio. Não é conversa: uma caixa, um envio, sem resposta
+// encadeada — e assinado. O porquê está na regra de `recadosApoio`.
+const RecadoModal = ({ jogador, pedido, onClose }: any) => {
+  const [texto, setTexto] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [enviado, setEnviado] = useState(false);
+
+  const mandar = async () => {
+    const limpo = texto.trim();
+    if (!limpo || enviando) return;
+    setEnviando(true);
+    setErro('');
+    try {
+      await enviarRecado(jogador, { id: pedido.id, autorId: pedido.autorId, turmaId: pedido.turmaId }, limpo);
+      setEnviado(true);
+      setTimeout(onClose, 1200);
+    } catch (e) {
+      console.error('enviar recado', e);
+      setErro('Não deu para enviar agora. Confira sua conexão e tente de novo.');
+      setEnviando(false);
+    }
+  };
+
+  const paraQuem = pedido.anonimo ? 'quem publicou este pedido' : firstName(pedido.autorNome || '');
+
+  return createPortal(
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div className="glass" onClick={e => e.stopPropagation()} style={{padding:'22px 20px',maxWidth:380,width:'100%',maxHeight:'80dvh',overflowY:'auto'}}>
+        {enviado ? (
+          <div style={{textAlign:'center', padding:'22px 8px'}}>
+            <div style={{fontSize:44, marginBottom:10}}>💌</div>
+            <div style={{fontSize:16, fontWeight:900, color:'var(--gold)'}}>Recado enviado!</div>
+          </div>
+        ) : (
+          <>
+            <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', textTransform:'uppercase', letterSpacing:1, marginBottom:8, fontFamily:'Poppins,sans-serif'}}>💌 Mandar uma força</div>
+            <div style={{fontSize:14, color:'var(--txt2)', lineHeight:1.5, marginBottom:4}}>
+              Para <strong>{paraQuem}</strong>, sobre o pedido:
+            </div>
+            <div style={{fontSize:13, color:'var(--mut)', fontStyle:'italic', lineHeight:1.5, marginBottom:12, borderLeft:'2px solid var(--b4)', paddingLeft:10}}>
+              "{pedido.texto.length > 120 ? pedido.texto.slice(0, 120) + '…' : pedido.texto}"
+            </div>
+            <textarea
+              value={texto}
+              onChange={e => setTexto(e.target.value.slice(0, RECADO_TEXTO_MAX))}
+              placeholder="Escreva algo que levante essa pessoa hoje..."
+              autoFocus
+              style={{width:'100%', minHeight:96, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:15, lineHeight:1.55, padding:'12px 14px', borderRadius:12, resize:'vertical', outline:'none', fontFamily:'Lora,Georgia,serif'}}
+            />
+            <div style={{display:'flex', justifyContent:'flex-end', fontSize:11, color:'var(--mut)', marginTop:4, marginBottom:8}}>{texto.length}/{RECADO_TEXTO_MAX}</div>
+            {/* Dito antes de escrever, não depois: o recado só chega a quem
+                pediu, vai assinado com o seu nome, e a liderança pode ler. */}
+            <div style={{fontSize:12, color:'var(--mut)', lineHeight:1.5, marginBottom:12}}>
+              Só essa pessoa recebe — os colegas não veem. Vai <strong>assinado com o seu nome</strong>, e o professor da turma pode ler.
+            </div>
+            {erro && <div style={{fontSize:13, color:'#E31C3D', marginBottom:10}}>{erro}</div>}
+            <div style={{display:'flex', gap:10}}>
+              <button className="btn btn-ghost" onClick={onClose} style={{fontSize:14}}>Cancelar</button>
+              <button
+                className={`btn btn-gold ${!texto.trim() || enviando ? 'btn-dis' : ''}`}
+                disabled={!texto.trim() || enviando}
+                onClick={mandar}
+                style={{fontSize:14}}
+              >
+                {enviando ? 'Enviando...' : 'Enviar'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
+/* ===== LEMBRETE DOS MOTIVOS PARTICULARES =====
+ * Aparece no alto da lição, antes do texto: "quero ser lembrado dos meus
+ * motivos antes de fazer os estudos". Some sozinho quando não há motivo em
+ * aberto, e fecha com um toque — lembrete que insiste vira paisagem.
+ *
+ * Só lê a coleção do próprio dono, então não custa nada a quem não usa: sem
+ * motivo, a consulta volta vazia e o componente não renderiza.
+ */
+export const LembreteOracao = ({ jogador, onAbrirMural }: any) => {
+  const [motivos, setMotivos] = useState<OracaoParticular[]>([]);
+  const [fechado, setFechado] = useState(false);
+
+  useEffect(() => {
+    if (!jogador?.id) return;
+    const unsub = listenToOracoesParticulares(jogador.id, lista =>
+      setMotivos(lista.filter(m => !m.respondida)));
+    return () => unsub();
+  }, [jogador?.id]);
+
+  if (fechado || motivos.length === 0) return null;
+
+  return (
+    <div style={{margin:'12px 20px 0', background:'var(--panel-bg)', border:'1px solid var(--gold)', borderRadius:14, padding:'12px 14px'}}>
+      <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:8}}>
+        <span style={{fontSize:16}}>🔒</span>
+        <div style={{flex:1, fontSize:12, fontWeight:800, color:'var(--gold)', textTransform:'uppercase', letterSpacing:1, fontFamily:'Poppins,sans-serif'}}>
+          Antes de estudar, ore por
+        </div>
+        <button
+          onClick={() => setFechado(true)}
+          aria-label="Fechar lembrete"
+          style={{background:'none', border:'none', color:'var(--mut)', fontSize:16, cursor:'pointer', lineHeight:1, padding:0}}
+        >×</button>
+      </div>
+      <div style={{display:'flex', flexDirection:'column', gap:6}}>
+        {motivos.slice(0, 3).map(m => (
+          <div key={m.id} style={{display:'flex', gap:8, alignItems:'flex-start', fontSize:14, color:'var(--txt2)', lineHeight:1.5, fontFamily:'Lora,Georgia,serif'}}>
+            <span style={{flexShrink:0}}>{rotuloCategoria(m.categoria).emoji}</span>
+            <span>{m.texto}</span>
+          </div>
+        ))}
+      </div>
+      {motivos.length > 3 && (
+        <div style={{fontSize:12, color:'var(--mut)', marginTop:6}}>e mais {motivos.length - 3} motivo(s)</div>
+      )}
+      {onAbrirMural && (
+        <button
+          onClick={onAbrirMural}
+          className="btn btn-ghost btn-sm"
+          style={{width:'auto', marginTop:10, fontSize:12, padding:'6px 12px'}}
+        >🙏 Abrir meus motivos</button>
+      )}
+    </div>
+  );
+};
+
+export const MuralOracoes = ({ jogador, onBack }: any) => {
+  const conducao = useTurmaAtiva(jogador);
+  // Quem conduz lê o mural da turma que está conduzindo; todo o resto lê o da
+  // turma de que faz parte. Para o professor de uma turma só, os dois são o
+  // mesmo — e a tela fica idêntica à de antes.
+  // Enquanto a lista não chega, NADA é assinado. Sem esta espera, o professor
+  // abriria o mural da turma do perfil e, um tique depois, o da turma
+  // conduzida — duas assinaturas e uma piscada, para ver a segunda.
+  const turmaId = conducao.carregando ? '' : (conducao.conduz ? conducao.turmaId : jogador?.turmaId);
+  const souDaTurma = !turmaId || turmaId === jogador?.turmaId;
+  const [pedidos, setPedidos] = useState<PedidoOracao[]>([]);
+  const [soAOrar, setSoAOrar] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+  const [texto, setTexto] = useState('');
+  const [anonimo, setAnonimo] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [recados, setRecados] = useState<RecadoApoio[]>([]);
+  const [recadoPara, setRecadoPara] = useState<PedidoOracao | null>(null);
+  const [aba, setAba] = useState<'turma' | 'particular'>('turma');
+  const [categoria, setCategoria] = useState<CategoriaOracao>('outro');
+  const [filtro, setFiltro] = useState<CategoriaOracao | 'tudo'>('tudo');
+  // "Guardar só pra mim" não é um pedido do mural com um campo a menos: é
+  // outra coleção, que ninguém além do dono lê (ver oracoesParticulares).
+  const [soParaMim, setSoParaMim] = useState(false);
+  const [particulares, setParticulares] = useState<OracaoParticular[]>([]);
+
+  const podeModerar = !!jogador?.isAdmin || !!jogador?.isProfessor;
+
+  // As duas assinaturas escrevem no MESMO resumo (o que alimenta o marcador da
+  // barra de baixo e o convite no estudo), então cada uma guarda a sua metade
+  // em ref para não apagar a da outra ao gravar.
+  const contagem = useRef({ total: 0, aOrar: 0, recados: 0 });
+  // Gravado sob a turma que está sendo lida. Quem conduz visitando OUTRA turma
+  // grava sob a chave dela, e o marcador da barra de baixo — que lê a chave da
+  // turma do perfil — não se mexe. É o certo: o marcador é o do mural dele.
+  const gravarResumo = () => ss(muralCacheKey(turmaId), { ...contagem.current, em: Date.now() } as ResumoMural);
+
+  useEffect(() => {
+    if (!turmaId) { setCarregando(false); return; }
+    // O filtro é de uma turma só: levá-lo para a turma seguinte faz a pessoa
+    // olhar uma lista recortada achando que é o mural inteiro.
+    setSoAOrar(false);
+    const unsub = listenToPedidosOracao(turmaId, lista => {
+      setPedidos(lista);
+      setCarregando(false);
+      contagem.current.total = lista.length;
+      contagem.current.aOrar = lista.filter(p => !p.respondido && !(p.oraram || []).includes(jogador.id)).length;
+      gravarResumo();
+    });
+    return () => unsub();
+  }, [turmaId, jogador?.id]);
+
+  // Motivos particulares. Consulta pelo próprio uid — a regra não conhece
+  // outro leitor, então esta é a única forma que existe de ler isto.
+  useEffect(() => {
+    if (!jogador?.id) return;
+    const unsub = listenToOracoesParticulares(jogador.id, setParticulares);
+    return () => unsub();
+  }, [jogador?.id]);
+
+  // Recados que chegaram para mim. Marcar como lido acontece aqui, ao abrir o
+  // mural: uma gravação por recado novo, uma única vez.
+  useEffect(() => {
+    if (!jogador?.id) return;
+    const unsub = listenToRecados(jogador.id, lista => {
+      setRecados(lista);
+      contagem.current.recados = lista.filter(r => !r.lida).length;
+      gravarResumo();
+      lista.filter(r => !r.lida).forEach(r => marcarRecadoLido(r.id).catch(() => {}));
+    });
+    return () => unsub();
+  }, [jogador?.id]);
+
+  const publicar = async () => {
+    const limpo = texto.trim();
+    if (!limpo || enviando) return;
+    setEnviando(true);
+    setErro('');
+    try {
+      if (soParaMim || aba === 'particular') await criarOracaoParticular(jogador, limpo, categoria);
+      else await criarPedidoOracao(jogador, limpo, anonimo, turmaId, categoria);
+      setTexto('');
+      setAnonimo(false);
+      setCategoria('outro');
+      // O "só pra mim" NÃO se desmarca sozinho: quem está escrevendo uma
+      // sequência de motivos particulares não pode ver o próximo escapar para
+      // o mural da turma por causa de um reset silencioso.
+    } catch (e) {
+      console.error('publicar pedido de oração', e);
+      setErro(soParaMim || aba === 'particular'
+        ? 'Não deu para guardar agora. Confira sua conexão e tente de novo.'
+        : 'Não deu para publicar agora. Confira sua conexão e tente de novo.');
+    }
+    setEnviando(false);
+  };
+
+  // Otimista: o toque responde na hora e a assinatura confirma logo atrás.
+  // Se a gravação falhar, o próximo snapshot desfaz sozinho — nada some.
+  const alternarReacao = async (p: PedidoOracao, campo: ReacaoPedido) => {
+    const atualLista = (p[campo] as string[]) || [];
+    const jaReagi = atualLista.includes(jogador.id);
+    setPedidos(atual => atual.map(x => x.id !== p.id ? x : {
+      ...x,
+      [campo]: jaReagi
+        ? (((x[campo] as string[]) || []).filter(u => u !== jogador.id))
+        : [...(((x[campo] as string[]) || [])), jogador.id],
+    }));
+    try {
+      await reagirAoPedido(p.id, campo, jogador.id, !jaReagi);
+    } catch (e) {
+      console.error('reagir ao pedido', e);
+    }
+  };
+
+  const alternarRespondido = async (p: PedidoOracao) => {
+    try {
+      await marcarPedidoRespondido(p.id, !p.respondido);
+    } catch (e) {
+      console.error('marcar respondido', e);
+    }
+  };
+
+  const apagar = async (p: PedidoOracao) => {
+    if (!window.confirm('Apagar este pedido do mural? Isso não dá para desfazer.')) return;
+    try {
+      await excluirPedidoOracao(p.id);
+    } catch (e) {
+      console.error('apagar pedido', e);
+      alert('Não foi possível apagar agora. Tente de novo.');
+    }
+  };
+
+  const abertos = pedidos.filter(p => !p.respondido);
+  const respondidos = pedidos.filter(p => p.respondido);
+  // Sem NINGUÉM que orou — não "sem mim". É o número que a liderança precisa:
+  // o pedido que passou a semana inteira sozinho no mural.
+  const semNinguem = abertos.filter(p => ((p.oraram || []).length) === 0);
+  const porFiltro = (lista: PedidoOracao[]) =>
+    filtro === 'tudo' ? lista : lista.filter(p => categoriaDe(p.categoria) === filtro);
+  const visiveis = porFiltro(soAOrar ? semNinguem : abertos);
+
+  const totalOracoes = pedidos.reduce((n, p) => n + ((p.oraram || []).length), 0);
+
+  // A aba manda; o toggle só serve para desviar de dentro do mural.
+  const privado = soParaMim || aba === 'particular';
+
+  const particularesAbertos = particulares.filter(m => !m.respondida);
+  const particularesRespondidos = particulares.filter(m => m.respondida);
+
+  // Um estilo só para os dois usos do chip (escolher e filtrar): se o de
+  // filtrar parecesse diferente do de escolher, viraria outro controle na
+  // cabeça de quem usa.
+  const chipSt = (ativo: boolean): React.CSSProperties => ({
+    padding: '6px 12px',
+    borderRadius: 20,
+    fontSize: 12,
+    fontWeight: 800,
+    fontFamily: 'Poppins,sans-serif',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    border: ativo ? '1px solid var(--gold)' : '1px solid var(--input-border)',
+    background: ativo ? 'rgba(247,198,0,.14)' : 'var(--input-bg)',
+    color: ativo ? 'var(--gold)' : 'var(--txt2)',
+  });
+
+  // Card no formato scrap: avatar numa coluna à esquerda, recado à direita.
+  // É o desenho do Orkut, e ele funciona aqui pelo mesmo motivo de lá — a
+  // conversa fica visualmente de alguém, não de um formulário.
+  const cartao = (p: PedidoOracao) => {
+    const meu = p.autorId === jogador.id;
+    const cat = rotuloCategoria(p.categoria);
+    const oraram = p.oraram || [];
+    const euOrei = oraram.includes(jogador.id);
+    return (
+      <div key={p.id} className="oracao-card" style={p.respondido ? {borderColor:'rgba(46,204,113,.35)'} : undefined}>
+        <div style={{display:'flex', gap:12, alignItems:'flex-start'}}>
+          <span className="oracao-avatar" style={{flexShrink:0}}>
+            {p.anonimo
+              ? <span>🕊️</span>
+              : (p.autorAvatar?.length ?? 0) > 10
+                ? <img src={p.autorAvatar} alt="" />
+                : <span>{p.autorAvatar || '👤'}</span>}
+          </span>
+
+          <div style={{flex:1, minWidth:0}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+              <span className="oracao-nome">
+                {p.anonimo ? 'Anônimo' : firstName(p.autorNome || '')}
+                {meu && <span style={{color:'var(--mut)', fontWeight:700}}> · você</span>}
+              </span>
+              <span style={{fontSize:10, fontWeight:800, letterSpacing:.5, textTransform:'uppercase', color:'var(--mut)', background:'var(--row-bg)', borderRadius:20, padding:'2px 8px', fontFamily:'Poppins,sans-serif'}}>
+                {cat.emoji} {cat.rotulo}
+              </span>
+              {(meu || podeModerar) && (
+                <button className="oracao-apagar" onClick={() => apagar(p)} title="Apagar pedido" aria-label="Apagar pedido" style={{marginLeft:'auto'}}>🗑️</button>
+              )}
+            </div>
+
+            <div className="oracao-texto" style={{marginTop:6}}>{p.texto}</div>
+            <div className="oracao-quando" style={{marginTop:4}}>{quandoFoi(p.criadoEm)}</div>
+            {p.respondido && <div className="oracao-resp">🙌 Deus respondeu</div>}
+
+            <div className="oracao-acoes">
+              {/* Contador só aparece quando alguém já reagiu: pedido zerado não
+                  precisa anunciar que está zerado. */}
+              {REACOES.map(r => {
+                const lista = (p[r.campo] as string[]) || [];
+                const ativo = lista.includes(jogador.id);
+                return (
+                  <button
+                    key={r.campo}
+                    className={`oracao-reacao ${ativo ? 'ativo' : ''}`}
+                    onClick={() => alternarReacao(p, r.campo)}
+                    aria-pressed={ativo}
+                    aria-label={r.rotulo}
+                    title={r.rotulo}
+                  >
+                    <span className="oracao-reacao-ic">{r.emoji}</span>
+                    {r.campo === 'oraram' && <span className="oracao-reacao-txt">{ativo ? 'Você orou' : 'Orei por você'}</span>}
+                    {lista.length > 0 && <span className="oracao-reacao-n">{lista.length}</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* O desenho pedia "Pedro, Ana e mais 9 oraram". Os nomes ficam de
+                fora porque `oraram` guarda uid, e um aluno NÃO pode ler o
+                perfil de outro (a regra de users fecha isso desde a Fase 3b).
+                Buscar os nomes exigiria abrir aquela regra ou duplicar nome
+                dentro do pedido — caro e arriscado para uma linha de texto.
+                A contagem, com o "você" na frente, diz a mesma coisa. */}
+            {oraram.length > 0 && (
+              <div style={{fontSize:12, color:'var(--mut)', marginTop:6}}>
+                {euOrei
+                  ? (oraram.length === 1 ? 'Você orou por isso' : `Você e mais ${oraram.length - 1} oraram`)
+                  : `${oraram.length} ${oraram.length === 1 ? 'pessoa orou' : 'pessoas oraram'}`}
+              </div>
+            )}
+
+            <div className="oracao-acoes">
+              {!meu && (
+                <button className="oracao-recado-btn" onClick={() => setRecadoPara(p)}>
+                  💌 Mandar uma força
+                </button>
+              )}
+              {meu && (
+                <button className="oracao-resp-btn" onClick={() => alternarRespondido(p)}>
+                  {p.respondido ? 'Reabrir' : '🙌 Deus respondeu'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Chips de categoria, usados nos dois lugares: escolher ao escrever e
+  // filtrar a lista. Mesma forma, para não parecerem dois controles diferentes.
+  const chipsCategoria = (
+    valor: string,
+    escolher: (c: any) => void,
+    comTudo = false,
+  ) => (
+    <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
+      {comTudo && (
+        <button
+          type="button"
+          onClick={() => escolher('tudo')}
+          style={chipSt(valor === 'tudo')}
+        >Tudo</button>
+      )}
+      {CATEGORIAS_ORACAO.map(c => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => escolher(c.id)}
+          style={chipSt(valor === c.id)}
+        >{c.emoji} {c.rotulo}</button>
+      ))}
+    </div>
+  );
+
+  // Um editor só para os dois destinos. A aba escolhe para onde vai; o toggle
+  // existe para quem começou a escrever no mural e mudou de ideia no meio.
+  const editor = (
+    <div className="oracao-novo">
+      <div style={{fontSize:12, fontWeight:800, color:'var(--gold)', textTransform:'uppercase', letterSpacing:1, marginBottom:10, fontFamily:'Poppins,sans-serif'}}>
+        {privado ? '🔒 Guarde um motivo seu' : '✍️ Peça oração'}
+      </div>
+      <textarea
+        value={texto}
+        onChange={e => setTexto(e.target.value.slice(0, privado ? PARTICULAR_TEXTO_MAX : PEDIDO_TEXTO_MAX))}
+        placeholder={privado
+          ? 'O que você quer lembrar de orar antes de estudar? Ninguém além de você vê isto.'
+          : 'Pelo que você quer que a turma ore? (família, saúde, escola, uma decisão...)'}
+        style={{width:'100%', minHeight:92, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:15, lineHeight:1.55, padding:'12px 14px', borderRadius:12, resize:'vertical', outline:'none', fontFamily:'Lora,Georgia,serif'}}
+      />
+      <div style={{display:'flex', justifyContent:'flex-end', fontSize:11, color:'var(--mut)', marginTop:4}}>
+        {texto.length}/{privado ? PARTICULAR_TEXTO_MAX : PEDIDO_TEXTO_MAX}
+      </div>
+
+      <div style={{margin:'10px 0 4px'}}>
+        <div style={{fontSize:11, color:'var(--mut)', fontWeight:700, textTransform:'uppercase', letterSpacing:1, marginBottom:6}}>Sobre o quê?</div>
+        {chipsCategoria(categoria, (c: CategoriaOracao) => setCategoria(c))}
+      </div>
+
+      {/* Só na aba da turma: na aba particular o destino já está decidido, e
+          repetir a pergunta convida ao engano. */}
+      {aba === 'turma' && (
+        <label style={{display:'flex', alignItems:'center', gap:10, margin:'10px 0 4px', cursor:'pointer'}}>
+          <input type="checkbox" checked={soParaMim} onChange={e => setSoParaMim(e.target.checked)} style={{accentColor:'var(--gold)', width:18, height:18}} />
+          <span style={{fontSize:14, color:'var(--txt2)'}}>🔒 Guardar <strong>só pra mim</strong></span>
+        </label>
+      )}
+
+      {!privado && (
+        <label style={{display:'flex', alignItems:'center', gap:10, margin:'6px 0 4px', cursor:'pointer'}}>
+          <input type="checkbox" checked={anonimo} onChange={e => setAnonimo(e.target.checked)} style={{accentColor:'var(--gold)', width:18, height:18}} />
+          <span style={{fontSize:14, color:'var(--txt2)'}}>Publicar como <strong>anônimo</strong></span>
+        </label>
+      )}
+
+      {/* Promessa que dá para cumprir, dita inteira. No mural, o professor lê
+          mesmo o anônimo — e a tela diz isso. No particular NÃO existe leitor
+          além do dono, e é a regra que garante, não esta frase. */}
+      <div style={{fontSize:12, color:'var(--mut)', lineHeight:1.5, marginBottom:12}}>
+        {privado
+          ? 'Fica só no seu perfil: a turma não vê, o professor não vê, o administrador não vê. Ele volta a aparecer para você antes de abrir a lição.'
+          : anonimo
+            ? 'Seu nome não aparece para a turma. O professor e o administrador continuam sabendo quem escreveu — é assim que eles conseguem ajudar.'
+            : 'Seu nome e seu avatar aparecem no pedido para a turma.'}
+        {/* Quem conduz pode estar no mural de uma turma que não é a dele.
+            Publicar sem dizer onde é o jeito mais fácil de mandar um pedido
+            pessoal para a sala errada. */}
+        {!privado && !souDaTurma && conducao.turma && (
+          <div style={{marginTop:6, color:'var(--gold)', fontWeight:700}}>
+            Este pedido vai para o mural de <strong>{conducao.turma.nome}</strong>.
+          </div>
+        )}
+      </div>
+      {erro && <div style={{fontSize:13, color:'#E31C3D', marginBottom:10}}>{erro}</div>}
+      <button
+        className={`btn btn-gold ${!texto.trim() || enviando ? 'btn-dis' : ''}`}
+        disabled={!texto.trim() || enviando}
+        onClick={publicar}
+      >
+        {enviando ? 'Guardando...' : privado ? '🔒 GUARDAR MOTIVO' : '🙏 PUBLICAR PEDIDO'}
+      </button>
+    </div>
+  );
+
+  // Sem reação, sem autor, sem recado: aqui não há ninguém para reagir. Só o
+  // texto, a categoria e as duas ações que fazem sentido sozinho.
+  const cartaoParticular = (m: OracaoParticular) => {
+    const cat = rotuloCategoria(m.categoria);
+    return (
+      <div key={m.id} className="oracao-card" style={m.respondida ? {borderColor:'rgba(46,204,113,.35)'} : undefined}>
+        <div style={{display:'flex', gap:10, alignItems:'flex-start'}}>
+          <span style={{fontSize:20, flexShrink:0}}>{cat.emoji}</span>
+          <div style={{flex:1, minWidth:0}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+              <span style={{fontSize:10, fontWeight:800, letterSpacing:.5, textTransform:'uppercase', color:'var(--mut)', background:'var(--row-bg)', borderRadius:20, padding:'2px 8px', fontFamily:'Poppins,sans-serif'}}>
+                {cat.rotulo}
+              </span>
+              <button
+                className="oracao-apagar"
+                onClick={() => { if (window.confirm('Apagar este motivo? Isso não dá para desfazer.')) excluirOracaoParticular(m.id).catch(() => {}); }}
+                title="Apagar motivo"
+                aria-label="Apagar motivo"
+                style={{marginLeft:'auto'}}
+              >🗑️</button>
+            </div>
+            <div className="oracao-texto" style={{marginTop:6}}>{m.texto}</div>
+            <div className="oracao-quando" style={{marginTop:4}}>{quandoFoi(m.criadoEm)}</div>
+            {m.respondida && <div className="oracao-resp">🙌 Deus respondeu</div>}
+            <div className="oracao-acoes">
+              <button
+                className="oracao-resp-btn"
+                onClick={() => marcarParticularRespondida(m.id, !m.respondida).catch(() => {})}
+              >
+                {m.respondida ? 'Reabrir' : '🙌 Deus respondeu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const abaSt = (ativo: boolean): React.CSSProperties => ({
+    flex: 1,
+    padding: '10px 8px',
+    borderRadius: 12,
+    fontSize: 13,
+    fontWeight: 800,
+    fontFamily: 'Poppins,sans-serif',
+    cursor: 'pointer',
+    border: ativo ? '2px solid var(--gold)' : '1px solid var(--input-border)',
+    background: ativo ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
+    color: ativo ? 'var(--gold)' : 'var(--txt2)',
+  });
+
+  return (
+    <div className="scr" style={{paddingBottom:100}}>
+      <div className="hdr">
+        <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
+        <div style={{fontWeight:900, fontSize:17}}>🙏 Mural</div>
+        <div/>
+      </div>
+
+      <div className="sec" style={{paddingTop:14}}>
+        {/* As duas metades do mural. A particular vem primeiro no código
+            porque ela funciona mesmo para quem ainda não tem turma: motivo
+            guardado no próprio perfil não depende de sala nenhuma. */}
+        <div style={{display:'flex', gap:6, marginBottom:14}}>
+          <button onClick={() => setAba('turma')} style={abaSt(aba === 'turma')} aria-pressed={aba === 'turma'}>
+            Da turma
+          </button>
+          <button onClick={() => setAba('particular')} style={abaSt(aba === 'particular')} aria-pressed={aba === 'particular'}>
+            🔒 Meus particulares{particularesAbertos.length > 0 ? ` (${particularesAbertos.length})` : ''}
+          </button>
+        </div>
+
+        {aba === 'particular' ? (
+          <>
+            {editor}
+
+            {particulares.length === 0 && (
+              <div style={{textAlign:'center', padding:'36px 20px', color:'var(--mut)'}}>
+                <div style={{fontSize:44, marginBottom:12}}>🔒</div>
+                <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>Nada guardado ainda</div>
+                <div style={{fontSize:14, lineHeight:1.5}}>
+                  O que você escrever aqui volta a aparecer para você antes de abrir a lição — e só para você.
+                </div>
+              </div>
+            )}
+
+            {particularesAbertos.length > 0 && (
+              <>
+                <div className="oracao-sec-titulo">Em oração ({particularesAbertos.length})</div>
+                {particularesAbertos.map(cartaoParticular)}
+              </>
+            )}
+
+            {particularesRespondidos.length > 0 && (
+              <>
+                <div className="oracao-sec-titulo">🙌 Deus respondeu ({particularesRespondidos.length})</div>
+                {particularesRespondidos.map(cartaoParticular)}
+              </>
+            )}
+          </>
+        ) : conducao.carregando ? (
+          <div style={{textAlign:'center', color:'var(--mut)', fontSize:14, padding:'40px 0'}}>Abrindo o mural…</div>
+        ) : !turmaId ? (
+          <div style={{textAlign:'center', padding:'50px 24px', color:'var(--mut)'}}>
+            <div style={{fontSize:52, marginBottom:16}}>🙏</div>
+            <div style={{fontSize:18, fontWeight:900, color:'var(--txt2)', marginBottom:8}}>O mural é da sua turma</div>
+            <div style={{fontSize:14, lineHeight:1.55}}>
+              {podeModerar
+                ? <>Você ainda não faz parte de uma turma nem conduz nenhuma.<br/>Peça a um administrador para te ligar a uma turma.</>
+                : <>Você ainda não está em uma turma, então não há mural para abrir.<br/>Peça ao seu professor o código da turma e cadastre-o no Perfil.</>}
+            </div>
+          </div>
+        ) : (
+          <>
+            {conducao.conduz && conducao.turmas.length > 1 && (
+              <SeletorTurmaAtiva
+                turmas={conducao.turmas}
+                turmaId={conducao.turmaId}
+                onEscolher={conducao.escolher}
+                nota="Você está vendo o mural desta turma."
+              />
+            )}
+
+            {editor}
+
+            {/* Cabeçalho do mural. Os dois números saem do que já está em
+                memória — nenhuma leitura a mais. O nome da turma fica de fora
+                de propósito: para o aluno ele custaria um getTurma() a cada
+                abertura do mural, e quem conduz já o tem no seletor acima. */}
+            {pedidos.length > 0 && (
+              <div style={{display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap', margin:'0 0 12px', fontSize:12, color:'var(--mut)', fontWeight:700, textTransform:'uppercase', letterSpacing:1, fontFamily:'Poppins,sans-serif'}}>
+                <span>{pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''}</span>
+                {totalOracoes > 0 && <span style={{color:'var(--gold)'}}>🙏 {totalOracoes} oraç{totalOracoes !== 1 ? 'ões' : 'ão'}</span>}
+              </div>
+            )}
+
+            {/* Filtro só aparece quando há o que filtrar: numa turma com três
+                pedidos, sete chips são mais barulho que ajuda. */}
+            {pedidos.length > 3 && (
+              <div style={{margin:'4px 0 14px', overflowX:'auto', paddingBottom:4}}>
+                {chipsCategoria(filtro, (c: any) => setFiltro(c), true)}
+              </div>
+            )}
+
+            {carregando && pedidos.length === 0 && (
+              <div style={{textAlign:'center', color:'var(--mut)', fontSize:14, padding:'30px 0'}}>Abrindo o mural da turma…</div>
+            )}
+
+            {!carregando && pedidos.length > 0 && visiveis.length === 0 && !soAOrar && (
+              <div style={{textAlign:'center', padding:'28px 20px', color:'var(--mut)', fontSize:14}}>
+                Nenhum pedido nesta categoria.
+              </div>
+            )}
+
+            {!carregando && pedidos.length === 0 && (
+              <div style={{textAlign:'center', padding:'36px 20px', color:'var(--mut)'}}>
+                <div style={{fontSize:44, marginBottom:12}}>🕊️</div>
+                <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>O mural ainda está vazio</div>
+                <div style={{fontSize:14, lineHeight:1.5}}>Seja o primeiro a pedir — ou volte amanhã para orar por quem pedir.</div>
+              </div>
+            )}
+
+            {recados.length > 0 && (
+              <>
+                <div className="oracao-sec-titulo">💌 Recados para você ({recados.length})</div>
+                {recados.map(r => (
+                  <div key={r.id} className="recado-card">
+                    <div className="oracao-top">
+                      <span className="oracao-avatar">
+                        {(r.deAvatar?.length ?? 0) > 10 ? <img src={r.deAvatar} alt="" /> : <span>{r.deAvatar || '👤'}</span>}
+                      </span>
+                      <div style={{flex:1, minWidth:0}}>
+                        <div className="oracao-nome">{firstName(r.deNome)}</div>
+                        <div className="oracao-quando">{quandoFoi(r.criadoEm)}</div>
+                      </div>
+                      <button
+                        className="oracao-apagar"
+                        onClick={() => { if (window.confirm('Apagar este recado?')) excluirRecado(r.id).catch(() => {}); }}
+                        title="Apagar recado"
+                        aria-label="Apagar recado"
+                      >🗑️</button>
+                    </div>
+                    <div className="oracao-texto">{r.texto}</div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {/* Visão de quem conduz. Não é um painel separado de propósito: o
+                professor precisa ver o mural COMO a turma vê, com um resumo em
+                cima — e não um relatório que ninguém abre no sábado de manhã. */}
+            {podeModerar && pedidos.length > 0 && (
+              <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:14, padding:'12px 14px', marginBottom:14}}>
+                <div style={{fontSize:12, fontWeight:800, color:'var(--mut)', textTransform:'uppercase', letterSpacing:1, marginBottom:8}}>🎓 De olho na turma</div>
+                <div style={{display:'flex', gap:14, flexWrap:'wrap', fontSize:13, color:'var(--txt2)', marginBottom:10}}>
+                  <span><strong style={{color:'var(--gold)'}}>{abertos.length}</strong> em aberto</span>
+                  <span><strong style={{color: semNinguem.length ? '#E31C3D' : 'var(--txt2)'}}>{semNinguem.length}</strong> sem ninguém orando</span>
+                  <span><strong style={{color:'var(--txt2)'}}>{respondidos.length}</strong> respondido{respondidos.length !== 1 ? 's' : ''}</span>
+                </div>
+                <button
+                  className={`btn btn-ghost btn-sm ${soAOrar ? '' : ''}`}
+                  onClick={() => setSoAOrar(v => !v)}
+                  aria-pressed={soAOrar}
+                  style={{width:'auto', fontSize:12, padding:'7px 12px', border: soAOrar ? '2px solid var(--gold)' : undefined, color: soAOrar ? 'var(--gold)' : undefined}}
+                >
+                  {soAOrar ? '↩︎ Ver todos os pedidos' : '🔎 Só os que ninguém orou'}
+                </button>
+              </div>
+            )}
+
+            {visiveis.length > 0 && (
+              <>
+                <div className="oracao-sec-titulo">
+                  {soAOrar ? `Ninguém orou ainda (${visiveis.length})` : `Pedidos da turma (${visiveis.length})`}
+                </div>
+                {visiveis.map(cartao)}
+              </>
+            )}
+
+            {/* Só quando existe mural: com zero pedidos, o estado vazio acima
+                já explica tudo, e este aviso soaria como se houvesse algo. */}
+            {soAOrar && pedidos.length > 0 && visiveis.length === 0 && (
+              <div style={{textAlign:'center', padding:'28px 20px', color:'var(--mut)', fontSize:14}}>
+                🙌 Todo pedido em aberto já tem alguém orando.
+              </div>
+            )}
+
+            {respondidos.length > 0 && (
+              <>
+                <div className="oracao-sec-titulo">🙌 Orações respondidas ({respondidos.length})</div>
+                {respondidos.map(cartao)}
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {recadoPara && (
+        <RecadoModal
+          jogador={jogador}
+          pedido={recadoPara}
+          onClose={() => setRecadoPara(null)}
+        />
+      )}
     </div>
   );
 };
@@ -3041,6 +3996,14 @@ const EdicaoTurma = ({ t, locations, tracks, inputSt, rotuloSt, seletorProfessor
       <div style={{marginBottom:10}}>
         <div style={rotuloSt}>Professores</div>
         {seletorProfessores(professores, setProfessores)}
+        {/* Esta lista deixou de ser enfeite na Fase 6: é ela que diz quem
+            CONDUZ a turma (painel, sorteio, mural). A mesma pessoa pode estar
+            em várias — é assim que um professor acompanha duas turmas sem
+            trocar de turma no próprio perfil. */}
+        <div style={{fontSize:11, color:'var(--mut)', marginTop:6, lineHeight:1.5}}>
+          Quem está aqui conduz esta turma: vê o painel, o mural e o sorteio dela.
+          A mesma pessoa pode conduzir mais de uma turma.
+        </div>
       </div>
       <div style={{display:'flex', gap:8}}>
         <button onClick={() => onSalvar({ nome, locationId, track, professores })} disabled={ocupado} className={`btn btn-gold ${ocupado ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px'}}>
@@ -3412,8 +4375,11 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
 // funcionar inteira. Escrita assim, ela atravessa a mudança sem perceber.
 //
 // Atrás de PROFESSOR_ESCOPO_TURMA, que começa em false.
-const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo }: any) => {
-  const [turma, setTurma] = useState<Turma | null>(null);
+const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: any) => {
+  // A turma do painel é a que ele está CONDUZINDO (Fase 6), não mais a do
+  // perfil dele: um professor pode conduzir mais de uma, e pode conduzir uma
+  // de que não faz parte.
+  const conducao = useTurmaAtiva(jogador);
   const [alunos, setAlunos] = useState<any[]>([]);
   const [ranking, setRanking] = useState<any[] | null>(null);
   const [streaks, setStreaks] = useState<Record<string, any>>({});
@@ -3421,17 +4387,26 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo }: any) => {
   const [erro, setErro] = useState('');
   const [aba, setAba] = useState<'alunos' | 'ranking' | 'auditoria'>('alunos');
 
-  const turmaId = jogador?.turmaId;
+  const turmaId = conducao.turmaId;
+  // Vem da lista que o hook já leu — nada de um getTurma() por turma aberta.
+  const turma = conducao.turma;
 
   useEffect(() => {
+    if (conducao.carregando) return;
     if (!turmaId) { setCarregando(false); return; }
     let vivo = true;
-    Promise.all([getTurma(turmaId), getUsersDaTurma(turmaId)])
-      .then(([t, us]) => { if (!vivo) return; setTurma(t); setAlunos(us); })
+    setCarregando(true);
+    setErro('');
+    // Trocou de turma: o ranking em tela é o da anterior. Zerar aqui é o que
+    // impede a aba Ranking de mostrar a turma errada com o nome da nova.
+    setRanking(null);
+    setAlunos([]);
+    getUsersDaTurma(turmaId)
+      .then(us => { if (vivo) setAlunos(us); })
       .catch(e => { if (vivo) setErro(e?.message || 'Não foi possível carregar a turma.'); })
       .finally(() => { if (vivo) setCarregando(false); });
     return () => { vivo = false; };
-  }, [turmaId]);
+  }, [turmaId, conducao.carregando]);
 
   // As ofensivas saem das lições da trilha DA TURMA, não da trilha em que o
   // professor está: ele pode ter alternado para acompanhar outra (o app deixa).
@@ -3446,15 +4421,19 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo }: any) => {
   // Ranking da semana filtrado para a turma. Reusa a consulta por semana que o
   // app já faz (barata e sem índice novo) e recorta pelos alunos da turma; o
   // recorte no servidor, com índice composto, é a Fase 4.
+  // Ranking da semana recortado no SERVIDOR pela turma (índice turmaId+week da
+  // Fase 4). O filtro por aluno continua depois de propósito: quando a consulta
+  // recortada não está disponível, getWeeklyRankingDaTurma degrada para a
+  // semana inteira — e sem este segundo passo o painel mostraria a escola toda.
   useEffect(() => {
     if (aba !== 'ranking' || ranking || !licao?.semana || alunos.length === 0) return;
     const daTurma = new Set(alunos.map(a => a.id));
-    getWeeklyRanking(licao.semana)
+    getWeeklyRankingDaTurma(licao.semana, turmaId)
       .then(rows => setRanking((rows || []).filter((r: any) => daTurma.has(r.userId || r.id))))
       .catch(() => setRanking([]));
-  }, [aba, ranking, licao?.semana, alunos]);
+  }, [aba, ranking, licao?.semana, alunos, turmaId]);
 
-  if (carregando) {
+  if (carregando || conducao.carregando) {
     return <div className="scr"><div className="hdr"><button className="btn-back" onClick={onBack}>← Voltar</button><h2>🎓 Minha Turma</h2></div><div style={{padding:20, color:'var(--mut)'}}>Carregando...</div></div>;
   }
 
@@ -3464,9 +4443,9 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo }: any) => {
         <div className="hdr"><button className="btn-back" onClick={onBack}>← Voltar</button><h2>🎓 Minha Turma</h2></div>
         <div style={{padding:20}}>
           <div style={{background:'var(--panel-bg)', padding:16, borderRadius:14, fontSize:14, color:'var(--txt2)', lineHeight:1.6}}>
-            {erro ? erro : 'Você ainda não está ligado a uma turma.'}
+            {erro ? erro : 'Você ainda não conduz nenhuma turma.'}
             <div style={{fontSize:12, color:'var(--mut)', marginTop:8}}>
-              Peça à liderança um <strong>convite de professor</strong> (o código começa com PROF-) e resgate no Perfil, ou peça para um admin te colocar numa turma.
+              Peça à liderança um <strong>convite de professor</strong> (o código começa com PROF-) e resgate no Perfil, ou peça para um admin te colocar na lista de professores da turma.
             </div>
           </div>
         </div>
@@ -3488,12 +4467,21 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo }: any) => {
       </div>
 
       <div className="sec" style={{paddingTop:12}}>
-        <div style={{background:'var(--panel-bg)', padding:'12px 14px', borderRadius:14, marginBottom:14}}>
-          <div style={{fontSize:16, fontWeight:900, color:'var(--txt2)'}}>{turma.nome}</div>
-          <div style={{fontSize:12, color:'var(--mut)', marginTop:2}}>
-            {TRACK_LABELS[turma.track as Track] || turma.track} · {alunos.length} pessoa(s)
+        {conducao.turmas.length > 1 ? (
+          <SeletorTurmaAtiva
+            turmas={conducao.turmas}
+            turmaId={turmaId}
+            onEscolher={conducao.escolher}
+            nota={`${alunos.length} pessoa(s) nesta turma. Trocar de turma aqui não mexe no seu perfil nem no seu estudo.`}
+          />
+        ) : (
+          <div style={{background:'var(--panel-bg)', padding:'12px 14px', borderRadius:14, marginBottom:14}}>
+            <div style={{fontSize:16, fontWeight:900, color:'var(--txt2)'}}>{turma.nome}</div>
+            <div style={{fontSize:12, color:'var(--mut)', marginTop:2}}>
+              {TRACK_LABELS[turma.track as Track] || turma.track} · {alunos.length} pessoa(s)
+            </div>
           </div>
-        </div>
+        )}
 
         <div style={{display:'flex', gap:6, marginBottom:14}}>
           {abas.map(a => (
@@ -3561,17 +4549,20 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo }: any) => {
           </>
         )}
 
-        <button className="btn btn-gold" onClick={onModoAoVivo} style={{width:'100%', marginTop:6}}>🎮 MODO AO VIVO</button>
+        <div style={{display:'flex', gap:8, marginTop:6}}>
+          <button className="btn btn-gold" onClick={onModoAoVivo} style={{flex:1}}>🎮 MODO AO VIVO</button>
+          {onSorteador && <button className="btn btn-ghost" onClick={onSorteador} style={{flex:1}}>🎰 SORTEIO</button>}
+        </div>
       </div>
     </div>
   );
 };
 
-export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
+export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador }: any) => {
   // Professor com escopo de turma não vê o painel do sistema: vê o dele.
   // Admin continua vendo tudo, inclusive quando também é professor.
   if (PROFESSOR_ESCOPO_TURMA && jogador?.isProfessor && !jogador?.isAdmin) {
-    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} />;
+    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} />;
   }
 
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
@@ -3731,7 +4722,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
   // Depois de TODOS os hooks: a condição muda em tempo de execução, e um
   // retorno antecipado lá em cima puliria os hooks seguintes.
   if (semAcessoGlobal) {
-    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} />;
+    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} />;
   }
 
   return (
@@ -3928,7 +4919,10 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo }: any) => {
         </div>
 
         {onModoAoVivo && (
-          <button className="btn btn-gold" onClick={onModoAoVivo} style={{marginTop:16}}>🎮 MODO AO VIVO</button>
+          <div style={{display:'flex', gap:8, marginTop:16}}>
+            <button className="btn btn-gold" onClick={onModoAoVivo} style={{flex:1}}>🎮 MODO AO VIVO</button>
+            {onSorteador && <button className="btn btn-ghost" onClick={onSorteador} style={{flex:1}}>🎰 SORTEIO</button>}
+          </div>
         )}
       </div>
     </div>

@@ -18,6 +18,8 @@ declare const __BUILD_ID__: string;
 export const BUILD_ID: string = typeof __BUILD_ID__ === 'string' ? __BUILD_ID__ : 'dev';
 
 // Telas em que recarregar não custa nada: nenhum trabalho em andamento se perde.
+// 'oracoes' NÃO entra: quem está ali pode estar no meio de escrever um pedido,
+// e um reload jogaria o texto fora — o aviso discreto espera a pessoa sair.
 const TELAS_SEGURAS = new Set(['splash', 'login', 'home', 'ranking', 'sorteador', 'dupla', 'config', 'admin']);
 
 export const telaPermiteReload = (tela: string) => TELAS_SEGURAS.has(tela);
