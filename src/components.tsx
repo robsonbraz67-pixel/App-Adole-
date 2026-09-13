@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
 import { planejarBackfill } from './backfillTurmas';
 import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo } from './utils';
@@ -321,7 +322,12 @@ const useVerso = (referencia: string) => {
 
 const VersoModal = ({ referencia, onClose }: { referencia: string; onClose: () => void }) => {
   const { verso, erro } = useVerso(referencia);
-  return (
+  // Portal no body porque o link mora DENTRO do parágrafo da lição, e
+  // `.para-block` carrega um transform da animação de entrada — um ancestral
+  // com transform vira o bloco de referência do position:fixed, então o modal
+  // ficava preso ao tamanho do parágrafo, sem escurecer o fundo e por cima do
+  // texto. No body não há ancestral que o prenda.
+  return createPortal(
     <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
       <div className="glass" onClick={e => e.stopPropagation()} style={{padding:'22px 20px',maxWidth:380,width:'100%',maxHeight:'72dvh',overflowY:'auto'}}>
         <div style={{fontSize:11,fontWeight:800,color:'var(--gold)',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>📖 {verso?.referencia || referencia}</div>
@@ -340,7 +346,8 @@ const VersoModal = ({ referencia, onClose }: { referencia: string; onClose: () =
         )}
         <button className="btn btn-ghost" onClick={onClose} style={{marginTop:16}}>Fechar</button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
