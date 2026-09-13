@@ -1,7 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR" translate="no">
   <head>
     <meta charset="UTF-8" />
+    <!-- O app é todo em português. Declarado como "en", o Chrome no Android
+         oferecia (ou fazia sozinho, para quem marcou "sempre traduzir") a
+         tradução da página — e o tradutor troca os nós de texto por baixo do
+         React, que depois tenta inserir um elemento ao lado de um irmão que
+         não existe mais. Era a causa dos NotFoundError/insertBefore que
+         derrubavam a tela para a árvore de erro. -->
+    <meta name="google" content="notranslate">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">

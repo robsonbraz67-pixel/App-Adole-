@@ -152,15 +152,35 @@ const diaAnteriorISO = (iso: string): string => {
   return d.toISOString().split('T')[0];
 };
 
-// Converte { semana: diaIds[] } (getUserAllDone) num Set de datas reais
-// (YYYY-MM-DD), usando LICOES para mapear diaId -> data. Base da ofensiva.
-const doneDatesSet = (allDone: Record<string, number[]>, licoes: any[]): Set<string> => {
+// Datas em que a pessoa estudou de verdade: history[diaId].emISO, gravado no
+// fim do quiz. Indexado por semana, como o `done`.
+export type DatasEstudo = Record<string, Record<number, string>>;
+
+export const datasEstudoDoHistory = (history: any): Record<number, string> => {
+  const datas: Record<number, string> = {};
+  for (const diaId of Object.keys(history || {})) {
+    const emISO = history[diaId]?.emISO;
+    if (typeof emISO === 'string' && emISO) datas[Number(diaId)] = emISO;
+  }
+  return datas;
+};
+
+// Converte { semana: diaIds[] } (getUserAllDone) num Set de datas de calendário
+// (YYYY-MM-DD). Base da ofensiva.
+//
+// A data que vale é o dia em que a pessoa SENTOU E ESTUDOU (`datasEstudo`), não
+// a data que a lição carrega: quem coloca a semana em dia num domingo à tarde
+// estudou no domingo — um dia — e quem estuda toda noite adiantado estudou
+// todas elas. Dias concluídos antes deste carimbo existir não têm como saber a
+// data real e caem na data da lição, que era o comportamento anterior.
+const doneDatesSet = (allDone: Record<string, number[]>, licoes: any[], datasEstudo: DatasEstudo = {}): Set<string> => {
   const datas = new Set<string>();
   for (const semana of Object.keys(allDone)) {
     const l = licoes.find((x: any) => x.semana === semana);
-    if (!l) continue;
     for (const diaId of allDone[semana]) {
-      const dia = l.dias.find((d: any) => d.id === diaId);
+      const real = datasEstudo[semana]?.[diaId];
+      if (real) { datas.add(real); continue; }
+      const dia = l?.dias.find((d: any) => d.id === diaId);
       if (dia?.data) datas.add(dia.data);
     }
   }
@@ -168,10 +188,10 @@ const doneDatesSet = (allDone: Record<string, number[]>, licoes: any[]): Set<str
 };
 
 // Ofensiva real: conta dias de calendário consecutivos estudados, derivado do
-// Firestore (allDone: { semana: diaIds[] } de getUserAllDone) + LICOES (mapeia
-// diaId -> data real). Independente de localStorage — funciona em qualquer aparelho.
-export const computeRealStreak = (allDone: Record<string, number[]>, licoes: any[], hojeISO: string = hojeLocalISO()): number => {
-  const datas = doneDatesSet(allDone, licoes);
+// Firestore (allDone: { semana: diaIds[] } de getUserAllDone, mais as datas de
+// estudo do history). Independente de localStorage — funciona em qualquer aparelho.
+export const computeRealStreak = (allDone: Record<string, number[]>, licoes: any[], datasEstudo: DatasEstudo = {}, hojeISO: string = hojeLocalISO()): number => {
+  const datas = doneDatesSet(allDone, licoes, datasEstudo);
   let cursor = datas.has(hojeISO) ? hojeISO : diaAnteriorISO(hojeISO);
   let streak = 0;
   while (datas.has(cursor)) {

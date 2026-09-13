@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, Timestamp, deleteField, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { isRankingHidden, computeRealStreak, aggregateWeekRanking } from './utils';
+import { isRankingHidden, computeRealStreak, aggregateWeekRanking, datasEstudoDoHistory, DatasEstudo } from './utils';
 
 const firebaseConfig = {
   projectId:         import.meta.env.VITE_FB_PROJECT_ID,
@@ -624,7 +624,7 @@ const stripPrivateNotes = (history: any): any => {
 const trackKey = (userId: string, week: string, track?: string) =>
   (!track || track === 'teen') ? `${userId}_${week}` : `${userId}_${track}_${week}`;
 
-export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, track: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean, locationId?: string) => {
+export const saveProgress = async (prog: any, week: string, userId: string, nome: string, avatar: string, trimestre: string, track: string, isAdmin?: boolean, isGuest?: boolean, isProfessor?: boolean, locationId?: string, turmaId?: string) => {
   const progId = trackKey(userId, week, track);
   const progRef = doc(db, 'progress', progId);
   const corpo: any = {
@@ -636,6 +636,13 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     // cliente (a regra confere que é mesmo o local do dono). Só quando existe:
     // usuário ainda não matriculado não tem local para gravar.
     ...(locationId ? { locationId } : {}),
+    // Mesma ideia para a turma — e aqui não é só economia de leitura: o ranking
+    // da turma CONSULTA por este campo (ver listenToWeekProgress). Enquanto só
+    // o carimbo manual do admin o gravava, todo doc criado depois do último
+    // carimbo — ou seja, a semana nova inteira, e quem trocou de trilha, que
+    // ganha um doc com outra chave — ficava fora da lista da própria turma.
+    // Era o "na minha turma eu não apareço mais".
+    ...(turmaId ? { turmaId } : {}),
     xp: prog.xp,
     streak: prog.streak,
     done: prog.done,
@@ -657,12 +664,23 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
   try {
     await setDoc(progRef, corpo, { merge: true });
   } catch {
-    // Mesma janela de deploy de sempre: se as regras publicadas ainda não
-    // conhecerem 'liberados', hasOnly() recusa o documento INTEIRO — e sem
-    // este refazer NENHUM aluno conseguiria salvar quiz. A liberação se perde
-    // até as regras subirem; o progresso, não.
-    const { liberados, ...semLiberados } = corpo;
-    await setDoc(progRef, semLiberados, { merge: true });
+    // Um campo recusado derruba o documento INTEIRO — e o aluno perderia o
+    // quiz por causa de um carimbo. Os dois suspeitos são opcionais e saem em
+    // ordem, do mais provável ao mais caro de perder:
+    //
+    // 'turmaId': a regra exige que seja igual ao da turma real do dono
+    // (users/{uid}). Um perfil em cache desatualizado — admin acabou de mudar
+    // o aluno de turma — recusaria TODO save até o app recarregar o perfil.
+    //
+    // 'liberados': a janela de deploy de sempre. Regra publicada que ainda não
+    // conhece o campo faz hasOnly() recusar tudo. A liberação se perde até as
+    // regras subirem; o progresso, não.
+    const { turmaId: carimboTurma, liberados: diasLiberados, ...essencial } = corpo;
+    try {
+      await setDoc(progRef, { ...essencial, ...(diasLiberados ? { liberados: diasLiberados } : {}) }, { merge: true });
+    } catch {
+      await setDoc(progRef, essencial, { merge: true });
+    }
   }
 };
 
@@ -789,17 +807,25 @@ export const adminZerarDia = async (progId: string, atual: any, diaId: number, l
 export const adminZerarSemana = async (progId: string) =>
   gravarCorrecao(progId, { done: [], history: {}, xp: 0, streak: 0, liberados: [] });
 
-export const getUserAllDone = async (userId: string, _track?: string): Promise<Record<string, number[]>> => {
+// Devolve os dias concluídos por semana E as datas em que foram realmente
+// estudados (history[diaId].emISO) — as duas coisas saem da MESMA leitura, que
+// é o motivo de virem juntas em vez de em duas funções.
+export const getUserAllDone = async (userId: string, _track?: string): Promise<{ done: Record<string, number[]>; datas: DatasEstudo }> => {
   const snap = await getDocs(query(collection(db, 'progress'), where('userId', '==', userId)));
   const map: Record<string, number[]> = {};
+  const datas: DatasEstudo = {};
   snap.forEach(doc => {
     const data = doc.data();
+    // As datas de estudo de TODOS os docs da semana entram: a ofensiva conta
+    // dia de calendário, então um dia estudado numa trilha vale como dia
+    // estudado, mesmo que o doc "mais completo" seja o de outra trilha.
+    datas[data.week] = { ...(datas[data.week] || {}), ...datasEstudoDoHistory(data.history) };
     // Se houver mais de um doc para a mesma semana (ex.: legado + janela do
     // bug), fica com o mais completo para não "desmarcar" dias já feitos.
     const done = data.done || [];
     if (!map[data.week] || done.length > map[data.week].length) map[data.week] = done;
   });
-  return map;
+  return { done: map, datas };
 };
 
 export const getDayOverride = async (track: string, semana: string, diaId: number) => {
@@ -1124,16 +1150,17 @@ export const getAllUsersStreaks = async (licoes: any[]): Promise<Record<string, 
   const lotes: string[][] = [];
   for (let i = 0; i < semanas.length; i += 30) lotes.push(semanas.slice(i, i + 30));
   const snaps = await Promise.all(lotes.map(lote => getDocs(query(collection(db, 'progress'), where('week', 'in', lote)))));
-  const porUsuario: Record<string, { nome: string; avatar: string; done: Record<string, number[]>; isAdmin?: boolean; isProfessor?: boolean }> = {};
+  const porUsuario: Record<string, { nome: string; avatar: string; done: Record<string, number[]>; datas: DatasEstudo; isAdmin?: boolean; isProfessor?: boolean }> = {};
   snaps.forEach(snap => snap.forEach(doc => {
     const d = doc.data();
-    if (!porUsuario[d.userId]) porUsuario[d.userId] = { nome: d.nome, avatar: d.avatar, done: {}, isAdmin: d.isAdmin, isProfessor: d.isProfessor };
+    if (!porUsuario[d.userId]) porUsuario[d.userId] = { nome: d.nome, avatar: d.avatar, done: {}, datas: {}, isAdmin: d.isAdmin, isProfessor: d.isProfessor };
     porUsuario[d.userId].done[d.week] = d.done || [];
+    porUsuario[d.userId].datas[d.week] = { ...(porUsuario[d.userId].datas[d.week] || {}), ...datasEstudoDoHistory(d.history) };
   }));
   const resultado: Record<string, any> = {};
   for (const uid of Object.keys(porUsuario)) {
     const u = porUsuario[uid];
-    resultado[uid] = { nome: u.nome, avatar: u.avatar, isAdmin: !!u.isAdmin, isProfessor: !!u.isProfessor, streak: computeRealStreak(u.done, licoes) };
+    resultado[uid] = { nome: u.nome, avatar: u.avatar, isAdmin: !!u.isAdmin, isProfessor: !!u.isProfessor, streak: computeRealStreak(u.done, licoes, u.datas) };
   }
   return resultado;
 };

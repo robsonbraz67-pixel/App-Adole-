@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
 import { planejarBackfill } from './backfillTurmas';
-import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome } from './utils';
+import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo } from './utils';
+import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 
 // Desativado em 2026-07-25: a escola opera com UMA trilha e UM local. As duas
 // ferramentas continuam inteiras por baixo (modelo de dados, regras, convites
@@ -299,6 +300,64 @@ export const ReportarProblemaModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
+/* ===== VERSÍCULOS CLICÁVEIS ===== */
+// Toda referência que já aparece escrita na lição ("Leia Romanos 12:5") vira um
+// toque que abre a passagem ali mesmo — sem sair do estudo, sem trocar de app.
+// A leitura fica guardada no aparelho, então abrir de novo funciona sem internet.
+const useVerso = (referencia: string) => {
+  const [verso, setVerso] = useState<Verso | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    let vivo = true;
+    setVerso(null);
+    setErro('');
+    buscarVerso(referencia)
+      .then(v => { if (vivo) setVerso(v); })
+      .catch(e => { if (vivo) setErro(e?.message || 'Não deu para carregar agora.'); });
+    return () => { vivo = false; };
+  }, [referencia]);
+  return { verso, erro };
+};
+
+const VersoModal = ({ referencia, onClose }: { referencia: string; onClose: () => void }) => {
+  const { verso, erro } = useVerso(referencia);
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div className="glass" onClick={e => e.stopPropagation()} style={{padding:'22px 20px',maxWidth:380,width:'100%',maxHeight:'72dvh',overflowY:'auto'}}>
+        <div style={{fontSize:11,fontWeight:800,color:'var(--gold)',textTransform:'uppercase',letterSpacing:1,marginBottom:12}}>📖 {verso?.referencia || referencia}</div>
+        {!verso && !erro && <div style={{fontSize:14,color:'var(--mut)'}}>Abrindo a passagem…</div>}
+        {erro && (
+          <div style={{fontSize:14,color:'var(--txt2)',lineHeight:1.6}}>
+            {erro}
+            <div style={{fontSize:12,color:'var(--mut)',marginTop:8}}>Na primeira vez esta passagem precisa de internet. Depois disso ela abre offline.</div>
+          </div>
+        )}
+        {verso && (
+          <>
+            <div style={{fontSize:16,fontStyle:'italic',lineHeight:1.7,color:'var(--txt2)',fontFamily:'Lora,Georgia,serif'}}>"{verso.texto}"</div>
+            <div style={{fontSize:11,color:'var(--mut)',marginTop:12}}>João Ferreira de Almeida · domínio público</div>
+          </>
+        )}
+        <button className="btn btn-ghost" onClick={onClose} style={{marginTop:16}}>Fechar</button>
+      </div>
+    </div>
+  );
+};
+
+export const VersoLink = ({ valor, refBiblica }: any) => {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <>
+      <button
+        onClick={e => { e.stopPropagation(); setAberto(true); }}
+        title={`Ler ${refBiblica}`}
+        style={{display:'inline',padding:0,margin:0,border:'none',background:'none',font:'inherit',color:'var(--gold)',fontWeight:700,borderBottom:'1px dashed var(--gold)',cursor:'pointer',lineHeight:'inherit'}}
+      >{valor}</button>
+      {aberto && <VersoModal referencia={refBiblica} onClose={() => setAberto(false)} />}
+    </>
+  );
+};
+
 /* ===== HOME ===== */
 export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSemana, onConfig, onAdmin, onChangeLicao }: any) => {
   const temConteudo = !licao.isComingSoon && licao.dias?.length > 0;
@@ -319,9 +378,12 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
 
   // Dias concluídos de todas as semanas (para marcar semanas anteriores na trilha)
   const [allDone, setAllDone] = useState<Record<string, number[]>>({});
+  const [datasEstudo, setDatasEstudo] = useState<DatasEstudo>({});
   useEffect(() => {
     if (!jogador?.id) return;
-    getUserAllDone(jogador.id, jogador?.track || 'teen').then(setAllDone).catch(() => {});
+    getUserAllDone(jogador.id, jogador?.track || 'teen')
+      .then(({ done, datas }) => { setAllDone(done); setDatasEstudo(datas); })
+      .catch(() => {});
   }, [jogador?.id, jogador?.track]);
 
   // Remove o prefixo "Lição N -/—" e a data entre parênteses do título bruto
@@ -332,7 +394,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
 
   // Ofensiva real da temporada (🔥) — derivada do Firestore (allDone + trackLessons),
   // não do localStorage do aparelho (troca de celular não zera mais)
-  const seasonStreak = useMemo(() => computeRealStreak(allDone, trackLessons), [allDone, trackLessons]);
+  const seasonStreak = useMemo(() => computeRealStreak(allDone, trackLessons, datasEstudo), [allDone, trackLessons, datasEstudo]);
 
   // Banner suspenso acompanha a semana visível na rolagem (e a selecionada)
   const [bannerL, setBannerL] = useState<any>(licao);
@@ -628,6 +690,18 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, on
       res = newRes;
     });
 
+    // Última passada: o texto que sobrou sem grifo ganha as referências
+    // clicáveis. O que está grifado fica como está — o grifo é do aluno, e um
+    // botão por baixo dele atrapalharia tanto a leitura quanto a seleção.
+    res = res.flatMap((chunk: any, ci: number) => {
+      if (typeof chunk !== 'string') return [chunk];
+      return partirEmVersos(chunk).map((pedaco, pi) =>
+        pedaco.tipo === 'texto'
+          ? pedaco.valor
+          : <VersoLink key={`v${ci}-${pi}`} valor={pedaco.valor} refBiblica={pedaco.ref} />
+      );
+    });
+
     return (
       <div key={pIdx} data-pidx={pIdx} className="para-block" style={{animation:`fadeIn .4s ease ${pIdx*.07}s both`}}>
         {res}
@@ -698,7 +772,13 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, on
         <div className="verse-card" style={{marginTop:16,marginBottom:24}}>
           <div style={{fontSize:11,fontWeight:800,color:'var(--gold)',textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>💡 Versículo-chave</div>
           <div style={{fontSize:15,fontStyle:'italic',lineHeight:1.65,color:'var(--txt2)',marginBottom:8,paddingLeft:8}}>"{dia.versiculoChave.texto}"</div>
-          <div style={{fontWeight:800,color:'var(--gold)',fontSize:13}}>— {dia.versiculoChave.referencia}</div>
+          {/* A referência do versículo-chave nem sempre é uma passagem: dias de
+              reflexão trazem "Reflexão"/"História" aqui, e aí não há o que abrir. */}
+          <div style={{fontWeight:800,color:'var(--gold)',fontSize:13}}>
+            — {ehReferencia(dia.versiculoChave.referencia)
+                 ? <VersoLink valor={dia.versiculoChave.referencia} refBiblica={ehReferencia(dia.versiculoChave.referencia) as string} />
+                 : dia.versiculoChave.referencia}
+          </div>
         </div>
         
         <div style={{marginBottom: activePair ? 12 : 24, background:'var(--panel-bg)', padding: '16px', borderRadius: 16, border:'1px solid var(--panel-border)'}}>
@@ -1016,6 +1096,33 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
 };
 
 /* ===== RESULTADO ===== */
+// Lembrete de oração no fim do quiz: o estudo termina conversando com Deus, e
+// não no placar. A passagem gira por dia para não virar papel de parede, e o
+// texto vem da mesma fonte dos versos da lição (nada é escrito à mão aqui).
+const VERSOS_ORACAO = [
+  'Filipenses 4:6-7',
+  '1 Tessalonicenses 5:17',
+  'Mateus 6:6',
+  'Tiago 5:16',
+  'Salmos 145:18',
+  'Jeremias 33:3',
+  'Marcos 11:24',
+  '1 João 5:14',
+];
+
+const CardOracao = ({ dia }: any) => {
+  const referencia = VERSOS_ORACAO[Math.abs(Number(dia?.id) || 0) % VERSOS_ORACAO.length];
+  const { verso } = useVerso(referencia);
+  return (
+    <div style={{animation:'fadeIn .5s ease 1.05s both',marginBottom:18,padding:16,borderRadius:16,background:'var(--panel-bg)',border:'1px solid var(--panel-border)',textAlign:'left'}}>
+      <div style={{fontSize:11,fontWeight:800,color:'var(--gold)',textTransform:'uppercase',letterSpacing:1,marginBottom:8}}>🙏 Antes de sair, ore</div>
+      <div style={{fontSize:13,color:'var(--mut)',lineHeight:1.5,marginBottom:10}}>Um minuto de conversa com Deus fecha o estudo de hoje.</div>
+      {verso && <div style={{fontSize:15,fontStyle:'italic',lineHeight:1.65,color:'var(--txt2)',fontFamily:'Lora,Georgia,serif',marginBottom:8}}>"{verso.texto}"</div>}
+      <VersoLink valor={`— ${referencia}`} refBiblica={referencia} />
+    </div>
+  );
+};
+
 export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
   const { acertos, total, xpTotal, tempoMedio, punido } = res;
   const { ic, mg } = getMsgRes(acertos, total);
@@ -1055,6 +1162,7 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome }: any) => {
           </div>
         </div>
       )}
+      <CardOracao dia={dia} />
       <div style={{animation:'fadeIn .5s ease 1.1s both',display:'flex',flexDirection:'column',gap:12}}>
         <button className="btn btn-gold" onClick={onRanking} style={{fontSize:17}}>🏆 VER RANKING</button>
         <button className="btn btn-ghost" onClick={onHome}>← VOLTAR AO INÍCIO</button>

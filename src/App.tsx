@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getTrackLessons, loadTrackLessons } from './data';
-import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking } from './utils';
+import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO } from './utils';
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress, getWeeklyRanking } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, ReportarProblemaModal } from './components';
 import { BUILD_ID, buscarBuildPublicado, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
@@ -77,9 +77,12 @@ export default function App() {
   // Log de erro e relato do usuário rodam fora da árvore React (ver
   // errorLog.ts) e não têm como ler jogador/tela — empurra o contexto atual
   // a cada mudança para os dois saberem quem/onde estava quando algo quebrou.
+  // O convidado do Ao Vivo renderiza fora da máquina de telas (ver o
+  // early-return de liveJoinCode), então `tela` fica parada no que era antes —
+  // e o log saía como 'splash'/'login' para erro que aconteceu no jogo.
   useEffect(() => {
-    setErroContexto({ userId: jogador?.id || null, nome: jogador?.nome || null, email: jogador?.email || null, tela });
-  }, [jogador?.id, jogador?.nome, jogador?.email, tela]);
+    setErroContexto({ userId: jogador?.id || null, nome: jogador?.nome || null, email: jogador?.email || null, tela: liveJoinCode ? 'liveJoin' : tela });
+  }, [jogador?.id, jogador?.nome, jogador?.email, tela, liveJoinCode]);
 
   // ===== Atualização automática =====
   // Checa se saiu versão nova ao abrir, ao voltar para o app e a cada 15 min.
@@ -342,7 +345,7 @@ export default function App() {
               // Depois de uma correção de admin, não: subir aqui devolveria
               // exatamente o que o admin acabou de tirar.
               if (!corrigido && dbUser && (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0))) {
-                saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor, dbUser.locationId).catch(console.error);
+                saveProgress(p, l.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, l.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor, dbUser.locationId, dbUser.turmaId).catch(console.error);
               }
             }
 
@@ -355,7 +358,7 @@ export default function App() {
                 const prevLocal = gs(semKey(prevL, track), null);
                 if (prevLocal && (prevLocal.xp > 0 || (prevLocal.done?.length ?? 0) > 0)) {
                   getProgress(j.id, prevL.semana, track).then(prevDb => {
-                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor, dbUser.locationId).catch(console.error);
+                    if (!prevDb) saveProgress(prevLocal, prevL.semana, j.id, dbUser.nome || j.nome, dbUser.avatar || j.avatar, prevL.trimestre, track, !!dbUser.isAdmin, !!dbUser.isGuest, !!dbUser.isProfessor, dbUser.locationId, dbUser.turmaId).catch(console.error);
                   }).catch(console.error);
                 }
               }
@@ -420,7 +423,7 @@ export default function App() {
         p = base;
         ss(semKey(l, j?.track), p);
         if (!corrigido && (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0))) {
-          saveProgress(p, l.semana, j.id, j.nome, j.avatar, l.trimestre, j?.track || 'teen', !!j.isAdmin, !!j.isGuest, !!j.isProfessor, j.locationId).catch(console.error);
+          saveProgress(p, l.semana, j.id, j.nome, j.avatar, l.trimestre, j?.track || 'teen', !!j.isAdmin, !!j.isGuest, !!j.isProfessor, j.locationId, j.turmaId).catch(console.error);
         }
       }
     } catch(e) {
@@ -477,6 +480,12 @@ export default function App() {
          ...prog.history[diaAtual.id],
          xp: isRepeat ? (prog.history[diaAtual.id]?.xp || 0) : res.xpTotal,
          acertos: isRepeat ? (prog.history[diaAtual.id]?.acertos || 0) : res.acertos,
+         // Data em que a pessoa REALMENTE estudou — é o que a ofensiva conta.
+         // Sem isto, quem põe três dias atrasados em dia numa tarde só ganhava
+         // a sequência das datas da lição, e quem estuda todo dia adiantado
+         // aparecia sem ofensiva nenhuma. Só na primeira conclusão: refazer um
+         // dia não inventa um dia de estudo novo.
+         ...(isRepeat ? {} : { emISO: hojeLocalISO() }),
          ...(punido ? { reiniciado: true } : {})
       } }
     };
@@ -494,7 +503,7 @@ export default function App() {
       try {
          const user = await waitForAuthInit();
          if (user) {
-            await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId);
+            await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId, jogador.turmaId);
          }
       } catch(e) {
          console.error("Error updating online progress:", e);
@@ -635,7 +644,7 @@ export default function App() {
           p = { xp: merged.xp, streak: merged.streak, done: merged.done || [], history: merged.history || {} };
           ss(semKey(newLicao, track), p);
           if (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0)) {
-            saveProgress(p, newLicao.semana, jogador.id, jogador.nome, jogador.avatar, newLicao.trimestre, track, !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId).catch(console.error);
+            saveProgress(p, newLicao.semana, jogador.id, jogador.nome, jogador.avatar, newLicao.trimestre, track, !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId, jogador.turmaId).catch(console.error);
           }
         }
 
@@ -690,7 +699,7 @@ export default function App() {
     try {
       const user = await waitForAuthInit();
       if (user) {
-        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId);
+        await saveProgress(np, l.semana, jogador.id, jogador.nome, jogador.avatar, l.trimestre, jogador?.track || 'teen', !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId, jogador.turmaId);
         await saveStudyNote(jogador.id, l.semana, jogador?.track || 'teen', diaAtual.id, nota, hl);
       }
     } catch(e) {
@@ -720,7 +729,7 @@ export default function App() {
         const trackChanged = (jogador?.track || 'teen') !== (novoJ.track || 'teen');
         if (trackChanged) await loadTrackLessons(novoJ.track);
         const l = (!trackChanged && licao) || getActiveLicao(novoJ.track);
-        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, novoJ.track || 'teen', !!novoJ.isAdmin, !!novoJ.isGuest, !!novoJ.isProfessor, novoJ.locationId);
+        await saveProgress(prog, l.semana, novoJ.id, novoJ.nome, novoJ.avatar, l.trimestre, novoJ.track || 'teen', !!novoJ.isAdmin, !!novoJ.isGuest, !!novoJ.isProfessor, novoJ.locationId, novoJ.turmaId);
       }
     } catch(e) { console.error(e); }
 
