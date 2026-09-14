@@ -2956,6 +2956,11 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
     document.body,
   );
 
+  // Sem turma a aba da turma não tem destino, e um botão que abre uma folha
+  // para dar erro é pior que botão nenhum. A aba particular sempre tem — ela
+  // não depende de turma nenhuma.
+  const podeEscrever = aba === 'particular' || (!conducao.carregando && !!turmaId);
+
   const abaSt = (ativo: boolean): React.CSSProperties => ({
     flex: 1,
     padding: '10px 8px',
@@ -2974,7 +2979,23 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900, fontSize:17}}>🙏 Mural</div>
-        <div/>
+        {/* A ação mora no cabeçalho, e não num botão flutuante no canto.
+            O canto inferior direito já é do 🐞 (App.tsx: fixed, right:14,
+            bottom:96, z-index 300) — no celular, onde a coluna do app tem a
+            largura da tela, os dois caíam no MESMO lugar e o de reportar bug,
+            por estar acima, engolia o de pedir oração. Aqui não há com o que
+            colidir: o cabeçalho é sticky, então a ação acompanha a rolagem
+            sem tirar uma linha sequer da lista. */}
+        {podeEscrever ? (
+          <button
+            onClick={() => setCompondo(true)}
+            aria-label={aba === 'particular' ? 'Guardar um motivo seu' : 'Escrever um pedido no mural'}
+            style={{display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:20, border:'none', cursor:'pointer', background:'linear-gradient(135deg,#FFE08A,#F0B400)', color:'#5A3E16', fontSize:13, fontWeight:900, fontFamily:'Poppins,sans-serif', whiteSpace:'nowrap', boxShadow:'0 4px 12px rgba(16,24,56,.16)'}}
+          >
+            {aba === 'particular' ? '🔒' : '✍️'}
+            <span>{aba === 'particular' ? 'Guardar' : 'Pedir'}</span>
+          </button>
+        ) : <div/>}
       </div>
 
       <div className="sec" style={{paddingTop:14}}>
@@ -2997,7 +3018,7 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
                 <div style={{fontSize:44, marginBottom:12}}>🔒</div>
                 <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>Nada guardado ainda</div>
                 <div style={{fontSize:14, lineHeight:1.5}}>
-                  Toque no ✍️ aqui embaixo. O que você escrever volta a aparecer para você antes de abrir a lição — e só para você.
+                  Toque em <strong>🔒 Guardar</strong>, lá em cima. O que você escrever volta a aparecer para você antes de abrir a lição — e só para você.
                 </div>
               </div>
             )}
@@ -3107,7 +3128,7 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
               <div style={{textAlign:'center', padding:'36px 20px', color:'var(--mut)'}}>
                 <div style={{fontSize:44, marginBottom:12}}>🕊️</div>
                 <div style={{fontSize:15, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>O mural ainda está vazio</div>
-                <div style={{fontSize:14, lineHeight:1.5}}>Toque no ✍️ aqui embaixo para ser o primeiro a pedir — ou volte amanhã para orar por quem pedir.</div>
+                <div style={{fontSize:14, lineHeight:1.5}}>Toque em <strong>✍️ Pedir</strong>, lá em cima, para ser o primeiro — ou volte amanhã para orar por quem pedir.</div>
               </div>
             )}
 
@@ -3163,23 +3184,6 @@ export const MuralOracoes = ({ jogador, onBack }: any) => {
           </>
         )}
       </div>
-
-      {/* Botão de escrever, flutuando acima da barra. Só aparece quando há
-          para onde escrever: sem turma, a aba da turma não tem destino, e um
-          botão que abre uma folha para dar erro é pior que botão nenhum. A
-          aba particular sempre tem — ela não depende de turma. */}
-      {(aba === 'particular' || (!conducao.carregando && !!turmaId)) && !compondo && (
-        <div className="oracao-fab-wrap">
-          <button
-            className="oracao-fab"
-            onClick={() => setCompondo(true)}
-            aria-label={aba === 'particular' ? 'Guardar um motivo seu' : 'Escrever um pedido no mural'}
-            title={aba === 'particular' ? 'Guardar um motivo seu' : 'Escrever um pedido'}
-          >
-            {aba === 'particular' ? '🔒' : '✍️'}
-          </button>
-        </div>
-      )}
 
       {folhaDeEscrever}
 
