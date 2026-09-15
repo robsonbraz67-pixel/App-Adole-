@@ -1,0 +1,52 @@
+name: Backfill Turmas
+
+# Substitui a Netlify Function manual (ver scripts/backfill-turmas.ts). Antes
+# o controle de acesso era um BACKFILL_TOKEN na URL; agora é o do GitHub —
+# só quem tem permissão de disparar workflows neste repositório chega aqui.
+#
+# aplicar=false por padrão: mostra o ensaio (o que ACONTECERIA) sem escrever
+# nada. Confira o ensaio antes de rodar de novo com aplicar=true.
+on:
+  workflow_dispatch:
+    inputs:
+      mapa:
+        description: 'Modo mapa: só mostra quantas turmas precisam existir, por igreja e trilha'
+        type: boolean
+        default: false
+      turma_id:
+        description: 'ID da turma (obrigatório quando mapa=false)'
+        type: string
+        default: ''
+      aplicar:
+        description: 'Escrever de verdade (sem isso, só mostra o ensaio)'
+        type: boolean
+        default: false
+      incluir_sem_igreja:
+        description: 'Incluir alunos sem locationId no backfill'
+        type: boolean
+        default: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Rodar backfill de turmas
+        run: |
+          ARGS=""
+          if [ "${{ inputs.mapa }}" = "true" ]; then ARGS="$ARGS --mapa"; fi
+          if [ -n "${{ inputs.turma_id }}" ]; then ARGS="$ARGS --turmaId=${{ inputs.turma_id }}"; fi
+          if [ "${{ inputs.aplicar }}" = "true" ]; then ARGS="$ARGS --aplicar"; fi
+          if [ "${{ inputs.incluir_sem_igreja }}" = "true" ]; then ARGS="$ARGS --incluirSemIgreja"; fi
+          npx tsx scripts/backfill-turmas.ts $ARGS
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FB_FIRESTORE_DB: ${{ secrets.FB_FIRESTORE_DB }}

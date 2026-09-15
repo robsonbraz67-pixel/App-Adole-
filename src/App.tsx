@@ -3,7 +3,7 @@ import { getTrackLessons, loadTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO } from './utils';
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress, getWeeklyRanking } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, MuralOracoes, ReportarProblemaModal } from './components';
-import { BUILD_ID, buscarBuildPublicado, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
+import { BUILD_ID, buscarBuildPublicado, buscarAvisoNovoEndereco, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
 import { setErroContexto } from './errorLog';
 // Sob demanda: o Modo Ao Vivo pesa ~62 KB (tela do host, do jogador, gerador
 // de QR e o sintetizador da trilha) e é usado no sábado, por uma pessoa. Com
@@ -117,6 +117,23 @@ export default function App() {
       window.removeEventListener('focus', checar);
       clearInterval(iv);
     };
+  }, []);
+
+  // Aviso de troca de endereço (migração Netlify → Firebase Hosting): dispara
+  // no máximo uma vez por aparelho — a flag em localStorage é o que impede o
+  // aviso de voltar a cada checagem de versão (a cada 15 min).
+  useEffect(() => {
+    let cancelado = false;
+    buscarAvisoNovoEndereco().then(link => {
+      if (cancelado || !link || localStorage.getItem('avisoNovoEnderecoVisto')) return;
+      localStorage.setItem('avisoNovoEnderecoVisto', '1');
+      setInAppNotif({
+        title: '📍 O endereço do app mudou',
+        body: `Abra ${link} e refaça o atalho na tela inicial — este endereço antigo vai parar de funcionar em breve.`,
+        id: Date.now(),
+      });
+    });
+    return () => { cancelado = true; };
   }, []);
 
   // Aplica só em tela segura. No quiz (ou no estudo/resultado) espera: um reload

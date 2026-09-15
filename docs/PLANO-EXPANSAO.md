@@ -415,6 +415,15 @@ curl "$URL/.netlify/functions/backfill-turmas?token=$T&turmaId=$ID"
 curl -X POST "$URL/.netlify/functions/backfill-turmas?token=$T&turmaId=$ID&aplicar=1"
 ```
 
+> **Atualização (migração para Firebase Hosting):** a partir de
+> `.github/workflows/backfill-turmas.yml`, este backfill roda por
+> `workflow_dispatch` no GitHub Actions — sem token na URL, sem precisar de um
+> branch deploy só para expor a função. O mesmo mapa/ensaio/aplicar viram
+> inputs do workflow (`mapa`, `turma_id`, `aplicar`, `incluir_sem_igreja`); ver
+> `scripts/backfill-turmas.ts` para o comando equivalente local
+> (`npx tsx scripts/backfill-turmas.ts --mapa`). O texto abaixo documenta como
+> era feito com a função Netlify, mantido por registro histórico.
+
 A função só existe numa URL depois de um build. Produção exige `[deploy]` no
 commit (e autorização — ver `CLAUDE.md`); um **branch deploy** builda sempre e
 dá uma URL real que fala com o mesmo banco de produção, o que permite rodar o

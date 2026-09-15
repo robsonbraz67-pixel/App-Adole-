@@ -9,6 +9,12 @@ const BUILD_ID = process.env.COMMIT_REF?.slice(0, 12) || `dev-${Date.now()}`;
 
 // Publica dist/version.json com esse mesmo id. O app compara o valor embutido
 // no bundle com o do arquivo: se diferirem, existe versão nova no ar.
+//
+// avisoNovoEndereco: campo opcional, controlado pela env var
+// AVISO_NOVO_ENDERECO — fica ausente (null) em todo build normal, então não
+// muda nada para quem está no Netlify hoje. Só é preenchido no deploy que
+// faz o corte para o Firebase Hosting (ver o plano de migração), como um
+// interruptor remoto: liga o aviso sem precisar mudar código de novo.
 const versionFile = (): Plugin => ({
   name: 'sabatina-version-file',
   apply: 'build',
@@ -16,7 +22,11 @@ const versionFile = (): Plugin => ({
     this.emitFile({
       type: 'asset',
       fileName: 'version.json',
-      source: JSON.stringify({ buildId: BUILD_ID, publicadoEm: new Date().toISOString() }),
+      source: JSON.stringify({
+        buildId: BUILD_ID,
+        publicadoEm: new Date().toISOString(),
+        avisoNovoEndereco: process.env.AVISO_NOVO_ENDERECO || null,
+      }),
     });
   },
 });
