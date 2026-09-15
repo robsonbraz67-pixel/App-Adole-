@@ -24,6 +24,20 @@ const versionFile = (): Plugin => ({
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss(), versionFile()],
+    build: {
+      rollupOptions: {
+        output: {
+          // React e Firebase não mudam entre deploys, mas iam no mesmo chunk do
+          // app: o hash mudava a cada build e quem voltava rebaixava ~170 KB
+          // gzip de biblioteca à toa. Separados, o Cache-Control immutable que
+          // o netlify.toml já dá a /assets passa a valer de verdade para eles.
+          manualChunks: {
+            react: ['react', 'react-dom', 'react-dom/client'],
+            firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          },
+        },
+      },
+    },
     define: {
       __BUILD_ID__: JSON.stringify(BUILD_ID),
     },

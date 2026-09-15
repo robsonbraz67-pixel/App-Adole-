@@ -1,12 +1,4 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-
-// O projeto não tem @types/react instalado (nada mais aqui usa componente de
-// classe, então nunca precisou); com allowJs, TS infere 'Component' a partir
-// do .js puro e o resultado não é genérico — extends Component<P,S> perde os
-// membros herdados (state/props/setState). O cast para 'any' é só para dar a
-// TypeScript uma base da qual herdar sem restrição; os campos abaixo continuam
-// tipados normalmente.
-const ComponentBase = Component as any;
 import { BUILD_ID, buscarBuildPublicado, recarregar } from './version';
 import { registrarErro, reportarProblema } from './errorLog';
 
@@ -20,10 +12,7 @@ import { registrarErro, reportarProblema } from './errorLog';
 type Props = { children: ReactNode };
 type State = { erro: Error | null; recarregando: boolean; detalhe: string; relato: string; enviandoRelato: boolean; relatoEnviado: boolean };
 
-export class ErrorBoundary extends ComponentBase {
-  props!: Props;
-  state: State;
-
+export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { erro: null, recarregando: false, detalhe: '', relato: '', enviandoRelato: false, relatoEnviado: false };
