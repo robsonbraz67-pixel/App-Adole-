@@ -37,6 +37,23 @@ export const buscarBuildPublicado = async (): Promise<string | null> => {
   }
 };
 
+// Aviso de troca de endereço (migração Netlify → Firebase Hosting): busca o
+// campo opcional avisoNovoEndereco de version.json — o mesmo arquivo que já
+// existe para o build id, mas separado do BUILD_ID para não mexer em quem já
+// lê buscarBuildPublicado (App.tsx, ErrorBoundary.tsx). Ausente/null na
+// maior parte do tempo; só vem preenchido no deploy que liga o interruptor
+// (ver vite.config.ts).
+export const buscarAvisoNovoEndereco = async (): Promise<string | null> => {
+  try {
+    const r = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return typeof d?.avisoNovoEndereco === 'string' ? d.avisoNovoEndereco : null;
+  } catch {
+    return null;
+  }
+};
+
 export const recarregar = () => {
   // replace() em vez de reload() para a versão antiga não voltar no botão
   // "voltar" do navegador.

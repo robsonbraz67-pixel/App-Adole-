@@ -1,0 +1,27 @@
+name: Backfill Ranking
+
+# Substitui a Netlify Function agendada (ver scripts/backfill-ranking-data.ts).
+# É reparo, não caminho crítico — o ranking já é ao vivo no cliente.
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Rodar backfill de ranking
+        run: npx tsx scripts/backfill-ranking-data.ts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FB_FIRESTORE_DB: ${{ secrets.FB_FIRESTORE_DB }}

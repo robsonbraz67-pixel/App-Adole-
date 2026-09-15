@@ -70,26 +70,29 @@ jobs:
       # Usa o firebase-tools fixado no package.json, não @latest: o deploy de
       # regras não pode mudar de comportamento sozinho quando sai versão nova.
       #
-      # ⚠️ DÍVIDA CONHECIDA: `--token` está DEPRECADO no firebase-tools e vai
-      # sumir numa versão maior — quando sumir, este passo quebra e nenhuma
-      # regra sobe mais. A migração é para conta de serviço, e só falta o
-      # segredo (hoje o repositório tem apenas FIREBASE_TOKEN):
+      # Conta de serviço em vez de `--token` (que está DEPRECADO no
+      # firebase-tools e ia sumir numa versão maior). O mesmo segredo
+      # FIREBASE_SERVICE_ACCOUNT é usado aqui, no Hosting
+      # (.github/workflows/hosting.yml) e nos backfills
+      # (.github/workflows/backfill-*.yml) — GOOGLE_APPLICATION_CREDENTIALS
+      # precisa ser um ARQUIVO, não a variável com o JSON direto.
       #
-      #   1. Firebase Console > Configurações > Contas de serviço > gerar chave
-      #   2. gh secret set FIREBASE_SERVICE_ACCOUNT < chave.json
-      #   3. trocar o passo abaixo por um que escreva a chave em
-      #      $RUNNER_TEMP/sa.json, aponte GOOGLE_APPLICATION_CREDENTIALS para
-      #      ela e chame o deploy com --project gen-lang-client-0268878137
-      #      (sem --token).
-      #
-      # Não foi trocado agora porque este é o caminho que publica regras:
-      # fazer a troca sem o segredo existir deixaria o repositório sem como
-      # publicar nada.
+      # ⚠️ Este passo só funciona depois que o segredo FIREBASE_SERVICE_ACCOUNT
+      # existir no repositório (gerado no Console do Firebase > Configurações
+      # > Contas de serviço > gerar chave, e salvo com
+      # `gh secret set FIREBASE_SERVICE_ACCOUNT < chave.json`). Sem o segredo,
+      # este passo falha e nenhuma regra sobe — confirme que ele existe antes
+      # de mesclar esta mudança em main.
       #
       # Índices junto das regras: uma consulta sem índice falha em PRODUÇÃO
       # (não degrada, falha), então o índice precisa existir antes do código
       # que consulta. Publicar os dois pelo mesmo caminho evita a ordem errada.
       # O índice leva alguns minutos construindo depois de aceito — conferir em
       # `npx firebase firestore:indexes` antes de subir código que dependa dele.
+      - name: Escrever credencial da conta de serviço
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
+
       - name: Deploy Firestore rules e índices
-        run: npx firebase deploy --only firestore:rules,firestore:indexes --non-interactive --token "${{ secrets.FIREBASE_TOKEN }}"
+        run: npx firebase deploy --only firestore:rules,firestore:indexes --non-interactive --project gen-lang-client-0268878137
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
