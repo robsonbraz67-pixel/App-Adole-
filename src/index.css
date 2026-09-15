@@ -311,9 +311,17 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
    (acerto, erro, mudança de posição) continuam, porque sem elas a interface
    passa a "pular" sem explicar o que mudou. */
 @media (prefers-reduced-motion: reduce){
-  .blob,.sweep::after{animation:none}
+  /* A lista antiga cobria 3 animações e deixava 6 infinitas rodando (ring,
+     doneGlow, goldGlow, pulse do path-ring, sweep, blob) — justamente as que
+     repintam box-shadow a cada quadro. Regra ampla: quem pede menos movimento
+     recebe menos movimento, inclusive nas animações adicionadas depois. */
+  *,*::before,*::after{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+    scroll-behavior:auto!important;
+  }
   .conf-p{display:none}
-  [style*="animation:bob"],[style*="animation: bob"]{animation:none!important}
 }
 
 /* ===== LAYOUT ===== */
@@ -337,6 +345,11 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 .btn-grn{background:linear-gradient(135deg,var(--grn),var(--grn-dk));color:#fff;box-shadow:0 5px 0 var(--grn-dk)}
 .btn-ghost{background:var(--g4);color:var(--mut);border:2px solid var(--b5);box-shadow:none;transition:background .2s,color .2s,border-color .2s}
 .btn-sm{font-size:13px;padding:8px 14px;width:auto;border-radius:var(--rsm)}
+/* Usada em 3 botões de "← Voltar" (Minha Turma) e nunca definida: o preflight
+   do Tailwind zera padding e borda de <button>, então saíam sem estilo e com
+   ~16px de alvo de toque — o mínimo no Android é 48dp. */
+.btn-back{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 14px 8px 10px;background:transparent;border:none;cursor:pointer;color:var(--mut);font-family:'Poppins',sans-serif;font-weight:800;font-size:14px;border-radius:var(--rsm);transition:color .2s,background .2s}
+.btn-back:active{color:var(--txt);background:var(--g4)}
 .btn-dis{opacity:.4;pointer-events:none!important}
 
 /* ===== CARDS ===== */
@@ -654,13 +667,18 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 .stat-fire{display:inline-flex;align-items:center;gap:5px;font-size:17px;line-height:1;font-weight:700;color:var(--magenta);white-space:nowrap;background:rgba(255,92,122,.14);border:1px solid rgba(255,92,122,.35);border-radius:30px;padding:7px 14px}
 .stat-fire b{font-family:'Space Grotesk','Poppins',sans-serif;font-size:19px;font-weight:700;color:var(--magenta);font-variant-numeric:tabular-nums}
 
-/* ===== CARD DA UNIDADE (amarelo, estilo Duolingo) ===== */
+/* ===== CARD DA UNIDADE (estilo Duolingo) =====
+   Fundo é var(--card): um vidro quase-branco no claro, quase-escuro no
+   escuro — nunca literalmente dourado. O texto abaixo era marrom-escuro fixo
+   (herdado de quando o card TINHA fundo dourado sólido): ficava legível por
+   coincidência no claro e ilegível no escuro, marrom sobre um vidro já
+   escuro. Trocado por tokens que já respondem ao tema. */
 .unit-card{display:flex;align-items:stretch;background:var(--card);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--b5);border-radius:var(--r);color:var(--txt);font-family:'Poppins',sans-serif;overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.22)}
-.unit-eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:rgba(58,40,0,.7)}
-.unit-campanha{color:rgba(58,40,0,.55);font-weight:700}
+.unit-eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--mut)}
+.unit-campanha{color:var(--mut);opacity:.75;font-weight:700}
 .unit-title{font-size:18px;font-weight:900;text-transform:uppercase;letter-spacing:.3px;margin-top:3px;line-height:1.22;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 0 rgba(255,255,255,.25)}
-.unit-ic-btn{flex-shrink:0;width:50px;border:none;border-left:1.5px solid rgba(58,40,0,.18);background:transparent;font-size:18px;opacity:.55;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,opacity .15s}
-.unit-ic-btn:active{background:rgba(58,40,0,.1);opacity:.85}
+.unit-ic-btn{flex-shrink:0;width:50px;border:none;border-left:1.5px solid var(--b5);background:transparent;font-size:18px;opacity:.55;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,opacity .15s}
+.unit-ic-btn:active{background:var(--g4);opacity:.85}
 
 /* ===== TRILHA CONTÍNUA DA TEMPORADA (13 lições) ===== */
 .trail{display:flex;flex-direction:column;gap:0}

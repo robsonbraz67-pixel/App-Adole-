@@ -194,10 +194,16 @@ export default function App() {
     return () => { cancelado = true; unsub?.(); };
   }, [jogador?.id, jogador?.locationId, jogador?.track]);
 
-  // Minha posição na semana acompanha a assinatura
+  // Minha posição na semana acompanha a assinatura.
+  // Devolve o MESMO objeto quando a posição não mudou: cada snapshot criava um
+  // `prog` novo, e como ele é prop de quase toda tela, um sábado com 20 alunos
+  // no quiz virava 40-80 renders da árvore inteira em vez de 20-40.
   useEffect(() => {
     if (!jogador?.id) return;
-    setProg((prev: any) => ({ ...prev, pos: calcPos(weekRows, jogador.id, prev.xp || 0) }));
+    setProg((prev: any) => {
+      const pos = calcPos(weekRows, jogador.id, prev.xp || 0);
+      return prev.pos === pos ? prev : { ...prev, pos };
+    });
   }, [weekRows, jogador?.id]);
 
   // Resgata convite de dupla pendente (chegou por link) após login + matrícula
@@ -214,7 +220,12 @@ export default function App() {
 
   // PWA fica dias em memória sem recarregar: quando uma nova semana começa,
   // avança a lição automaticamente para não salvar progresso na semana errada
+  // A troca substitui `licao` e `prog`: feita no meio de um quiz, leva junto a
+  // rodada em andamento (até ~700 XP) e ainda grava um diaAtual da semana velha
+  // no doc da semana nova — que o mergeProgress depois PRESERVA, porque ele une
+  // os dias. Mesma regra do auto-update: marca a pendência e espera tela segura.
   const activeSemanaRef = useRef<string>('');
+  const [licaoPendente, setLicaoPendente] = useState<any>(null);
   useEffect(() => {
     const check = () => {
       if (document.visibilityState === 'hidden') return;
@@ -223,13 +234,21 @@ export default function App() {
       if (!activeSemanaRef.current) { activeSemanaRef.current = active.semana; return; }
       if (active.semana === activeSemanaRef.current) return; // semana não virou
       activeSemanaRef.current = active.semana;
-      if (jogador && licao && licao.semana < active.semana) handleChangeLicao(active);
+      if (jogador && licao && licao.semana < active.semana) setLicaoPendente(active);
     };
     document.addEventListener('visibilitychange', check);
     window.addEventListener('focus', check);
     const iv = setInterval(check, 60 * 60 * 1000);
     return () => { document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check); clearInterval(iv); };
   }, [licao, jogador]);
+
+  // Aplica a virada assim que a pessoa sai da tela com trabalho em andamento.
+  useEffect(() => {
+    if (!licaoPendente || !telaPermiteReload(tela)) return;
+    const nova = licaoPendente;
+    setLicaoPendente(null);
+    handleChangeLicao(nova);
+  }, [licaoPendente, tela]);
 
   useEffect(() => {
     if (theme === 'auto') {
@@ -287,6 +306,13 @@ export default function App() {
     const initApp = async () => {
       clearStaleCache();
       const j = gs('jogador');
+      // O auth não depende do conteúdo da trilha (a trilha sai do cache local),
+      // então as duas viagens de rede saem juntas em vez de uma esperar a outra.
+      // O .catch vazio só marca a promessa como tratada para o caso de o fluxo
+      // abaixo nunca chegar a aguardá-la; o erro real continua sendo tratado
+      // pelo try/catch que a aguarda.
+      const authInit = waitForAuthInit();
+      authInit.catch(() => {});
       // O conteúdo da trilha é carregado sob demanda: sem esperar por ele aqui,
       // getActiveLicao veria uma lista vazia e cairia no placeholder "Em breve".
       await loadTrackLessons(j?.track);
@@ -308,7 +334,7 @@ export default function App() {
         const initialTrack = j?.track || 'teen';
         let p = gs(semKey(l, initialTrack), PROG0);
         try {
-          const user = await waitForAuthInit();
+          const user = await authInit;
           if (user) {
             if (user.uid !== j.id) {
                localStorage.removeItem('jogador');

@@ -40,6 +40,18 @@
   [headers.values]
     Cache-Control = "no-store"
 
+# Ícones e manifest não têm hash no nome, então "immutable" seria errado — mas
+# sem header nenhum o navegador revalida os 5 a cada abertura do app instalado.
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
 [[headers]]
   for = "/sw.js"
   [headers.values]

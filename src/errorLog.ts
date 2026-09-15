@@ -22,10 +22,22 @@ const camposComuns = () => ({
   userAgent: navigator.userAgent,
 });
 
+// Teto de escrita. Um erro dentro do tick de 100ms do LiveHost, ou num loop de
+// render, gerava uma escrita por ocorrência: 10/s são 36.000/hora contra uma
+// cota de 20.000 por DIA — e estourar a cota derruba o save de progresso de
+// TODOS os alunos junto. O primeiro de cada assinatura é gravado; repetição da
+// mesma falha não acrescenta informação nenhuma, só custo.
+const TETO_POR_SESSAO = 25;
+const jaGravados = new Set<string>();
+
 // Fire-and-forget: um log que falha (offline, regra, o que for) não pode virar
 // um segundo erro nem travar quem já está vendo a tela de erro.
 export const registrarErro = (origem: 'boundary' | 'window' | 'promise', mensagem: string, detalhe?: string) => {
   try {
+    const assinatura = `${origem}|${String(mensagem || '').slice(0, 200)}`;
+    if (jaGravados.has(assinatura)) return;          // mesma falha, já registrada
+    if (jaGravados.size >= TETO_POR_SESSAO) return;  // cascata: para de gravar
+    jaGravados.add(assinatura);
     addDoc(collection(db, 'errorLogs'), {
       ...camposComuns(),
       origem,
