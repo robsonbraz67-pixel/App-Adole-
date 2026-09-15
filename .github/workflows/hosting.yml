@@ -17,10 +17,13 @@ on:
 
 # O GITHUB_TOKEN padrão do repositório é só leitura — sem isto, a action de
 # deploy falha com "Resource not accessible by integration" ao tentar
-# comentar a URL do preview no PR.
+# comentar a URL do preview no PR. O comentário em si é um comment de Issue
+# (a API de PR reaproveita a de Issues), por isso `issues: write` também é
+# necessário, não só `pull-requests: write`.
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   preview:
