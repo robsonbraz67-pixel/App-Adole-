@@ -2190,7 +2190,14 @@ const useSorteador = (licao: any, turmaId?: string) => {
 
   const iniciar = () => {
     if (users.length === 0) return;
-    let fila = queue.length > 0 ? queue : [...Array(users.length).keys()].sort(() => Math.random() - 0.5);
+    // Era `.sort(() => Math.random() - 0.5)` — o mesmo shuffle enviesado que
+    // o embaralhar() de utils.ts já corrigiu pras alternativas do quiz (ver o
+    // comentário lá: a posição original tende a "grudar" perto do início).
+    // `users` vem de getWeeklyRankingDaTurma, uma ordem que se repete semana
+    // a semana pra quem sempre fecha os 7 dias — sem Fisher-Yates de verdade,
+    // quem começa perto do topo da lista ganha o sorteio desproporcionalmente
+    // mais, toda semana.
+    let fila = queue.length > 0 ? queue : embaralhar([...Array(users.length).keys()]);
     const winner = fila[0];
     setQueue(fila.slice(1));
     setGanhador(null); setAnimando(true);
