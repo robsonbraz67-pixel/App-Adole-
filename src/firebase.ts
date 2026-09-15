@@ -952,8 +952,16 @@ export const adminMesclarContas = async (secundariaId: string, principalId: stri
     if (principal.turmaId) corpo.turmaId = principal.turmaId;
     const liberados = Array.from(new Set([...(existente?.liberados || []), ...(sec.liberados || [])]));
     if (liberados.length) corpo.liberados = liberados;
-    await setDoc(doc(db, 'progress', trackKey(principalId, sec.week, sec.track)), corpo, { merge: true });
-    await gravarCorrecao(sec.id, { done: [], history: {}, xp: 0, streak: 0, liberados: [] });
+    // Contexto na semana que falhar: sem isto, um erro no meio da fila (ex.:
+    // um doc legado com campo inválido que a regra atual rejeita) só dizia
+    // "recusado", sem dizer qual das N semanas nem por quê — impossível de
+    // diagnosticar a partir da tela do admin.
+    try {
+      await setDoc(doc(db, 'progress', trackKey(principalId, sec.week, sec.track)), corpo, { merge: true });
+      await gravarCorrecao(sec.id, { done: [], history: {}, xp: 0, streak: 0, liberados: [] });
+    } catch (e: any) {
+      throw new Error(`Semana ${sec.week}${sec.track ? ` (${sec.track})` : ''}: ${e?.message || e}`);
+    }
     semanas.push(sec.week);
   }
   return { semanas };

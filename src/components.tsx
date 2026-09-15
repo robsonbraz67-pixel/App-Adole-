@@ -4349,8 +4349,9 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
       await blockUser(mesclarAlvo.id, true);
       setMesclarAberto(false); setMesclarBusca(''); setMesclarAlvo(null); setMesclarLinhas(null);
       await carregar(alvo);
-    } catch {
-      setAviso('A mesclagem foi recusada. Isso acontece enquanto o firestore.rules novo não estiver publicado.');
+    } catch (e: any) {
+      console.error('Mesclagem de contas recusada:', e);
+      setAviso(`Mesclagem recusada: ${e?.message || e?.code || 'erro desconhecido'}`);
     }
     setMesclarOcupado(false);
   };
