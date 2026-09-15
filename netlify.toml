@@ -7,6 +7,12 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Corte para o Firebase Hosting: liga o interruptor que faz o app redirecionar
+  # sozinho pro endereço novo (ver vite.config.ts e src/App.tsx). Só existe
+  # aqui — o build do Firebase Hosting (.github/workflows/hosting.yml) não
+  # define isso, senão o site novo se redirecionaria pra si mesmo. Remover
+  # esta linha (ou o site inteiro) faz parte do desligamento do Netlify.
+  AVISO_NOVO_ENDERECO = "https://sabatinaquest.web.app"
 
 [functions]
   directory = "netlify/functions"

@@ -74,6 +74,7 @@ export default function App() {
   const [activePair, setActivePair] = useState<any>(null);
   const [pendingInvite, setPendingInvite] = useState<any>(null);
   const [temVersaoNova, setTemVersaoNova] = useState(false);
+  const [enderecoAntigo, setEnderecoAntigo] = useState<string | null>(null);
   // Modo Ao Vivo: liveJoinCode renderiza LiveJoin FORA de toda a máquina de
   // telas abaixo (convidado sem conta não pode esperar o boot/login). Já
   // liveGameActive existe pra impedir o auto-update de recarregar no meio
@@ -119,22 +120,35 @@ export default function App() {
     };
   }, []);
 
-  // Aviso de troca de endereço (migração Netlify → Firebase Hosting): dispara
-  // no máximo uma vez por aparelho — a flag em localStorage é o que impede o
-  // aviso de voltar a cada checagem de versão (a cada 15 min).
+  // Corte para o Firebase Hosting: busca o endereço novo (se o interruptor em
+  // version.json estiver ligado) e mostra o aviso uma vez — a flag em
+  // localStorage evita repetir a cada checagem de versão (a cada 15 min).
   useEffect(() => {
     let cancelado = false;
     buscarAvisoNovoEndereco().then(link => {
-      if (cancelado || !link || localStorage.getItem('avisoNovoEnderecoVisto')) return;
+      if (cancelado || !link) return;
+      setEnderecoAntigo(link);
+      if (localStorage.getItem('avisoNovoEnderecoVisto')) return;
       localStorage.setItem('avisoNovoEnderecoVisto', '1');
       setInAppNotif({
         title: '📍 O endereço do app mudou',
-        body: `Abra ${link} e refaça o atalho na tela inicial — este endereço antigo vai parar de funcionar em breve.`,
+        body: `Este link está sendo desativado. Você será levado para ${link} automaticamente.`,
         id: Date.now(),
       });
     });
     return () => { cancelado = true; };
   }, []);
+
+  // Aplica só em tela segura, igual ao auto-update abaixo: no quiz (ou no
+  // estudo/resultado) esperar evita jogar fora as respostas da rodada. Assim
+  // que a pessoa chega numa tela sem trabalho em andamento — o que inclui a
+  // Home, ou seja, todo mundo que abre o app do zero — ela é redirecionada
+  // pro endereço novo em vez de continuar usando este.
+  useEffect(() => {
+    if (!enderecoAntigo || !telaPermiteReload(tela) || liveGameActive) return;
+    const t = setTimeout(() => window.location.replace(enderecoAntigo), 1500);
+    return () => clearTimeout(t);
+  }, [enderecoAntigo, tela, liveGameActive]);
 
   // Aplica só em tela segura. No quiz (ou no estudo/resultado) espera: um reload
   // ali jogaria fora as respostas da rodada. Assim que a pessoa volta para uma
