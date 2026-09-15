@@ -913,8 +913,12 @@ export const adminZerarSemana = async (progId: string) =>
 // progresso em paralelo em dois uids. A raiz é uma pessoa só, então a correção
 // funde as duas na conta PRINCIPAL, semana a semana, com a MESMA regra que o
 // app já usa para reconciliar local vs. servidor (mergeProgress) — nada de
-// inventar uma segunda forma de somar dia e XP. A secundária não é apagada
-// aqui: quem chama decide bloqueá-la depois (blockUser), mantendo o rastro.
+// inventar uma segunda forma de somar dia e XP. O doc da secundária não é
+// APAGADO (quem chama decide bloquear a conta depois, com blockUser,
+// mantendo o rastro) — mas fica ZERADO, com gravarCorrecao (mesmo caminho de
+// adminZerarSemana), porque o ranking lê progress/ direto e não sabe nada
+// sobre a conta estar bloqueada: sem zerar, a secundária continuava
+// pontuando e aparecia como uma segunda entrada da mesma pessoa no ranking.
 export const adminMesclarContas = async (secundariaId: string, principalId: string): Promise<{ semanas: string[] }> => {
   const [principal, docsSecundaria, docsPrincipal] = await Promise.all([
     getUser(principalId),
@@ -949,6 +953,7 @@ export const adminMesclarContas = async (secundariaId: string, principalId: stri
     const liberados = Array.from(new Set([...(existente?.liberados || []), ...(sec.liberados || [])]));
     if (liberados.length) corpo.liberados = liberados;
     await setDoc(doc(db, 'progress', trackKey(principalId, sec.week, sec.track)), corpo, { merge: true });
+    await gravarCorrecao(sec.id, { done: [], history: {}, xp: 0, streak: 0, liberados: [] });
     semanas.push(sec.week);
   }
   return { semanas };
