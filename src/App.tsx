@@ -3,7 +3,7 @@ import { getTrackLessons, loadTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO } from './utils';
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress, getWeeklyRanking } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, MuralOracoes, ReportarProblemaModal } from './components';
-import { BUILD_ID, buscarBuildPublicado, buscarAvisoNovoEndereco, telaPermiteReload, recarregar, INTERVALO_CHECAGEM_MS } from './version';
+import { BUILD_ID, buscarBuildPublicado, buscarAvisoNovoEndereco, telaPermiteReload, recarregar, podeRecarregarDeNovo, INTERVALO_CHECAGEM_MS } from './version';
 import { setErroContexto } from './errorLog';
 // Sob demanda: o Modo Ao Vivo pesa ~62 KB (tela do host, do jogador, gerador
 // de QR e o sintetizador da trilha) e é usado no sábado, por uma pessoa. Com
@@ -153,8 +153,12 @@ export default function App() {
   // Aplica só em tela segura. No quiz (ou no estudo/resultado) espera: um reload
   // ali jogaria fora as respostas da rodada. Assim que a pessoa volta para uma
   // tela sem trabalho em andamento, a atualização entra sozinha.
+  //
+  // podeRecarregarDeNovo() é a trava do loop (ver version.ts): sem ela, um
+  // cache teimoso do navegador (mais comum no Safari/iOS logo depois de um
+  // deploy) faz o app recarregar pra sempre sem nunca abrir de verdade.
   useEffect(() => {
-    if (!temVersaoNova || !telaPermiteReload(tela) || liveGameActive) return;
+    if (!temVersaoNova || !telaPermiteReload(tela) || liveGameActive || !podeRecarregarDeNovo()) return;
     const t = setTimeout(recarregar, 400);
     return () => clearTimeout(t);
   }, [temVersaoNova, tela, liveGameActive]);
