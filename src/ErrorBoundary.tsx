@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { BUILD_ID, buscarBuildPublicado, recarregar } from './version';
+import { BUILD_ID, buscarBuildPublicado, recarregar, podeRecarregarDeNovo } from './version';
 import { registrarErro, reportarProblema } from './errorLog';
 
 // Rede de segurança: sem isto, qualquer erro de render derruba a árvore inteira
@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
     registrarErro('boundary', erro?.message || String(erro), `${detalhe}\n${info.componentStack || ''}`.trim());
     // Versão nova no ar? Então a tela quebrada é código velho: atualiza.
     buscarBuildPublicado().then(publicado => {
-      if (publicado && publicado !== BUILD_ID) {
+      if (publicado && publicado !== BUILD_ID && podeRecarregarDeNovo()) {
         this.setState({ recarregando: true });
         setTimeout(recarregar, 1200);
       }

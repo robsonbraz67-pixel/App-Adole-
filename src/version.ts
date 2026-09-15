@@ -54,10 +54,36 @@ export const buscarAvisoNovoEndereco = async (): Promise<string | null> => {
   }
 };
 
+// Trava do loop de recarregar: depois de recarregar por versão nova, o
+// próprio reload conta como "abriu de novo" — se o bundle continuar
+// desatualizado (cache do navegador ainda não convergiu com o servidor, mais
+// comum no Safari/iOS nos primeiros segundos depois de um deploy), o app
+// cai num loop que nunca sai do lugar. Este contador em sessionStorage (por
+// aba — zera ao fechar) trava depois de algumas tentativas na mesma sessão:
+// melhor continuar com a versão de alguns segundos atrás do que nunca abrir.
+const RELOAD_GUARD_KEY = 'sq_reload_guard';
+const RELOAD_GUARD_MAX = 3;
+
+export const podeRecarregarDeNovo = (): boolean => {
+  try {
+    return Number(sessionStorage.getItem(RELOAD_GUARD_KEY) || '0') < RELOAD_GUARD_MAX;
+  } catch {
+    return true;
+  }
+};
+
 export const recarregar = () => {
+  try {
+    const n = Number(sessionStorage.getItem(RELOAD_GUARD_KEY) || '0');
+    sessionStorage.setItem(RELOAD_GUARD_KEY, String(n + 1));
+  } catch { /* sessionStorage indisponível (modo privado etc.) — segue sem contar */ }
   // replace() em vez de reload() para a versão antiga não voltar no botão
-  // "voltar" do navegador.
-  window.location.replace(window.location.pathname + window.location.search);
+  // "voltar". Cache-bust (_r=timestamp) em vez de reconstruir a MESMA URL:
+  // o Safari às vezes reaproveita o documento em cache num reload pra uma
+  // URL idêntica mesmo com no-cache/must-revalidate — uma URL genuinamente
+  // nova nunca vem do cache, então força a rede a responder de verdade.
+  const separador = window.location.search ? '&' : '?';
+  window.location.replace(`${window.location.pathname}${window.location.search}${separador}_r=${Date.now()}`);
 };
 
 export const INTERVALO_CHECAGEM_MS = 15 * 60 * 1000;
