@@ -81,6 +81,29 @@ describe('progress', () => {
     );
   });
 
+  // adminMesclarContas (mesclagem de conta duplicada): a semana que só existe
+  // na conta secundária vira um documento NOVO na conta principal — é CREATE,
+  // não UPDATE, e antes desta trava só o próprio dono podia criar.
+  it('admin cria um documento de progresso novo para outro aluno (mesclagem de conta)', async () => {
+    await semearAluno('aluno1');
+    await semearAdmin('admin1');
+    const db = comoUsuario('admin1');
+
+    await assertSucceeds(
+      db.doc(`progress/aluno1_${SEMANA}`).set(progressoValido('aluno1')),
+    );
+  });
+
+  it('aluno comum continua sem poder criar progresso para outro', async () => {
+    await semearAluno('aluno1');
+    await semearAluno('aluno2');
+    const db = comoUsuario('aluno2');
+
+    await assertFails(
+      db.doc(`progress/aluno1_${SEMANA}`).set(progressoValido('aluno1')),
+    );
+  });
+
   // #33 — a trilha nova precisa funcionar no caminho mais quente do app.
   it('aluno grava progresso na trilha juvenil', async () => {
     await semearAluno('aluno1', { track: 'juvenil' });

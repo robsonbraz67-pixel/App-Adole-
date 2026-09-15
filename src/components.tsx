@@ -92,7 +92,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, adminMesclarContas, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio } from './firebase';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -4239,6 +4239,15 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState('');
 
+  // Mesclar conta duplicada: o mesmo aluno logou com dois e-mails e ficou com
+  // progresso partido em dois uids. `alvo` (acima) é sempre a conta PRINCIPAL
+  // aqui — a que fica.
+  const [mesclarAberto, setMesclarAberto] = useState(false);
+  const [mesclarBusca, setMesclarBusca] = useState('');
+  const [mesclarAlvo, setMesclarAlvo] = useState<any>(null);
+  const [mesclarLinhas, setMesclarLinhas] = useState<any[] | null>(null);
+  const [mesclarOcupado, setMesclarOcupado] = useState(false);
+
   const encontrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
     if (t.length < 2) return [];
@@ -4249,6 +4258,7 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
 
   const carregar = async (u: any) => {
     setAlvo(u); setBusca(''); setCarregando(true); setLinhas(null); setAviso('');
+    setMesclarAberto(false); setMesclarBusca(''); setMesclarAlvo(null); setMesclarLinhas(null);
     try {
       const docs = await getProgressoDoUsuario(u.id);
       // Mais recente primeiro: a semana que o professor quer conferir é quase
@@ -4286,6 +4296,57 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
 
   const totalXp = (linhas || []).reduce((t, l: any) => t + (Number(l.xp) || 0), 0);
   const totalDias = (linhas || []).reduce((t, l: any) => t + ((l.done || []).length), 0);
+
+  const mesclarEncontrados = useMemo(() => {
+    const t = mesclarBusca.trim().toLowerCase();
+    if (t.length < 2 || !alvo) return [];
+    return users
+      .filter(u => u.id !== alvo.id && ((u.nome || '').toLowerCase().includes(t) || (u.email || '').toLowerCase().includes(t)))
+      .slice(0, 8);
+  }, [mesclarBusca, users, alvo]);
+
+  const carregarMesclarAlvo = async (u: any) => {
+    setMesclarAlvo(u); setMesclarBusca(''); setMesclarLinhas(null);
+    try {
+      const docs = await getProgressoDoUsuario(u.id);
+      docs.sort((a: any, b: any) => String(b.week).localeCompare(String(a.week)));
+      setMesclarLinhas(docs);
+    } catch {
+      setAviso('Não foi possível ler o progresso desta conta.');
+    }
+  };
+
+  // Ensaio da mescla: por semana, mostra se a principal já tem dado ali (vai
+  // se somar dia a dia) ou se é semana nova (só existe na secundária).
+  const planoMescla = useMemo(() => {
+    if (!mesclarLinhas || !linhas) return null;
+    const chavePrincipal = new Set(linhas.map((l: any) => `${l.track || 'teen'}|${l.week}`));
+    return mesclarLinhas.map((l: any) => ({
+      week: l.week, track: l.track, dias: (l.done || []).length, xp: l.xp || 0,
+      colide: chavePrincipal.has(`${l.track || 'teen'}|${l.week}`),
+    })).sort((a, b) => String(b.week).localeCompare(String(a.week)));
+  }, [mesclarLinhas, linhas]);
+
+  const handleMesclar = async () => {
+    if (mesclarOcupado || !mesclarAlvo || !alvo || !planoMescla) return;
+    const semanas = planoMescla.length;
+    if (!window.confirm(
+      `Mesclar "${mesclarAlvo.nome}" (${mesclarAlvo.email}) dentro de "${alvo.nome}"?\n\n` +
+      `${semanas} semana(s) de progresso são somadas na conta de ${alvo.nome} (sem duplicar dia — as que colidem são unidas dia a dia). ` +
+      `Em seguida a conta "${mesclarAlvo.email}" é BLOQUEADA (não excluída) para não confundir mais ninguém.\n\n` +
+      'Isto escreve nos dados reais.'
+    )) return;
+    setMesclarOcupado(true); setAviso('');
+    try {
+      await adminMesclarContas(mesclarAlvo.id, alvo.id);
+      await blockUser(mesclarAlvo.id, true);
+      setMesclarAberto(false); setMesclarBusca(''); setMesclarAlvo(null); setMesclarLinhas(null);
+      await carregar(alvo);
+    } catch {
+      setAviso('A mesclagem foi recusada. Isso acontece enquanto o firestore.rules novo não estiver publicado.');
+    }
+    setMesclarOcupado(false);
+  };
 
   return (
     <div style={{ background: 'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24 }}>
@@ -4335,6 +4396,73 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
           {aviso && (
             <div style={{ padding: '9px 11px', borderRadius: 10, border: '1.5px solid var(--gold)', background: 'rgba(247,198,0,.1)', color: 'var(--gold)', fontSize: 12, lineHeight: 1.45, marginBottom: 10 }}>
               ⚠️ {aviso}
+            </div>
+          )}
+
+          {/* Conta duplicada (mesmo aluno com dois e-mails): funde o progresso
+              da secundária aqui dentro e bloqueia a secundária. Só o admin
+              (nunca a tela só-leitura do professor) mexe nisso. */}
+          {!somenteLeitura && (
+            <div style={{ marginBottom: 10 }}>
+              {!mesclarAberto ? (
+                <button
+                  onClick={() => setMesclarAberto(true)}
+                  style={{ background: 'none', border: '1.5px dashed var(--b3)', color: 'var(--mut)', borderRadius: 8, padding: '7px 10px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer' }}
+                >🔗 Mesclar outra conta duplicada nesta</button>
+              ) : (
+                <div style={{ background: 'var(--row-bg-strong)', padding: 10, borderRadius: 10 }}>
+                  {!mesclarAlvo ? (
+                    <>
+                      <div style={{ fontSize: 11.5, color: 'var(--mut)', marginBottom: 6 }}>
+                        Nome ou e-mail da conta que vai ENTRAR em {alvo.nome} (e depois ser bloqueada):
+                      </div>
+                      <input
+                        className="inp"
+                        style={{ fontSize: 13, padding: 9 }}
+                        placeholder="Nome ou e-mail da conta duplicada"
+                        value={mesclarBusca}
+                        onChange={e => setMesclarBusca(e.target.value)}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+                        {mesclarEncontrados.map(u => (
+                          <div key={u.id} onClick={() => carregarMesclarAlvo(u)}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 9px', background: 'var(--row-bg)', borderRadius: 8, cursor: 'pointer' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt2)' }}>{u.nome}</div>
+                              <div style={{ fontSize: 11, color: 'var(--mut)' }}>{u.email}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <button onClick={() => setMesclarAberto(false)} style={{ background: 'none', border: 'none', color: 'var(--mut)', fontSize: 11, marginTop: 6, cursor: 'pointer' }}>Cancelar</button>
+                    </>
+                  ) : !planoMescla ? (
+                    <div style={{ fontSize: 12, color: 'var(--mut)' }}>Carregando progresso de {mesclarAlvo.nome}...</div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 12, color: 'var(--txt2)', lineHeight: 1.6, marginBottom: 8 }}>
+                        <strong>{mesclarAlvo.nome}</strong> ({mesclarAlvo.email}) tem <strong>{planoMescla.length}</strong> semana(s).
+                        {' '}{planoMescla.filter(p => p.colide).length} colide(m) com semana que {alvo.nome} já tem — são unidas dia a dia, sem duplicar.
+                      </div>
+                      {planoMescla.length > 0 && (
+                        <div style={{ fontSize: 11, color: 'var(--mut)', marginBottom: 8 }}>
+                          {planoMescla.slice(0, 8).map(p => `${p.week} (${p.dias}d${p.colide ? ', une' : ', nova'})`).join(' · ')}
+                          {planoMescla.length > 8 ? '…' : ''}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          disabled={mesclarOcupado}
+                          onClick={handleMesclar}
+                          className={`btn btn-gold ${mesclarOcupado ? 'btn-dis' : ''}`}
+                          style={{ fontSize: 12.5, padding: '8px' }}
+                        >{mesclarOcupado ? 'Mesclando...' : '✅ Mesclar e bloquear esta conta'}</button>
+                        <button onClick={() => { setMesclarAlvo(null); setMesclarLinhas(null); }} style={{ background: 'none', border: '1.5px solid var(--b3)', color: 'var(--mut)', borderRadius: 8, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>Voltar</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

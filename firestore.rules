@@ -717,9 +717,14 @@ service cloud.firestore {
       // Doc id pode ser a chave legada `${uid}_${week}` (histórico, trilha teen)
       // ou `${uid}_${track}_${week}` (trilhas novas). Como UIDs do Firebase Auth
       // não contêm '_', split('_')[0] isola o dono e cobre os dois formatos.
+      //
+      // isUserAdmin() entra aqui pelo mesmo motivo do update logo abaixo: a
+      // mesclagem de contas duplicadas (aluno logou com dois e-mails) cria, na
+      // conta principal, a semana que só existia na secundária — e isso é
+      // CREATE, não UPDATE, quando a principal ainda não tinha aquela semana.
       allow create: if isAuthenticated()
         && progressId.split('_')[0] == incoming().userId
-        && isOwner(incoming().userId)
+        && (isOwner(incoming().userId) || isUserAdmin())
         && incoming().keys().hasOnly(['userId', 'week', 'track', 'trimestre', 'locationId', 'turmaId', 'xp', 'streak', 'done', 'history', 'nome', 'avatar', 'isAdmin', 'isGuest', 'isProfessor', 'liberados', 'zeradoEm', 'updatedAt'])
         && isValidProgress(incoming())
         && exists(/databases/$(database)/documents/users/$(incoming().userId));

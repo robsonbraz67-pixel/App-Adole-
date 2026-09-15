@@ -909,6 +909,51 @@ export const adminZerarDia = async (progId: string, atual: any, diaId: number, l
 export const adminZerarSemana = async (progId: string) =>
   gravarCorrecao(progId, { done: [], history: {}, xp: 0, streak: 0, liberados: [] });
 
+// Conta duplicada: o mesmo aluno logou com dois e-mails/aparelhos e acumulou
+// progresso em paralelo em dois uids. A raiz é uma pessoa só, então a correção
+// funde as duas na conta PRINCIPAL, semana a semana, com a MESMA regra que o
+// app já usa para reconciliar local vs. servidor (mergeProgress) — nada de
+// inventar uma segunda forma de somar dia e XP. A secundária não é apagada
+// aqui: quem chama decide bloqueá-la depois (blockUser), mantendo o rastro.
+export const adminMesclarContas = async (secundariaId: string, principalId: string): Promise<{ semanas: string[] }> => {
+  const [principal, docsSecundaria, docsPrincipal] = await Promise.all([
+    getUser(principalId),
+    getProgressoDoUsuario(secundariaId),
+    getProgressoDoUsuario(principalId),
+  ]);
+  if (!principal) throw new Error('Conta principal não encontrada.');
+
+  const porSemana = new Map<string, any>();
+  for (const d of docsPrincipal) porSemana.set(`${d.track || 'teen'}|${d.week}`, d);
+
+  const semanas: string[] = [];
+  for (const sec of docsSecundaria) {
+    const existente = porSemana.get(`${sec.track || 'teen'}|${sec.week}`) || null;
+    const mesclado = mergeProgress(existente, sec);
+    const corpo: any = {
+      userId: principalId,
+      week: sec.week,
+      track: sec.track || 'teen',
+      xp: mesclado.xp,
+      streak: mesclado.streak,
+      done: mesclado.done,
+      history: mesclado.history,
+      nome: principal.nome || '',
+      avatar: principal.avatar || '',
+      updatedAt: serverTimestamp(),
+    };
+    const trimestre = existente?.trimestre || sec.trimestre;
+    if (trimestre) corpo.trimestre = trimestre;
+    if (principal.locationId) corpo.locationId = principal.locationId;
+    if (principal.turmaId) corpo.turmaId = principal.turmaId;
+    const liberados = Array.from(new Set([...(existente?.liberados || []), ...(sec.liberados || [])]));
+    if (liberados.length) corpo.liberados = liberados;
+    await setDoc(doc(db, 'progress', trackKey(principalId, sec.week, sec.track)), corpo, { merge: true });
+    semanas.push(sec.week);
+  }
+  return { semanas };
+};
+
 // Devolve os dias concluídos por semana E as datas em que foram realmente
 // estudados (history[diaId].emISO) — as duas coisas saem da MESMA leitura, que
 // é o motivo de virem juntas em vez de em duas funções.
