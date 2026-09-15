@@ -81,7 +81,7 @@ export const Splash = () => {
         <div style={{fontSize:40,fontWeight:900,marginBottom:6}}>
           <span style={{color:'var(--gold)'}}>Sabatina</span><span style={{color:'var(--teal)'}}>Quest</span>
         </div>
-        <div style={{color:'rgba(125,164,200,.8)',fontSize:12,letterSpacing:3,textTransform:'uppercase',marginBottom:40,fontFamily:'Poppins,sans-serif'}}>Escola Sabatina Teen</div>
+        <div style={{color:'rgba(125,164,200,.8)',fontSize:12,letterSpacing:3,textTransform:'uppercase',marginBottom:40,fontFamily:'Poppins,sans-serif'}}>Escola Sabatina Games</div>
         <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'center',color:'rgba(125,164,200,.7)',fontSize:14}}>
           <div style={{width:16,height:16,border:'3px solid rgba(247,198,0,.4)',borderTopColor:'#F7C600',borderRadius:'50%',animation:'spin .8s linear infinite'}}/>
           Carregando...
@@ -136,7 +136,7 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
         <span style={{color:'var(--gold)'}}>Sabatina</span><span style={{color:'var(--teal)'}}>Quest</span>
       </div>
       <div style={{fontSize:9.5,fontWeight:800,letterSpacing:3,textTransform:'uppercase',color:'var(--mut)',fontFamily:'Poppins,sans-serif',marginBottom:18}}>
-        Escola Sabatina Teen
+        Escola Sabatina Games
       </div>
       <div style={{fontSize:14.5,lineHeight:1.7,color:'var(--txt2)',maxWidth:290,marginBottom:30}}>
         Estude a lição todo dia, some XP com a turma e acompanhe sua ofensiva.
