@@ -118,6 +118,21 @@ describe('publicar pedido', () => {
     );
   });
 
+  // A tela mostra a QUALQUER admin todas as turmas como "conduzidas"
+  // (getTurmasQueConduzo em firebase.ts), inclusive uma em que ele não é
+  // professor — o admin PRECISA conseguir publicar ali, senão a tela mente.
+  it('admin publica na turma de outra igreja, mesmo sem ser professor dela', async () => {
+    await cenario();
+    await semearAdmin('admin1', { turmaId: 'turma2' });
+    const db = comoUsuario('admin1');
+
+    await assertSucceeds(
+      db.collection('pedidosOracao').add({
+        ...PEDIDO, autorId: 'admin1', turmaId: 'turma1', criadoEm: serverTimestamp(),
+      }),
+    );
+  });
+
   it('pedido não nasce já orado nem já respondido', async () => {
     await cenario();
     const db = comoUsuario('aluno1');
@@ -212,6 +227,14 @@ describe('orar por um pedido', () => {
     const db = comoUsuario('deOutraTurma');
 
     await assertFails(db.doc('pedidosOracao/p1').update({ oraram: ['deOutraTurma'] }));
+  });
+
+  it('admin ora num pedido de turma que não é a dele nem conduz', async () => {
+    await cenario();
+    await semearAdmin('admin1', { turmaId: 'turma2' });
+    await semearPedido('p1');
+
+    await assertSucceeds(comoUsuario('admin1').doc('pedidosOracao/p1').update({ oraram: ['admin1'] }));
   });
 });
 

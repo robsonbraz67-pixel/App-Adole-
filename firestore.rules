@@ -1159,16 +1159,21 @@ service cloud.firestore {
         && incoming().autorId == request.auth.uid
         // Quem conduz publica na turma que conduz, sem precisar fazer parte
         // dela: e o professor de duas turmas deixando um pedido no mural da
-        // segunda, que nao e a turma do perfil dele.
+        // segunda, que nao e a turma do perfil dele. O admin entra pelo mesmo
+        // motivo do get/list e do delete logo abaixo: a tela mostra a ele
+        // TODAS as turmas como "conduzidas" (getTurmasQueConduzo), inclusive
+        // uma em que não é professor — sem isUserAdmin() aqui, ele lia e
+        // apagava o mural mas não conseguia publicar nem reagir.
         && ((minhaTurma() != '' && incoming().turmaId == minhaTurma())
-            || conduzoATurma(incoming().turmaId))
+            || conduzoATurma(incoming().turmaId)
+            || isUserAdmin())
         && isValidPedidoOracao(incoming());
 
       // Duas edições possíveis, e nada além delas: a turma marca "orei", e só
       // o autor marca como respondido. O texto é imutável — pedido que muda
       // depois de a turma orar por ele não é mais o mesmo pedido.
       allow update: if isAuthenticated()
-        && (existing().turmaId == minhaTurma() || conduzoATurma(existing().turmaId))
+        && (existing().turmaId == minhaTurma() || conduzoATurma(existing().turmaId) || isUserAdmin())
         && (
           soMexeNaPropriaReacao()
           || (isOwner(existing().autorId)
