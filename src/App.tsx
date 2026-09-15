@@ -22,11 +22,19 @@ const CACHE_VERSION = '3T2026';
 const clearStaleCache = () => {
   if (localStorage.getItem('cacheVersion') === CACHE_VERSION) return;
   Object.keys(localStorage)
-    .filter(k => k.startsWith('prog_') || k.startsWith('ranking_') || k.startsWith('rankrows_'))
+    .filter(k => k.startsWith('prog_') || k.startsWith('ranking_') || k.startsWith('rankrows_') || k.startsWith('licao_atual'))
     .forEach(k => localStorage.removeItem(k));
-  localStorage.removeItem('licao_atual');
   localStorage.setItem('cacheVersion', CACHE_VERSION);
 };
+
+// Chave por trilha: sem isto, um admin/professor que troca de trilha teria a
+// "lição atual" (Início, Ranking, Painel Admin) presa na trilha ERRADA sempre
+// que o cache local do aparelho (jogador.track) ficar para trás do valor real
+// no Firestore — por exemplo, ele trocou de trilha noutro aparelho. Pior: uma
+// vez que o estado em memória alcança o valor certo, handleSwitchTrack não
+// faz mais nada ao clicar na MESMA trilha (é o guard de linha ~694), então
+// não haveria como corrigir a tela sem essa chave por trilha.
+const licaoKey = (track?: string | null) => `licao_atual_${track || 'teen'}`;
 
 // Trilhas sem conteúdo ainda (youngAdult/adult) caem nesse placeholder em vez
 // de quebrar as telas que esperam sempre ter uma lição ativa com .dias/.semana.
@@ -318,10 +326,10 @@ export default function App() {
       await loadTrackLessons(j?.track);
       if (unmounted) return;
       const activeLicao = getActiveLicao(j?.track);
-      const savedLicao = gs('licao_atual', null);
+      const savedLicao = gs(licaoKey(j?.track), null);
       // Auto-switch to current week's lesson; keep saved only if it's the same week or a future week
-      const l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
-      ss('licao_atual', l);
+      let l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
+      ss(licaoKey(j?.track), l);
       setLicao(l);
 
       if (unmounted) return;
@@ -362,6 +370,19 @@ export default function App() {
                hasLocation = !!updatedJ.locationId;
             }
             const track = dbUser?.track || initialTrack;
+            // O cache local do aparelho (jogador.track, lido acima como
+            // initialTrack) pode estar para trás do Firestore — ex.: o
+            // professor trocou de trilha noutro aparelho. Sem recalcular
+            // aqui, `licao` fica presa na trilha velha (lição, Ranking e
+            // Painel Admin errados) e sem jeito de corrigir na tela: uma vez
+            // que o estado alcança a trilha certa, handleSwitchTrack não faz
+            // nada ao clicar de novo na mesma trilha.
+            if (track !== initialTrack) {
+              await loadTrackLessons(track);
+              l = gs(licaoKey(track), null) || getActiveLicao(track);
+              ss(licaoKey(track), l);
+              if (!unmounted) setLicao(l);
+            }
             const dbProg = await getProgress(j.id, l.semana, track);
             // Mescla com o local em vez de SOBRESCREVER: sem isso, um quiz que
             // terminou mas não chegou à nuvem (falha de rede, ou o bug de regra
@@ -420,9 +441,9 @@ export default function App() {
   const handleLogin = async (j: any) => {
     await loadTrackLessons(j?.track);
     const activeLicao = getActiveLicao(j?.track);
-    const savedLicao = gs('licao_atual', null);
+    const savedLicao = gs(licaoKey(j?.track), null);
     const l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
-    ss('licao_atual', l);
+    ss(licaoKey(j?.track), l);
     setLicao(l);
 
     let p = gs(semKey(l, j?.track), PROG0);
@@ -658,9 +679,9 @@ export default function App() {
   }, [rankingType, weekRows, weekGeralRows, weekGeralSemana, seasonRows, rosterComMinha, licao?.semana, jogador?.locationId, jogador?.track]);
 
   const handleChangeLicao = async (newLicao: any, trackOverride?: string) => {
-    ss('licao_atual', newLicao);
-    setLicao(newLicao);
     const track = trackOverride || jogador?.track || 'teen';
+    ss(licaoKey(track), newLicao);
+    setLicao(newLicao);
 
     let p = gs(semKey(newLicao, track), PROG0);
 
