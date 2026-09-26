@@ -1322,5 +1322,56 @@ service cloud.firestore {
             || professorDaMesmaTurma(existing()));
     }
 
+    // ===== Ganhadores dos sorteios =====
+    // Registro do que saiu no Sorteador, semana a semana e por temporada. É o
+    // que dá transparência ao prêmio: fica escrito quem ganhou, por qual regra,
+    // entre quantos, e quem conduziu o sorteio.
+    //
+    // Imutável de propósito (sem update): um registro de ganhador que pode ser
+    // reescrito depois não prova nada. Registro errado se apaga e se registra
+    // de novo — e apagar é só da liderança da turma.
+    //
+    // ganhadorAvatar é só o emoji: foto em data URI chega a 1 MB e seria
+    // copiada inteira em cada registro. A foto continua no perfil.
+    function isValidSorteio(data) {
+      return data.keys().hasAll(['turmaId', 'track', 'tipo', 'periodo', 'regra', 'ganhadorId', 'ganhadorNome', 'ganhadorAvatar', 'participantes', 'bilhetes', 'sorteadoPor', 'sorteadoPorNome', 'criadoEm'])
+        && data.keys().hasOnly(['turmaId', 'track', 'tipo', 'periodo', 'regra', 'ganhadorId', 'ganhadorNome', 'ganhadorAvatar', 'participantes', 'bilhetes', 'sorteadoPor', 'sorteadoPorNome', 'criadoEm'])
+        && data.turmaId is string && data.turmaId.size() > 0 && data.turmaId.size() <= 200
+        && data.track in ['teen', 'youngAdult', 'adult']
+        && data.tipo in ['semana', 'temporada']
+        && data.periodo is string && data.periodo.size() > 0 && data.periodo.size() <= 100
+        && data.regra in ['semana-completa', 'temporada-tudo', 'temporada-bilhete-por-semana']
+        && ((data.tipo == 'semana') == (data.regra == 'semana-completa'))
+        && data.ganhadorId is string && data.ganhadorId.size() > 0 && data.ganhadorId.size() <= 200
+        && data.ganhadorNome is string && data.ganhadorNome.size() > 0 && data.ganhadorNome.size() <= 80
+        && data.ganhadorAvatar is string && data.ganhadorAvatar.size() <= 64
+        && data.participantes is int && data.participantes >= 1 && data.participantes <= 5000
+        && data.bilhetes is int && data.bilhetes >= data.participantes && data.bilhetes <= 100000
+        && data.sorteadoPor == request.auth.uid
+        && data.sorteadoPorNome is string && data.sorteadoPorNome.size() > 0 && data.sorteadoPorNome.size() <= 80
+        && data.criadoEm == request.time;
+    }
+
+    match /sorteios/{id} {
+      // A turma lê os próprios ganhadores. A consulta do cliente é sempre
+      // where('turmaId','==', X) — `list` é tudo-ou-nada contra ela.
+      allow get, list: if isAuthenticated()
+        && ((minhaTurma() != '' && existing().turmaId == minhaTurma())
+            || isUserAdmin()
+            || conduzoATurma(existing().turmaId));
+
+      // Só quem conduz registra: o professor da turma (a do perfil ou uma que
+      // ele conduz) e o admin. Aluno nunca — nem para a própria turma.
+      allow create: if isAuthenticated()
+        && (isUserAdmin()
+            || conduzoATurma(incoming().turmaId)
+            || (isProfessor() && minhaTurma() != '' && incoming().turmaId == minhaTurma()))
+        && isValidSorteio(incoming());
+
+      allow update: if false;
+
+      allow delete: if isUserAdmin() || professorDaMesmaTurma(existing());
+    }
+
   }
 }

@@ -692,6 +692,37 @@ export const getWeeklyRankingDaTurma = async (week: string, turmaId?: string) =>
   }
 };
 
+// ===== Ganhadores dos sorteios =====
+// Ver a regra de `sorteios` em firestore.rules: imutável, e só quem conduz a
+// turma registra. A leitura é sempre por turma e ordenada aqui, no cliente —
+// são poucos registros por turma e assim não precisa de índice composto novo.
+export type RegistroSorteio = {
+  id: string;
+  turmaId: string; track: string;
+  tipo: 'semana' | 'temporada'; periodo: string;
+  regra: 'semana-completa' | 'temporada-tudo' | 'temporada-bilhete-por-semana';
+  ganhadorId: string; ganhadorNome: string; ganhadorAvatar: string;
+  participantes: number; bilhetes: number;
+  sorteadoPor: string; sorteadoPorNome: string;
+  criadoEm: any;
+};
+
+export const registrarSorteio = async (dados: Omit<RegistroSorteio, 'id' | 'criadoEm'>) => {
+  const ref = doc(collection(db, 'sorteios'));
+  await setDoc(ref, { ...dados, criadoEm: serverTimestamp() });
+  return ref.id;
+};
+
+export const getSorteiosDaTurma = async (turmaId: string): Promise<RegistroSorteio[]> => {
+  const snap = await getDocs(query(collection(db, 'sorteios'), where('turmaId', '==', turmaId)));
+  const lista: RegistroSorteio[] = [];
+  snap.forEach(d => lista.push({ id: d.id, ...(d.data() as any) }));
+  const ms = (r: RegistroSorteio) => r.criadoEm?.toMillis?.() ?? 0;
+  return lista.sort((a, b) => ms(b) - ms(a));
+};
+
+export const apagarSorteio = (id: string) => deleteDoc(doc(db, 'sorteios', id));
+
 export const getAdminIds = async (): Promise<Set<string>> => {
   try {
     const q = query(collection(db, 'users'), where('isAdmin', '==', true));

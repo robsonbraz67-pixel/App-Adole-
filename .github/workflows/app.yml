@@ -10,6 +10,7 @@ on:
       - 'src/**'
       - 'scripts/check-licoes.mjs'
       - 'tests/backfill/**'
+      - 'tests/sorteio/**'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
@@ -19,6 +20,7 @@ on:
       - 'src/**'
       - 'scripts/check-licoes.mjs'
       - 'tests/backfill/**'
+      - 'tests/sorteio/**'
   workflow_dispatch: {}
 
 jobs:

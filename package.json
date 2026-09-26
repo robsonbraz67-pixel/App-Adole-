@@ -11,7 +11,7 @@
     "lint": "tsc --noEmit",
     "check:rules": "node scripts/check-rules-functions.mjs",
     "check:licoes": "node scripts/check-licoes.mjs",
-    "test:unit": "vitest run --dir tests/backfill",
+    "test:unit": "vitest run tests/backfill tests/sorteio",
     "test:rules": "firebase emulators:exec --only firestore --project demo-sabatina \"vitest run --dir tests/rules\""
   },
   "dependencies": {

@@ -103,7 +103,8 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, adminMesclarContas, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, adminMesclarContas, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio, getSeasonProgress, registrarSorteio, getSorteiosDaTurma, apagarSorteio, RegistroSorteio } from './firebase';
+import { participantesDaTemporada, ordemPonderada, diasLiberadosPorSemana, REGRA_TEXTO, RegraSorteio, Participante } from './sorteio';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -2212,8 +2213,10 @@ export const SeletorTurmaAtiva = ({ turmas, turmaId, onEscolher, nota }: {
 // `turmaId` recorta os elegíveis (Fase 6). Sem ele, o sorteio pescava na
 // semana INTEIRA do sistema: com duas igrejas no ar, a turma de uma via o
 // prêmio sair para um nome que ninguém daquela sala conhecia.
-const useSorteador = (licao: any, turmaId?: string) => {
-  const [users, setUsers] = useState<any[]>([]);
+// Semana: quem fez os 7 dias, 1 bilhete cada. Temporada: as 13 semanas
+// somadas, pela regra escolhida (ver src/sorteio.ts).
+const useSorteador = (licao: any, turmaId: string | undefined, track: string, regra: RegraSorteio) => {
+  const [users, setUsers] = useState<Participante[]>([]);
   const [ganhador, setGanhador] = useState<any | null>(null);
   const [idx, setIdx] = useState(0);
   const [animando, setAnimando] = useState(false);
@@ -2228,13 +2231,23 @@ const useSorteador = (licao: any, turmaId?: string) => {
   // achando que é a nova, sem nada na tela denunciando.
   useEffect(() => {
     setUsers([]); setGanhador(null); setQueue([]); setIdx(0);
-  }, [licao?.semana, licao?.trimestre, turmaId]);
+  }, [licao?.semana, licao?.trimestre, turmaId, track, regra]);
 
   const carregar = async () => {
     setLoading(true); setGanhador(null); setQueue([]);
     try {
-      const rank = await getWeeklyRankingDaTurma(licao.semana, turmaId);
-      setUsers(rank.filter((u: any) => !u.isAdmin && !u.isProfessor && u.dias === 7));
+      if (regra === 'semana-completa') {
+        const rank = await getWeeklyRankingDaTurma(licao.semana, turmaId);
+        setUsers(rank
+          .filter((u: any) => !u.isAdmin && !u.isProfessor && u.dias === 7)
+          .map((u: any) => ({ id: u.id, nome: u.nome, avatar: u.avatar, xp: u.xp || 0, dias: u.dias, bilhetes: 1, semanasCompletas: 1 })));
+      } else {
+        const licoes = (await loadTrackLessons(track as Track))
+          .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre);
+        const meta = diasLiberadosPorSemana(licoes, hojeLocalISO());
+        const rows = await getSeasonProgress(Object.keys(meta));
+        setUsers(participantesDaTemporada(rows, meta, regra, { turmaId, track }));
+      }
     } catch { /* silent */ }
     setLoading(false);
   };
@@ -2282,7 +2295,8 @@ const useSorteador = (licao: any, turmaId?: string) => {
     // a semana pra quem sempre fecha os 7 dias — sem Fisher-Yates de verdade,
     // quem começa perto do topo da lista ganha o sorteio desproporcionalmente
     // mais, toda semana.
-    let fila = queue.length > 0 ? queue : embaralhar([...Array(users.length).keys()]);
+    // Com 1 bilhete para todos, a ordem ponderada é um Fisher-Yates comum.
+    let fila = queue.length > 0 ? queue : ordemPonderada(users);
     const winner = fila[0];
     setQueue(fila.slice(1));
     setGanhador(null); setAnimando(true);
@@ -2308,6 +2322,111 @@ const useSorteador = (licao: any, turmaId?: string) => {
   return { users, ganhador, idx, animando, loading, carregar, iniciar };
 };
 
+const AvatarSorteio = ({ u, className }: { u: any; className: string }) =>
+  u?.avatar?.startsWith('data:')
+    ? <img src={u.avatar} className={`${className} img`} alt="" />
+    : <span className={className}>{u?.avatar || '👤'}</span>;
+
+const tituloDaLicao = (l: any) => (l?.titulo || '').replace(/^Lição\s*\d+\s*[-—]\s*/i, '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+
+const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+
+const detalheDoGanhador = (g: Participante, regra: RegraSorteio) =>
+  regra === 'semana-completa' ? `${g.xp} XP · ${g.dias} dias`
+  : regra === 'temporada-tudo' ? `${g.dias} dias estudados na temporada`
+  : `${plural(g.bilhetes, 'bilhete', 'bilhetes')} · ${plural(g.semanasCompletas, 'semana completa', 'semanas completas')}`;
+
+const rotuloDoChip = (u: Participante, regra: RegraSorteio) =>
+  (u.nome?.split(' ')[0] || '') + (regra === 'temporada-bilhete-por-semana' ? ` ×${u.bilhetes}` : '');
+
+type EstadoRegistro = 'livre' | 'salvando' | 'salvo' | 'erro';
+
+const BotaoRegistrar = ({ estado, onRegistrar, className = '' }: { estado: EstadoRegistro; onRegistrar: () => void; className?: string }) => (
+  <button
+    className={`btn ${estado === 'salvo' ? 'btn-teal' : 'btn-ghost'} ${className}${estado === 'salvando' || estado === 'salvo' ? ' btn-dis' : ''}`}
+    onClick={onRegistrar}
+    disabled={estado === 'salvando' || estado === 'salvo'}
+  >
+    {estado === 'salvando' ? 'Registrando…' : estado === 'salvo' ? '✅ Ganhador registrado' : estado === 'erro' ? '⚠️ Não registrou — tentar de novo' : '✅ Registrar ganhador'}
+  </button>
+);
+
+/* ===== SORTEADOR — MODO TELÃO (16:9) ===== */
+const SorteadorTelao = ({ eyebrow, titulo, regra, turmaNome, users, totalBilhetes, ganhador, idx, animando, loading, registro, podeRegistrar, onRegistrar, onCarregar, onSortear, onSair }: any) => {
+  const atual = users[idx];
+  return createPortal(
+    <div className="st-palco" role="dialog" aria-modal="true" aria-label="Sorteio em tela cheia">
+      {ganhador && !animando && <Confetti show={true} />}
+      <div className="st-tela">
+        <div className="st-topo">
+          <div>
+            <div className="st-eyebrow">{eyebrow}</div>
+            <div className="st-titulo">{titulo}</div>
+            <div className="st-regra">{REGRA_TEXTO[regra as RegraSorteio]}</div>
+          </div>
+          <div className="st-info">
+            {turmaNome && <span>{turmaNome}</span>}
+            {users.length > 0 && <span><b>{users.length}</b> participante{users.length !== 1 ? 's' : ''}</span>}
+            {users.length > 0 && regra === 'temporada-bilhete-por-semana' && <span><b>{totalBilhetes}</b> bilhetes</span>}
+          </div>
+        </div>
+
+        <div className="st-centro">
+          {users.length === 0 ? (
+            <div className="st-vazio">
+              <div className="st-emoji-grande">🎰</div>
+              <div className="st-legenda">{loading ? 'Carregando participantes…' : 'Carregue os participantes para começar'}</div>
+              {!loading && <button className="btn btn-ghost st-btn-sec" onClick={onCarregar}>🔄 Carregar participantes</button>}
+            </div>
+          ) : ganhador && !animando ? (
+            <div className="st-vencedor" key={ganhador.id}>
+              <div className="st-eyebrow ouro">🏆 Vencedor</div>
+              <AvatarSorteio u={ganhador} className="st-av-win" />
+              <div className="st-nome-win">{ganhador.nome}</div>
+              <div className="st-detalhe">{detalheDoGanhador(ganhador, regra)}</div>
+            </div>
+          ) : animando ? (
+            <div className="st-girando">
+              <AvatarSorteio u={atual} className="st-av" />
+              <div className="st-nome">{atual?.nome?.split(' ')[0]}</div>
+            </div>
+          ) : (
+            <div className="st-vazio">
+              <div className="st-emoji-grande">🎰</div>
+              <div className="st-legenda">Pronto para sortear</div>
+            </div>
+          )}
+        </div>
+
+        {users.length > 0 && (
+          <div className="st-fila" aria-hidden="true">
+            {users.map((u: Participante, i: number) => (
+              <span key={u.id} className={`st-chip${animando && i === idx ? ' on' : ''}${ganhador && !animando && u.id === ganhador.id ? ' win' : ''}`}>
+                <AvatarSorteio u={u} className="st-chip-av" />
+                {rotuloDoChip(u, regra)}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="st-base">
+          {users.length > 0 && (
+            <div className="st-acoes">
+              <button className={`btn btn-gold st-btn${animando ? ' btn-dis' : ''}`} onClick={onSortear} disabled={animando}>
+                {animando ? '🎰 Sorteando…' : ganhador ? '🔁 Sortear de novo' : '🎰 Sortear!'}
+              </button>
+              {ganhador && !animando && podeRegistrar && <BotaoRegistrar estado={registro} onRegistrar={onRegistrar} className="st-btn st-btn-reg" />}
+            </div>
+          )}
+          <div className="st-dica">Espaço ou Enter sorteia · Esc sai</div>
+        </div>
+      </div>
+      <button className="st-sair" onClick={onSair} aria-label="Sair da tela cheia">✕</button>
+    </div>,
+    document.body
+  );
+};
+
 /* ===== SORTEADOR (tela própria, acessível pelo menu) ===== */
 export const Sorteador = ({ licao, jogador, onBack }: any) => {
   // Lição do SORTEIO, não a do perfil: dá para repor o sorteio de uma semana
@@ -2319,7 +2438,20 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   // Quem conduz sorteia na turma que está conduzindo; quem não conduz sorteia
   // na turma de que faz parte. O aluno cai no mesmo caminho de sempre.
   const turmaDoSorteio = conducao.conduz ? conducao.turmaId : jogador?.turmaId;
-  const { users, ganhador, idx, animando, loading, carregar, iniciar } = useSorteador(sel.licao, turmaDoSorteio);
+
+  // Semana ou temporada. Na temporada, a lição escolhida só serve para dizer
+  // QUAL temporada; a regra fica lembrada no aparelho de quem conduz.
+  const [tipo, setTipo] = useState<'semana' | 'temporada'>('semana');
+  const [regraTemporada, setRegraTemporadaState] = useState<Exclude<RegraSorteio, 'semana-completa'>>(
+    () => gs('sorteioRegraTemporada', 'temporada-bilhete-por-semana'));
+  const setRegraTemporada = (r: Exclude<RegraSorteio, 'semana-completa'>) => { ss('sorteioRegraTemporada', r); setRegraTemporadaState(r); };
+  const regra: RegraSorteio = tipo === 'semana' ? 'semana-completa' : regraTemporada;
+
+  const { users, ganhador, idx, animando, loading, carregar, iniciar } = useSorteador(sel.licao, turmaDoSorteio, sel.track, regra);
+  const totalBilhetes = users.reduce((s, u) => s + u.bilhetes, 0);
+
+  const licoesDaTemporada = getTrackLessons(sel.track as Track).filter((l: any) => !l.isAdminOnly && l.trimestre === sel.licao?.trimestre);
+  const diasLiberados = Object.values(diasLiberadosPorSemana(licoesDaTemporada, hojeLocalISO())).reduce((s, n) => s + n, 0);
 
   // Trocar a turma troca a trilha do sorteio junto: a turma É de uma trilha
   // (turmas/{id}.track), e sortear a turma de adolescentes entre quem estudou
@@ -2338,13 +2470,132 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
       .catch(() => {});
     return () => { vivo = false; };
   }, [trilhaDaTurma]);
+
+  // ===== Registro dos ganhadores =====
+  const [registro, setRegistro] = useState<EstadoRegistro>('livre');
+  useEffect(() => { setRegistro('livre'); }, [ganhador]);
+  const [historico, setHistorico] = useState<RegistroSorteio[] | null>(null);
+  const carregarHistorico = useCallback(() => {
+    if (!turmaDoSorteio) { setHistorico([]); return; }
+    getSorteiosDaTurma(turmaDoSorteio).then(setHistorico).catch(e => { console.error('getSorteiosDaTurma', e); setHistorico([]); });
+  }, [turmaDoSorteio]);
+  useEffect(() => { carregarHistorico(); }, [carregarHistorico]);
+
+  const registrar = async () => {
+    if (!ganhador || !turmaDoSorteio || registro === 'salvando' || registro === 'salvo') return;
+    setRegistro('salvando');
+    try {
+      await registrarSorteio({
+        turmaId: turmaDoSorteio,
+        track: sel.track,
+        tipo,
+        periodo: tipo === 'semana' ? sel.licao.semana : sel.licao.trimestre,
+        regra,
+        ganhadorId: ganhador.id,
+        ganhadorNome: (ganhador.nome || 'Sem nome').slice(0, 80),
+        ganhadorAvatar: ganhador.avatar?.startsWith('data:') ? '' : (ganhador.avatar || '').slice(0, 64),
+        participantes: users.length,
+        bilhetes: Math.max(totalBilhetes, users.length),
+        sorteadoPor: jogador.id,
+        sorteadoPorNome: (jogador.nome || 'Liderança').slice(0, 80),
+      });
+      setRegistro('salvo');
+      carregarHistorico();
+    } catch (e) {
+      console.error('registrarSorteio', e);
+      setRegistro('erro');
+    }
+  };
+
+  const apagar = async (r: RegistroSorteio) => {
+    if (!window.confirm(`Apagar o registro de ${r.ganhadorNome}? Isso não pode ser desfeito.`)) return;
+    try { await apagarSorteio(r.id); carregarHistorico(); }
+    catch (e) { console.error('apagarSorteio', e); alert('Não foi possível apagar este registro.'); }
+  };
+
+  const rotuloDoPeriodo = (r: RegistroSorteio) => {
+    if (r.tipo === 'temporada') return `Temporada ${r.periodo}`;
+    const l = getTrackLessons(r.track as Track).find((x: any) => x.semana === r.periodo);
+    return l ? tituloDaLicao(l) : r.periodo;
+  };
+
+  // Modo telão: a página inteira vai para tela cheia (tem que ser no próprio
+  // clique — fora do gesto o navegador recusa) e uma camada 16:9 cobre tudo.
+  // No iPhone não existe tela cheia de página: a camada cobre a tela igual.
+  const [telao, setTelao] = useState(false);
+  const entrarTelao = () => {
+    setTelao(true);
+    const el = document.documentElement as any;
+    const pedir = el.requestFullscreen || el.webkitRequestFullscreen;
+    try { const p = pedir?.call(el); p?.catch?.(() => {}); } catch {}
+  };
+  const sairTelao = () => {
+    const d = document as any;
+    if (d.fullscreenElement || d.webkitFullscreenElement) {
+      try { (d.exitFullscreen || d.webkitExitFullscreen).call(d)?.catch?.(() => {}); } catch {}
+    }
+    setTelao(false);
+  };
+  useEffect(() => {
+    const aoMudar = () => {
+      const d = document as any;
+      if (!d.fullscreenElement && !d.webkitFullscreenElement) setTelao(false);
+    };
+    document.addEventListener('fullscreenchange', aoMudar);
+    document.addEventListener('webkitfullscreenchange', aoMudar);
+    return () => {
+      document.removeEventListener('fullscreenchange', aoMudar);
+      document.removeEventListener('webkitfullscreenchange', aoMudar);
+    };
+  }, []);
+  // Espaço/Enter sorteia, Esc sai — quem conduz fica de pé longe do teclado,
+  // muitas vezes com um passador de slides (que manda essas teclas).
+  useEffect(() => {
+    if (!telao) return;
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { sairTelao(); return; }
+      if ((e.key === ' ' || e.key === 'Enter' || e.key === 'PageDown' || e.key === 'ArrowRight') && !animando && users.length > 0) {
+        e.preventDefault();
+        iniciar();
+      }
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [telao, animando, users.length, iniciar]);
+
+  const eyebrow = tipo === 'semana' ? '🎰 Sorteio da semana' : '🏆 Sorteio da temporada';
+  const tituloDoSorteio = tipo === 'semana' ? (tituloDaLicao(sel.licao) || sel.licao?.semana) : sel.licao?.trimestre;
+  const naTurma = conducao.turma
+    ? <> na turma <strong style={{color:'var(--txt2)'}}>{conducao.turma.nome}</strong>.</>
+    : turmaDoSorteio ? ' na sua turma.' : '.';
+
   return (
     <div className="scr" style={{paddingBottom:100}}>
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{width:'auto'}}>← Voltar</button>
         <div style={{fontWeight:900,fontSize:17}}>🎰 Sorteador</div>
-        <div/>
+        <button className="btn btn-ghost btn-sm" onClick={entrarTelao} style={{width:'auto'}} aria-label="Abrir em tela cheia para o telão">📺 Telão</button>
       </div>
+      {telao && (
+        <SorteadorTelao
+          eyebrow={eyebrow}
+          titulo={tituloDoSorteio}
+          regra={regra}
+          turmaNome={conducao.turma?.nome}
+          users={users}
+          totalBilhetes={totalBilhetes}
+          ganhador={ganhador}
+          idx={idx}
+          animando={animando}
+          loading={loading}
+          registro={registro}
+          podeRegistrar={!!turmaDoSorteio}
+          onRegistrar={registrar}
+          onCarregar={carregar}
+          onSortear={iniciar}
+          onSair={sairTelao}
+        />
+      )}
       <div className="sorteador-wrap">
         {conducao.conduz && (
           <SeletorTurmaAtiva
@@ -2354,19 +2605,43 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
             nota="O sorteio é entre os alunos desta turma. Trocar de turma aqui não mexe no seu perfil."
           />
         )}
+
+        <div className="theme-toggle sorteio-modo" role="group" aria-label="O que sortear">
+          <button className={`theme-btn${tipo === 'semana' ? ' active' : ''}`} onClick={() => setTipo('semana')}>📅 Semana</button>
+          <button className={`theme-btn${tipo === 'temporada' ? ' active' : ''}`} onClick={() => setTipo('temporada')}>🏆 Temporada</button>
+        </div>
+
         <SeletorLicao
           track={sel.track}
           licao={sel.licao}
           podeTrocarTrilha={podeTrocarTrilha}
           onChange={(l, t) => setSel({ licao: l, track: t })}
-          nota="Trocar aqui muda só o sorteio — seu perfil e seu progresso ficam como estão."
+          nota={tipo === 'semana'
+            ? 'Trocar aqui muda só o sorteio — seu perfil e seu progresso ficam como estão.'
+            : 'Na temporada, qualquer lição dela serve: é ela que diz qual temporada sortear.'}
         />
-        <div style={{fontSize:13, color:'var(--mut)', marginBottom:12, textAlign:'center'}}>
-          Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{sel.licao?.semana}</strong>
-          {conducao.turma
-            ? <> na turma <strong style={{color:'var(--txt2)'}}>{conducao.turma.nome}</strong>.</>
-            : turmaDoSorteio ? ' na sua turma.' : '.'}
+
+        {tipo === 'temporada' && (
+          <div className="theme-toggle sorteio-modo" role="group" aria-label="Regra da temporada">
+            <button className={`theme-btn${regraTemporada === 'temporada-tudo' ? ' active' : ''}`} onClick={() => setRegraTemporada('temporada-tudo')}>✅ Estudou tudo</button>
+            <button className={`theme-btn${regraTemporada === 'temporada-bilhete-por-semana' ? ' active' : ''}`} onClick={() => setRegraTemporada('temporada-bilhete-por-semana')}>🎟️ Bilhete por semana</button>
+          </div>
+        )}
+
+        <div style={{fontSize:13, color:'var(--mut)', marginBottom:12, textAlign:'center', lineHeight:1.5}}>
+          {tipo === 'semana' ? (
+            <>Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{sel.licao?.semana}</strong>{naTurma}</>
+          ) : (
+            <>
+              Temporada <strong style={{color:'var(--gold)'}}>{sel.licao?.trimestre}</strong> · {plural(licoesDaTemporada.length, 'semana', 'semanas')} · {plural(diasLiberados, 'dia liberado', 'dias liberados')} até hoje{naTurma}
+              <br />
+              {regraTemporada === 'temporada-tudo'
+                ? <>Participa quem estudou <strong style={{color:'var(--txt2)'}}>todos os {diasLiberados} dias</strong>, com 1 bilhete cada.</>
+                : <>Cada <strong style={{color:'var(--txt2)'}}>semana completa</strong> vale 1 bilhete: quem foi mais constante tem mais chance.</>}
+            </>
+          )}
         </div>
+
         <div style={{textAlign:'center'}}>
           <button onClick={carregar} disabled={loading} className={`btn btn-ghost ${loading ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px 16px', marginBottom:16, width:'auto', display:'inline-flex'}}>
             {loading ? 'Carregando...' : '🔄 Carregar Participantes'}
@@ -2380,15 +2655,16 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
         {users.length > 0 && (
           <>
             <div style={{fontSize:13, color:'var(--mut)', marginBottom:10, textAlign:'center'}}>
-              {users.length} participante{users.length !== 1 ? 's' : ''} elegível{users.length !== 1 ? 'is' : ''}:
+              {users.length} participante{users.length !== 1 ? 's elegíveis' : ' elegível'}
+              {regra === 'temporada-bilhete-por-semana' ? ` · ${totalBilhetes} bilhetes na urna` : ''}:
             </div>
             <div className="sorteador-chips">
               {users.map(u => (
-                <div key={u.id} style={{display:'flex', alignItems:'center', gap:5, background:'rgba(255,255,255,.06)', borderRadius:8, padding:'5px 10px'}}>
+                <div key={u.id} style={{display:'flex', alignItems:'center', gap:5, background:'var(--g3)', borderRadius:8, padding:'5px 10px'}}>
                   {u.avatar?.startsWith('data:')
                     ? <img src={u.avatar} style={{width:22, height:22, borderRadius:'50%', objectFit:'cover'}} alt="" />
                     : <span style={{fontSize:18}}>{u.avatar || '👤'}</span>}
-                  <span style={{fontSize:13, color:'var(--txt2)', fontWeight:700}}>{u.nome.split(' ')[0]}</span>
+                  <span style={{fontSize:13, color:'var(--txt2)', fontWeight:700}}>{rotuloDoChip(u, regra)}</span>
                 </div>
               ))}
             </div>
@@ -2410,18 +2686,50 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
                       ? <img src={ganhador.avatar} className="sorteador-avatar-win" alt="" />
                       : <div className="sorteador-emoji-win">{ganhador.avatar || '👤'}</div>}
                     <div className="sorteador-nome-win">{ganhador.nome}</div>
-                    <div style={{fontSize:15, color:'var(--gold)', fontWeight:700}}>{ganhador.xp} XP · {ganhador.dias} dias</div>
+                    <div style={{fontSize:15, color:'var(--gold)', fontWeight:700}}>{detalheDoGanhador(ganhador, regra)}</div>
                   </div>
                 )}
               </div>
             )}
 
-            <div style={{textAlign:'center'}}>
+            <div style={{display:'flex', flexWrap:'wrap', gap:10, justifyContent:'center'}}>
               <button onClick={iniciar} disabled={animando} className={`btn btn-gold ${animando ? 'btn-dis' : ''}`} style={{fontSize:16, padding:'12px 28px', width:'auto', display:'inline-flex'}}>
                 {animando ? '🎰 Sorteando...' : ganhador ? '🔁 Sortear Novamente' : '🎰 Sortear!'}
               </button>
+              {ganhador && !animando && turmaDoSorteio && (
+                <BotaoRegistrar estado={registro} onRegistrar={registrar} className="sorteio-btn-reg" />
+              )}
             </div>
+            {ganhador && !animando && !turmaDoSorteio && (
+              <div style={{fontSize:12, color:'var(--mut)', textAlign:'center', marginTop:8}}>Sem turma, o ganhador não pode ser registrado.</div>
+            )}
           </>
+        )}
+
+        {turmaDoSorteio && (
+          <div className="sorteio-historico">
+            <div className="sec-title">🏅 Ganhadores registrados{conducao.turma ? ` · ${conducao.turma.nome}` : ''}</div>
+            {historico === null ? (
+              <div className="sorteio-hist-vazio">Carregando…</div>
+            ) : historico.length === 0 ? (
+              <div className="sorteio-hist-vazio">Nenhum ganhador registrado ainda nesta turma.</div>
+            ) : historico.map(r => (
+              <div key={r.id} className="sorteio-hist-linha">
+                <span className="sorteio-hist-av">{r.ganhadorAvatar || '👤'}</span>
+                <div className="sorteio-hist-quem">
+                  <div className="sorteio-hist-nome">{r.ganhadorNome}</div>
+                  <div className="sorteio-hist-meta">
+                    {rotuloDoPeriodo(r)} · {REGRA_TEXTO[r.regra]} · entre {plural(r.participantes, 'pessoa', 'pessoas')}
+                    {r.regra === 'temporada-bilhete-por-semana' ? ` (${r.bilhetes} bilhetes)` : ''}
+                  </div>
+                  <div className="sorteio-hist-meta">
+                    {r.criadoEm?.toDate ? r.criadoEm.toDate().toLocaleDateString('pt-BR') : 'agora'} · sorteado por {r.sorteadoPorNome}
+                  </div>
+                </div>
+                <button className="sorteio-hist-apagar" onClick={() => apagar(r)} aria-label={`Apagar o registro de ${r.ganhadorNome}`} title="Apagar registro">🗑️</button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
