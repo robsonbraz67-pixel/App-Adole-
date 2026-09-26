@@ -1,0 +1,61 @@
+name: Export Temporada
+
+# Export de leitura para o encerramento da temporada (scripts/export-temporada.ts).
+# Roda no push deste branch, não em main — não publica nada no site.
+#
+# O repositório é público: o JSON sai criptografado com a chave PÚBLICA abaixo
+# (RSA-OAEP embrulhando uma chave AES aleatória). Só quem tem a chave privada,
+# que nunca saiu da máquina de quem pediu o export, abre o artefato.
+on:
+  push:
+    branches: ['export/temporada-*']
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Exportar
+        run: npx tsx scripts/export-temporada.ts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FB_FIRESTORE_DB: ${{ secrets.FB_FIRESTORE_DB }}
+          SEMANAS: 2026-W26,2026-W27,2026-W28,2026-W29,2026-W30,2026-W31,2026-W32,2026-W33,2026-W34,2026-W35,2026-W36,2026-W37,2026-W38
+
+      - name: Criptografar
+        run: |
+          cat > pub.pem <<'PEM'
+          -----BEGIN PUBLIC KEY-----
+          MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAx0EyF4Vm5jWIGohxWElB
+          /5ltY/mgKXKcEqhIYbbHxeDaCSAZsrH4hZUyOzAsv1Tf3k3D81hp6k3a+tnRioUx
+          mcIvZ8RWQvzf50bRJNfg00Y4pqMolkPn8Dw/fFWlnN/KgANAvyEWGHCA2qR4uT9n
+          wdxywMBc9SgjXvgnR/FJhAjEX/1r7asl8HeBraWe56qeqeIyro0dOueCL8yEsIXN
+          /hGVCiroVdDLmPdpyXgQke69Dl3Joi4jefqDHrOI36CZp/qwr/+qIsatsGMsnGoO
+          y6qr6qK6AuTeT0MRJ/C4KQMnVoDmkvPAFKHsDbNPELiJ5on+dk+f9ZAKeVa1Q5i9
+          aiRu3iIY+Rf/pQkCF88ZX2byW4Hx/N3qM6vkw8nq178jpoGMNUJlhXIU5VxLT2MA
+          NLLbtT9XWbz40FPuyQWsHDwQd5hD9dpMO2DUTgg7LDue4eZa1tNbFaxisuWr0TMW
+          ffy0JiQ/FCfLF+aDyUA+vJ3yaa1XCnFTZP7nrUxHEgT6qTkDe629VILJVgURsAFt
+          sJzCSOt8tFkVkqc3HI5BchSvVcezWtJ95vwpCpRXK0AcmRu3saiMMZQSetBUolNO
+          OevyIbrbsVsvlaxyAPRytfGN1L3LdREjd0OqmWZH2bNsCDxjqVAuk9PjHm8bRexq
+          HiwElUF9OSa+cd9rPbyupd8CAwEAAQ==
+          -----END PUBLIC KEY-----
+          PEM
+          mkdir out
+          openssl rand -out chave.bin 32
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in temporada.json -out out/temporada.json.enc -pass file:chave.bin
+          openssl pkeyutl -encrypt -pubin -inkey pub.pem -pkeyopt rsa_padding_mode:oaep -in chave.bin -out out/chave.bin.enc
+          shred -u temporada.json chave.bin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: temporada-criptografada
+          path: out/
+          retention-days: 1
