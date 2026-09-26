@@ -406,6 +406,22 @@ describe('recados de apoio', () => {
     );
   });
 
+  // Bug real: "Mandar uma força" aparecia pro admin conduzindo uma turma que
+  // não é a dele (mesma tela de pedidosOracao) e falhava com
+  // permission-denied ao enviar, porque só o create de pedidosOracao tinha o
+  // OR de isUserAdmin() — o de recadosApoio tinha ficado pra trás.
+  it('admin manda recado numa turma que não é a dele nem conduz', async () => {
+    await comPedido();
+    await semearAdmin('admin1', { turmaId: 'turma2' });
+    const db = comoUsuario('admin1');
+
+    await assertSucceeds(
+      db.collection('recadosApoio').add({
+        ...RECADO, deId: 'admin1', deNome: 'Admin', criadoEm: serverTimestamp(),
+      }),
+    );
+  });
+
   it('aluno de outra turma não manda recado para esta', async () => {
     await comPedido();
     const db = comoUsuario('deOutraTurma');

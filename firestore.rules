@@ -1205,7 +1205,8 @@ service cloud.firestore {
     function pedidoDaMinhaTurma(pedidoId) {
       return exists(/databases/$(database)/documents/pedidosOracao/$(pedidoId))
         && (get(/databases/$(database)/documents/pedidosOracao/$(pedidoId)).data.turmaId == minhaTurma()
-            || conduzoATurma(get(/databases/$(database)/documents/pedidosOracao/$(pedidoId)).data.turmaId));
+            || conduzoATurma(get(/databases/$(database)/documents/pedidosOracao/$(pedidoId)).data.turmaId)
+            || isUserAdmin());
     }
 
     function autorDoPedido(pedidoId) {
@@ -1287,10 +1288,16 @@ service cloud.firestore {
             || isUserAdmin()
             || professorDaMesmaTurma(existing()));
 
+      // isUserAdmin() aqui pelo mesmo motivo do pedidosOracao: a tela mostra a
+      // QUALQUER admin todas as turmas como "conduzidas" (getTurmasQueConduzo
+      // em firebase.ts), inclusive uma em que ele não é professor dela — sem
+      // este OR, "Mandar uma força" aparecia pro admin e falhava com
+      // permission-denied ao clicar Enviar.
       allow create: if isAuthenticated()
         && incoming().deId == request.auth.uid
         && ((minhaTurma() != '' && incoming().turmaId == minhaTurma())
-            || conduzoATurma(incoming().turmaId))
+            || conduzoATurma(incoming().turmaId)
+            || isUserAdmin())
         && isValidRecado(incoming())
         // O recado só existe preso a um pedido da MINHA turma, e só vai para
         // quem publicou aquele pedido. É isto que impede o recado de virar
