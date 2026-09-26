@@ -2,6 +2,7 @@ import { LICAO_2, LICAO_3 } from "./data2";
 import { LICAO_4, LICAO_5, LICAO_6 } from "./data3";
 import { LICAO_7, LICAO_8, LICAO_9 } from "./data4";
 import { LICAO_10, LICAO_11, LICAO_12, LICAO_13 } from "./data5";
+import { LICAO_LA_1 } from "./data6";
 
 export const LICAO_1 = {
   titulo: "Lição 1 - Entregando a Vida pela Fé (27 de junho a 3 de julho)",
@@ -97,7 +98,9 @@ export const LICAO_1 = {
 
 const LICOES_TEEN = [
   LICAO_1, LICAO_2, LICAO_3, LICAO_4, LICAO_5, LICAO_6,
-  LICAO_7, LICAO_8, LICAO_9, LICAO_10, LICAO_11, LICAO_12, LICAO_13
+  LICAO_7, LICAO_8, LICAO_9, LICAO_10, LICAO_11, LICAO_12, LICAO_13,
+  // Temporada "Livro Aberto" começa aqui — não é continuação da anterior.
+  LICAO_LA_1
 ];
 
 export default LICOES_TEEN;
