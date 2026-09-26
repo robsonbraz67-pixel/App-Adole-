@@ -381,7 +381,19 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
   const concHoje = prog.done.includes(diaId);
 
   const trackLessons = useMemo(() => getTrackLessons(jogador?.track), [jogador?.track]);
-  const visiveis = useMemo(() => trackLessons.filter((l: any) => !l.isAdminOnly || jogador?.isAdmin || jogador?.isProfessor), [trackLessons, jogador?.isAdmin, jogador?.isProfessor]);
+  // Só a temporada (trimestre) da lição atual entra na trilha do ALUNO —
+  // senão, ao começar uma temporada nova, a trilha inteira da anterior
+  // continuava aparecendo aqui embaixo, misturada com a nova, com "Semana X
+  // de Y" somando as duas. Isso vale a partir da meia-noite em que a lição
+  // ativa muda de temporada (getActiveLicao já é por data, não precisa de
+  // gatilho extra). Admin/professor NÃO entram nessa trava: a temporada
+  // anterior continua visível para eles de propósito — é dado que a
+  // liderança ainda usa (revisão, análises, cobrar quem ficou pra trás).
+  const podeVerTemporadasAnteriores = !!jogador?.isAdmin || !!jogador?.isProfessor;
+  const visiveis = useMemo(() => trackLessons.filter((l: any) =>
+    (!l.isAdminOnly || podeVerTemporadasAnteriores) &&
+    (l.isAdminOnly || podeVerTemporadasAnteriores || l.trimestre === licao?.trimestre)
+  ), [trackLessons, podeVerTemporadasAnteriores, licao?.trimestre]);
 
   // Dias concluídos de todas as semanas (para marcar semanas anteriores na trilha)
   const [allDone, setAllDone] = useState<Record<string, number[]>>({});
@@ -1593,6 +1605,13 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     : regular.findIndex((r: any) => r.eu);
   const meds = ['🥇','🥈','🥉'];
 
+  // Nº de semanas da campanha ATUAL — não fixo em 13: no primeiro dia de uma
+  // temporada nova só existe 1 lição publicada, e o texto de carregamento não
+  // pode prometer "13 semanas" antes delas existirem.
+  const semanasCampanha = useMemo(() => getTrackLessons(jogador?.track)
+    .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre).length
+  , [jogador?.track, licao?.trimestre]);
+
   // Zonas estilo divisão: em dia com os dias liberados → zona do sorteio;
   // 1+ dia liberado sem fazer → zona de rebaixamento
   const { zoneOn, metaDias, emDia, atrasados } = useMemo(() => {
@@ -1741,7 +1760,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
 
       {rankingLoading && (
         <div style={{margin:'0 16px 12px', padding:'14px 16px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)', fontSize:13, color:'var(--txt2)', lineHeight:1.5}}>
-          ⏳ Somando as 13 semanas da campanha...
+          ⏳ Somando as {semanasCampanha} semana{semanasCampanha !== 1 ? 's' : ''} da campanha...
         </div>
       )}
 

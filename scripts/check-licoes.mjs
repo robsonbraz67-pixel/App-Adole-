@@ -78,7 +78,9 @@ for (const trilha of TRILHAS) {
         const ondeP = `${ondeDia} pergunta ${p.id || '(sem id)'}`;
         if (!p.pergunta) erros.push(`${ondeP}: sem enunciado`);
         const ops = p.opcoes || [];
-        if (ops.length !== 4) erros.push(`${ondeP}: ${ops.length} opção(ões), esperado 4`);
+        // 2 opções = pergunta Verdadeiro/Falso (o quiz e o modo Ao Vivo já
+        // suportam esse tamanho nativamente, ver src/components.tsx).
+        if (ops.length !== 4 && ops.length !== 2) erros.push(`${ondeP}: ${ops.length} opção(ões), esperado 4 (ou 2 para V/F)`);
         if (ops.some(o => typeof o !== 'string' || !o.trim())) erros.push(`${ondeP}: opção vazia`);
         if (new Set(ops).size !== ops.length) avisos.push(`${ondeP}: opções repetidas`);
         // O erro que mais custa: gabarito apontando para fora das opções faz o

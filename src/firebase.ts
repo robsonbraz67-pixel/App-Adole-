@@ -1432,10 +1432,18 @@ export const PEDIDO_TEXTO_MAX = 500;
 // 60 pedidos cobrem meses de mural e seguram o custo da assinatura.
 const MURAL_LIMITE = 60;
 
+// Pedido de oração vence em 7 dias: some da tela sozinho (filtro na consulta,
+// sem esperar o cliente baixar e descartar) e o job agendado
+// (scripts/expire-pedidos-oracao.ts) apaga de fato o documento depois disso —
+// aqui é só o que garante o "sumiço" imediato mesmo antes do job rodar.
+export const MURAL_VALIDADE_DIAS = 7;
+
 export const listenToPedidosOracao = (turmaId: string, cb: (lista: PedidoOracao[]) => void) => {
+  const corte = Timestamp.fromMillis(Date.now() - MURAL_VALIDADE_DIAS * 86400000);
   const q = query(
     collection(db, 'pedidosOracao'),
     where('turmaId', '==', turmaId),
+    where('criadoEm', '>', corte),
     orderBy('criadoEm', 'desc'),
     limit(MURAL_LIMITE),
   );

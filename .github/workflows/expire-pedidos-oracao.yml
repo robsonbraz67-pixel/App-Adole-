@@ -1,0 +1,29 @@
+name: Expirar Pedidos de Oração
+
+# Apaga do Firestore os pedidos do mural com mais de 7 dias (ver
+# scripts/expire-pedidos-oracao.ts). O cliente já para de MOSTRAR um pedido
+# vencido na hora (filtro na consulta) — este job é quem remove o documento
+# de verdade, uma vez por dia.
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  expirar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apagar pedidos de oração vencidos
+        run: npx tsx scripts/expire-pedidos-oracao.ts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FB_FIRESTORE_DB: ${{ secrets.FB_FIRESTORE_DB }}
