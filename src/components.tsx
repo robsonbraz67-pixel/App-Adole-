@@ -402,10 +402,18 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
   // anterior continua visível para eles de propósito — é dado que a
   // liderança ainda usa (revisão, análises, cobrar quem ficou pra trás).
   const podeVerTemporadasAnteriores = !!jogador?.isAdmin || !!jogador?.isProfessor;
+  // Liberação temporária (só 2026-09-26): pessoal pediu para fechar a campanha
+  // "Provado pelo Fogo" (semana 2026-W38) no dia seguinte ao encerramento —
+  // sem isso, o filtro de trimestre acima esconderia a trilha da campanha
+  // antiga do aluno comum a partir de hoje. Remover este bloco depois de hoje;
+  // o ranking geral continua bloqueado à parte (ver RANK_TABS/CAMPANHA_SCOPES).
+  const LIBERACAO_TEMP_TRIMESTRE = 'Provado pelo Fogo';
+  const liberacaoTempAtiva = hojeLocalISO() === '2026-09-26';
   const visiveis = useMemo(() => trackLessons.filter((l: any) =>
     (!l.isAdminOnly || podeVerTemporadasAnteriores) &&
-    (l.isAdminOnly || podeVerTemporadasAnteriores || l.trimestre === licao?.trimestre)
-  ), [trackLessons, podeVerTemporadasAnteriores, licao?.trimestre]);
+    (l.isAdminOnly || podeVerTemporadasAnteriores || l.trimestre === licao?.trimestre ||
+      (liberacaoTempAtiva && l.trimestre === LIBERACAO_TEMP_TRIMESTRE))
+  ), [trackLessons, podeVerTemporadasAnteriores, licao?.trimestre, liberacaoTempAtiva]);
 
   // Numeração "Semana N" por TEMPORADA (trimestre), não índice global de `visiveis` —
   // admin/professor veem várias temporadas juntas na trilha (linha acima), então uma
@@ -1616,6 +1624,16 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   const porDias = isPair;
   const mainTab = (type === 'week' || type === 'weekGeral') ? 'week' : isPair ? 'duplas' : 'campanha';
 
+  // Liberação temporária (só 2026-09-26): a trilha da campanha "Provado pelo
+  // Fogo" (semana 2026-W38) reabre por um dia para quem não é staff (ver
+  // Home, mais acima neste arquivo) — mas o ranking dela tem que ficar só na
+  // aba Semana. "Campanha"/"Duplas > Campanha" puxariam a foto já encerrada
+  // da temporada inteira, que é justamente o que não foi pedido. Remover
+  // este bloco junto com o de Home depois de hoje.
+  const campanhaBloqueadaHoje = licao?.trimestre === 'Provado pelo Fogo'
+    && hojeLocalISO() === '2026-09-26'
+    && !jogador?.isAdmin && !jogador?.isProfessor;
+
   const { regular, staff } = useMemo(() => {
     const all = isPair
       ? [...ranking].map((r: any) => ({
@@ -1779,13 +1797,17 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       
       <div style={{padding:'4px 16px 12px'}}>
         <div style={{display:'flex',background:'var(--g3)',borderRadius:12,padding:4,gap:2}}>
-          {RANK_TABS.map(t => (
-            <div
-              key={t.k}
-              onClick={() => onChangeType(t.k === 'campanha' ? CAMPANHA_SCOPES[0].k : t.k === 'duplas' ? 'duplasSemana' : 'week')}
-              style={{flex:1,textAlign:'center',padding:'8px 4px',borderRadius:8,fontWeight:800,fontSize:13,cursor:'pointer',transition:'background .2s',background:mainTab===t.k?'rgba(247,198,0,.15)':'transparent',color:mainTab===t.k?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}
-            >{t.label}</div>
-          ))}
+          {RANK_TABS.map(t => {
+            const bloqueada = campanhaBloqueadaHoje && t.k === 'campanha';
+            return (
+              <div
+                key={t.k}
+                onClick={() => !bloqueada && onChangeType(t.k === 'campanha' ? CAMPANHA_SCOPES[0].k : t.k === 'duplas' ? 'duplasSemana' : 'week')}
+                title={bloqueada ? 'Ranking da campanha encerrada — só a semana fica disponível hoje' : undefined}
+                style={{flex:1,textAlign:'center',padding:'8px 4px',borderRadius:8,fontWeight:800,fontSize:13,cursor:bloqueada?'default':'pointer',transition:'background .2s',background:mainTab===t.k?'rgba(247,198,0,.15)':'transparent',color:bloqueada?'var(--mut)':mainTab===t.k?'var(--gold)':'var(--mut)',opacity:bloqueada?.4:1,fontFamily:'Poppins,sans-serif'}}
+              >{t.label}</div>
+            );
+          })}
         </div>
         {mainTab === 'week' && !!jogador?.turmaId && (
           <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'center',flexWrap:'wrap'}}>
@@ -1803,13 +1825,17 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         )}
         {mainTab !== 'week' && (mainTab === 'duplas' || CAMPANHA_SCOPES.length > 1) && (
           <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'center',flexWrap:'wrap'}}>
-            {(mainTab === 'campanha' ? CAMPANHA_SCOPES : DUPLA_SCOPES).map(s => (
-              <div
-                key={s.k}
-                onClick={() => onChangeType(s.k)}
-                style={{padding:'6px 14px',borderRadius:20,fontSize:12,fontWeight:800,cursor:'pointer',fontFamily:'Poppins,sans-serif',border:`1.5px solid ${type===s.k?'rgba(247,198,0,.5)':'var(--b2)'}`,background:type===s.k?'rgba(247,198,0,.12)':'transparent',color:type===s.k?'var(--gold)':'var(--mut)'}}
-              >{s.label}</div>
-            ))}
+            {(mainTab === 'campanha' ? CAMPANHA_SCOPES : DUPLA_SCOPES).map(s => {
+              const bloqueada = campanhaBloqueadaHoje && s.k === 'duplasCampanha';
+              return (
+                <div
+                  key={s.k}
+                  onClick={() => !bloqueada && onChangeType(s.k)}
+                  title={bloqueada ? 'Ranking da campanha encerrada — só a semana fica disponível hoje' : undefined}
+                  style={{padding:'6px 14px',borderRadius:20,fontSize:12,fontWeight:800,cursor:bloqueada?'default':'pointer',opacity:bloqueada?.4:1,fontFamily:'Poppins,sans-serif',border:`1.5px solid ${type===s.k?'rgba(247,198,0,.5)':'var(--b2)'}`,background:type===s.k?'rgba(247,198,0,.12)':'transparent',color:type===s.k?'var(--gold)':'var(--mut)'}}
+                >{s.label}</div>
+              );
+            })}
             {/* A semana chega por assinatura; as semanas antigas da campanha são
                 lidas uma vez e ficam em memória — daí o atualizar manual. */}
             {!isSemanal && onRefresh && (
