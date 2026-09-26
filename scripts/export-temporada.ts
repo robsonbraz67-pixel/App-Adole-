@@ -4,7 +4,7 @@ import { dbAdmin } from './lib/firebaseAdmin';
 // ===== Export bruto de uma temporada (para o encerramento) =====
 //
 // Só leitura. Grava temporada.json com o mínimo para os números do
-// encerramento: progresso das semanas da temporada (history reduzido a data e
+// encerramento: progresso das semanas da temporada (history reduzido a data, acertos e
 // XP — nada de nota), perfil enxuto de quem aparece nele, turmas, igrejas e
 // sorteios. O workflow criptografa o arquivo antes de subir como artefato: o
 // repositório é público e aqui tem nome de adolescente.
@@ -21,7 +21,7 @@ export const run = async () => {
     snap.forEach(d => {
       const p = d.data();
       const history: Record<string, any> = {};
-      for (const [dia, e] of Object.entries<any>(p.history || {})) history[dia] = { emISO: e?.emISO ?? null, xp: e?.xp ?? 0 };
+      for (const [dia, e] of Object.entries<any>(p.history || {})) history[dia] = { emISO: e?.emISO ?? null, xp: e?.xp ?? 0, acertos: e?.acertos ?? null, reiniciado: !!e?.reiniciado };
       progress.push({
         id: d.id, userId: p.userId, week: p.week, track: p.track || 'teen', trimestre: p.trimestre ?? null,
         turmaId: p.turmaId ?? null, locationId: p.locationId ?? null,
