@@ -14,6 +14,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#0A1230">
     <title>SabatinaQuest ✨</title>
+    <!-- Aplica o tema salvo antes da primeira pintura. Sem isto o app abre no
+         azul padrão e só troca quando o React monta — num tema claro como o
+         Mangá, isso é um clarão a cada abertura. -->
+    <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 
     <!-- Instalação como app.
          Android/Chrome usa o manifest (precisa de ícone 192 e 512 e

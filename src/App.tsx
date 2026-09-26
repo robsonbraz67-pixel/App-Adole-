@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getTrackLessons, loadTrackLessons } from './data';
-import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO } from './utils';
+import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO, getDiaId } from './utils';
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress, getWeeklyRanking } from './firebase';
-import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, MuralOracoes, ReportarProblemaModal } from './components';
+import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, MuralOracoes, ReportarProblemaModal, TEMAS, Tema } from './components';
 import { BUILD_ID, buscarBuildPublicado, buscarAvisoNovoEndereco, telaPermiteReload, recarregar, podeRecarregarDeNovo, INTERVALO_CHECAGEM_MS } from './version';
 import { setErroContexto } from './errorLog';
 // Sob demanda: o Modo Ao Vivo pesa ~62 KB (tela do host, do jogador, gerador
@@ -70,7 +70,10 @@ export default function App() {
   const [resultado, setResultado] = useState<any>(null);
   const [logoTaps, setLogoTaps] = useState(0);
   const [inAppNotif, setInAppNotif] = useState<{title: string, body: string, id: number} | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>(() => (localStorage.getItem('theme') as 'light' | 'dark' | 'auto') || 'auto');
+  const [theme, setTheme] = useState<Tema>(() => {
+    const salvo = localStorage.getItem('theme');
+    return TEMAS.some(t => t.id === salvo) ? salvo as Tema : 'auto';
+  });
   const [activePair, setActivePair] = useState<any>(null);
   const [pendingInvite, setPendingInvite] = useState<any>(null);
   const [temVersaoNova, setTemVersaoNova] = useState(false);
@@ -301,7 +304,32 @@ export default function App() {
       document.documentElement.setAttribute('data-theme', theme);
       localStorage.setItem('theme', theme);
     }
+    // Bangers + Work Sans só existem nos temas Pop: quem nunca escolhe um
+    // deles não baixa nem um byte dessas fontes.
+    if (theme.startsWith('mvp') && !document.getElementById('fontes-pop')) {
+      const link = document.createElement('link');
+      link.id = 'fontes-pop';
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Bangers&family=Work+Sans:wght@400;700;800&display=swap';
+      document.head.appendChild(link);
+    }
   }, [theme]);
+
+  // Som de navegação num lugar só. O Ranking fica de fora porque o rufar já
+  // toca em loadLatestRanking; voltar ao Início sem ser pelo menu é "voltar".
+  const telaAnterior = useRef(tela);
+  const viaMenu = useRef(false);
+  useEffect(() => {
+    const antes = telaAnterior.current;
+    telaAnterior.current = tela;
+    const menu = viaMenu.current;
+    viaMenu.current = false;
+    if (antes === tela || antes === 'splash' || antes === 'login' || tela === 'ranking') return;
+    if (tela === 'estudo') playSound('praticar');
+    else if (menu) playSound('aba');
+    else if (tela === 'home') playSound('voltar');
+  }, [tela]);
+  const peloMenu = (fn: () => void) => () => { viaMenu.current = true; fn(); };
 
   // Compatível com o cache antigo: teen (histórico de todos) mantém a chave
   // legada `prog_${semana}`; trilhas novas ganham a trilha na chave.
@@ -835,6 +863,15 @@ export default function App() {
   if (tela === 'login') return <Login onLogin={handleLogin} />;
   if (!jogador || !licao) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',color:'var(--mut)'}}>Carregando...</div>;
 
+  const abrirDia = (d: any) => {
+    setDiaAtual(d);
+    setTela('estudo');
+    getDayOverride(jogador?.track || 'teen', licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {});
+  };
+  // Sem isto o Praticar (botão central do menu) só aparecia depois de abrir
+  // um dia pela trilha — ao abrir o app, o destaque da barra sumia.
+  const diaDeHoje = licao.dias?.length ? licao.dias.find((d: any) => d.id === getDiaId(licao.dias)) : null;
+
   return (
     <>
       {/* Luz de fundo da identidade. Fica fora da máquina de telas para não
@@ -859,7 +896,7 @@ export default function App() {
       >🐞</button>
       {showReportFAB && <ReportarProblemaModal onClose={() => setShowReportFAB(false)} />}
 
-      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={(d: any) => { setDiaAtual(d); setTela('estudo'); getDayOverride(jogador?.track || 'teen', licao.semana, d.id).then(ov => { if (ov) setDiaAtual((cur: any) => (cur && cur.id === d.id) ? { ...cur, ...ov } : cur); }).catch(() => {}); }} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
+      {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={abrirDia} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} onMural={() => abrirMural('estudo')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} liberado={(prog.liberados || []).includes(diaAtual.id)} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} onMural={() => abrirMural('resultado')} />}
@@ -880,13 +917,13 @@ export default function App() {
         <BottomNav
           active={tela}
           jogador={jogador}
-          diaAtual={diaAtual}
-          onHome={() => setTela('home')}
+          diaAtual={diaAtual || diaDeHoje}
+          onHome={peloMenu(() => setTela('home'))}
           onRanking={() => loadLatestRanking('week')}
-          onEstudo={() => setTela('estudo')}
-          onConfig={() => setTela('config')}
-          onDupla={() => setTela('dupla')}
-          onMural={() => abrirMural('home')}
+          onEstudo={() => (diaAtual ? setTela('estudo') : diaDeHoje && abrirDia(diaDeHoje))}
+          onConfig={peloMenu(() => setTela('config'))}
+          onDupla={peloMenu(() => setTela('dupla'))}
+          onMural={peloMenu(() => abrirMural('home'))}
         />
       )}
 

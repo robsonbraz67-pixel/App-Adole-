@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
 import { planejarBackfill } from './backfillTurmas';
-import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo } from './utils';
+import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo } from './utils';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 
 // Desativado em 2026-07-25: a escola opera com UMA trilha e UM local. As duas
@@ -26,6 +26,17 @@ export const PROFESSOR_ESCOPO_TURMA = true;
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
 export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 1 e 2 Coríntios' };
+
+export type Tema = 'auto' | 'dark' | 'light' | 'neon' | 'manga' | 'mvp' | 'mvp-light';
+export const TEMAS: { id: Tema; label: string }[] = [
+  { id: 'auto', label: '🌓 Auto (segue o celular)' },
+  { id: 'dark', label: '🌙 Escuro' },
+  { id: 'light', label: '☀️ Claro' },
+  { id: 'neon', label: '🕸️ Neon' },
+  { id: 'manga', label: '📰 Mangá' },
+  { id: 'mvp', label: '💥 Pop Escuro' },
+  { id: 'mvp-light', label: '💥 Pop Claro' },
+];
 
 /* ===== CONFETTI ===== */
 const CONFETTI_CORES = ['#F7C600','#E5006D','#1E9E86','#4A90D9','#FFE566','#C50060','#1B3A63'];
@@ -395,6 +406,25 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
     (l.isAdminOnly || podeVerTemporadasAnteriores || l.trimestre === licao?.trimestre)
   ), [trackLessons, podeVerTemporadasAnteriores, licao?.trimestre]);
 
+  // Numeração "Semana N" por TEMPORADA (trimestre), não índice global de `visiveis` —
+  // admin/professor veem várias temporadas juntas na trilha (linha acima), então uma
+  // semana 1 de uma temporada nova não pode virar "semana 14" só por vir depois das
+  // 13 semanas da temporada anterior no array.
+  const semanaInfoPorTrimestre = useMemo(() => {
+    const porTrimestre = new Map<string, any[]>();
+    for (const l of visiveis) {
+      if (l.isAdminOnly) continue;
+      const arr = porTrimestre.get(l.trimestre) || [];
+      arr.push(l);
+      porTrimestre.set(l.trimestre, arr);
+    }
+    const bySemana = new Map<string, { indice: number; total: number }>();
+    for (const arr of porTrimestre.values()) {
+      arr.forEach((l, idx) => bySemana.set(l.semana, { indice: idx + 1, total: arr.length }));
+    }
+    return bySemana;
+  }, [visiveis]);
+
   // Dias concluídos de todas as semanas (para marcar semanas anteriores na trilha)
   const [allDone, setAllDone] = useState<Record<string, number[]>>({});
   const [datasEstudo, setDatasEstudo] = useState<DatasEstudo>({});
@@ -473,8 +503,9 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
         ) : (() => {
           const h = new Date();
           const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-          const totalSemanas = visiveis.filter((l: any) => !l.isAdminOnly).length;
-          const numBanner = visiveis.findIndex((l: any) => l.semana === bannerL?.semana) + 1;
+          const bannerInfo = semanaInfoPorTrimestre.get(bannerL?.semana);
+          const totalSemanas = bannerInfo?.total ?? 0;
+          const numBanner = bannerInfo?.indice ?? 0;
           const pathOff = (gi: number) => Math.round(Math.sin((gi * Math.PI) / 3.5) * 70);
           return (
             <>
@@ -508,7 +539,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
                     >
                       <div className="wl"/>
                       <span>
-                        {l.isAdminOnly ? '🧪 Teste' : `Semana ${wi + 1}`}{emCurso ? ' ⭐' : ''}{!acessivel ? ' 🔒' : ''} — {tituloCurto(l.titulo)}
+                        {l.isAdminOnly ? '🧪 Teste' : `Semana ${semanaInfoPorTrimestre.get(l.semana)?.indice ?? (wi + 1)}`}{emCurso ? ' ⭐' : ''}{!acessivel ? ' 🔒' : ''} — {tituloCurto(l.titulo)}
                       </span>
                       <div className="wl"/>
                     </div>
@@ -572,7 +603,7 @@ export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstu
   const resumo: ResumoMural | null = gs(muralCacheKey(jogador?.turmaId), null);
   const pendentes = (resumo?.aOrar || 0) + (resumo?.recados || 0);
   return (
-    <div className="bot-nav" style={{padding:'6px 8px 14px'}}>
+    <div className="bot-nav">
       <div className="nav-row">
         <button className={`nav-it ${active === 'home' ? 'active' : ''}`} onClick={onHome} aria-label="Início"><span className="nav-ic">🏠</span>Início</button>
         {/* Segundo lugar, logo ao lado do Início, e o ícone pulsa: orar pelos
@@ -943,6 +974,7 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
   const [xpMsg, setXpMsg] = useState<string | null>(null);
   const timerRef = useRef<any>(null);
   const startRef = useRef<number>(0);
+  const batidaRef = useRef<number>(0);
 
   // Anti-fraude: fechar o quiz no meio e reabrir permitia tentar de novo até
   // acertar tudo, com XP cheio. A partir da 2ª abertura do mesmo dia, o XP
@@ -1012,11 +1044,19 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
     setTempo(40);
     setElapsed(0);
     startRef.current = Date.now();
+    batidaRef.current = 0;
     timerRef.current = setInterval(() => {
       const e = (Date.now() - startRef.current) / 1000;
       const r = Math.max(0, 40 - e);
       setTempo(r);
       setElapsed(e);
+      // Uma batida de coração por segundo nos 3 últimos. Ao zerar, quem avisa
+      // é o som de errada que o respond(-1) já toca.
+      const seg = Math.ceil(r);
+      if (seg >= 1 && seg <= 3 && seg !== batidaRef.current) {
+        batidaRef.current = seg;
+        playSound('tempo');
+      }
       if (r <= 0) {
         clearInterval(timerRef.current);
         respond(-1, e);
@@ -1038,7 +1078,9 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
     setAns(idx);
     
     if (ok) {
-      playSound('correct');
+      let seq = 1;
+      for (let i = resps.length - 1; i >= 0 && resps[i].ans === resps[i].correta; i--) seq++;
+      playSound('correct', { seq });
     } else {
       playSound('wrong');
     }
@@ -1173,7 +1215,10 @@ const CardOracao = ({ dia }: any) => {
 export const Resultado = ({ res, dia, prog, onRanking, onHome, onMural }: any) => {
   const { acertos, total, xpTotal, tempoMedio, punido } = res;
   const { ic, mg } = getMsgRes(acertos, total);
-  
+  useEffect(() => {
+    if (total > 0 && acertos === total && !punido) playSound('perfeito', { t: 0.9 });
+  }, []);
+
   const badges = [];
   if (acertos === total) badges.push({ e: '🎯', l: 'Certeiro' });
   if (tempoMedio < 10) badges.push({ e: '⚡', l: 'Relâmpago' });
@@ -1199,7 +1244,7 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome, onMural }: any) =
         {[{e:'✅',l:'Acertos',v:`${acertos}/${total}`},{e:'⭐',l:'XP Ganho',v:`+${xpTotal}`},{e:'⏱️',l:'Tempo médio',v:`${Math.round(tempoMedio)}s`}].map(s => (
           <div key={s.l} className="purple-card" style={{padding:'12px 6px',textAlign:'center'}}>
             <div style={{fontSize:22,marginBottom:4}}>{s.e}</div>
-            <div style={{fontWeight:900,fontSize:18,color:'var(--gold)'}}>{s.v}</div>
+            <div className={s.l === 'XP Ganho' ? 'res-val res-xp' : 'res-val'} style={{fontWeight:900,fontSize:18,color:'var(--gold)'}}>{s.v}</div>
             <div style={{fontSize:9,color:'var(--mut)',fontWeight:700,textTransform:'uppercase',letterSpacing:.5,marginTop:3}}>{s.l}</div>
           </div>
         ))}
@@ -1215,7 +1260,7 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome, onMural }: any) =
         <div style={{animation:'fadeIn .5s ease 1.1s both',marginBottom:22}}>
           <div style={{fontSize:11,fontWeight:800,textTransform:'uppercase',letterSpacing:2,color:'var(--mut)',marginBottom:10}}>Conquistas do dia</div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
-            {badges.map(b => <div key={b.l} style={{display:'inline-flex',alignItems:'center',gap:6,background:'rgba(255,255,255,.08)',border:'1.5px solid rgba(255,255,255,.12)',borderRadius:30,padding:'7px 16px',fontSize:14,fontWeight:800}}>{b.e} {b.l}</div>)}
+            {badges.map(b => <div key={b.l} className="conquista">{b.e} {b.l}</div>)}
           </div>
         </div>
       )}
@@ -1633,6 +1678,25 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       atrasados: on ? regular.filter((r: any) => (r.dias || 0) < meta) : [],
     };
   }, [regular, type, licao, isSemanal]);
+
+  // Som da posição: toca uma vez por ranking aberto, depois do "revelar" do
+  // rufar (App.loadLatestRanking). A posição anterior fica no aparelho —
+  // comparar com a última vez que ESTA pessoa viu, sem leitura a mais.
+  const somPosRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (myIsStaff || rankingLoading || !ranking?.length) return;
+    const chave = `rankPos_${type}_${isSemanal ? licao?.semana : licao?.trimestre}`;
+    if (somPosRef.current === chave) return;
+    somPosRef.current = chave;
+    const pos = myIdx;
+    const promo = zoneOn && emDia.some((r: any) => r.eu);
+    const antes = gs(chave, null);
+    ss(chave, { pos, promo });
+    const t = 1.4;
+    if (pos >= 0 && pos < 3) playSound(pos === 0 ? 'ouro' : pos === 1 ? 'prata' : 'bronze', { t });
+    else if (antes && antes.pos !== pos) playSound(pos >= 0 && (antes.pos < 0 || pos < antes.pos) ? 'subiu' : 'caiu', { t });
+    if (promo && antes && !antes.promo) playSound('promocao', { t: t + 1.2 });
+  }, [ranking, rankingLoading, type, myIdx, zoneOn, emDia, myIsStaff, isSemanal, licao?.semana, licao?.trimestre]);
 
   const [sharing, setSharing] = useState(false);
   const handleExport = async () => {
@@ -2176,6 +2240,7 @@ const useSorteador = (licao: any, turmaId?: string) => {
   };
 
   const playTick = (fast: boolean) => {
+    if (!somLigado()) return;
     try {
       const ctx = getAudioCtx();
       const osc = ctx.createOscillator();
@@ -2190,6 +2255,7 @@ const useSorteador = (licao: any, turmaId?: string) => {
   };
 
   const playWin = () => {
+    if (!somLigado()) return;
     try {
       const ctx = getAudioCtx();
       [523, 659, 784, 1047, 1319].forEach((freq, i) => {
@@ -5169,6 +5235,12 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
   const [nome, setNome] = useState(jogador.nome || '');
   const [avatar, setAvatar] = useState(jogador.avatar || '🦁');
   const fileRef = useRef<HTMLInputElement>(null);
+  const [som, setSom] = useState(somLigado);
+  const mudarSom = (ligar: boolean) => {
+    try { if (ligar) localStorage.removeItem('som'); else localStorage.setItem('som', 'off'); } catch {}
+    setSom(ligar);
+    if (ligar) playSound('correct');
+  };
 
   // Local de estudo + trilha: obrigatórios no cadastro, só admin altera depois.
   // Só admin/professor cadastra local novo (regra do Firestore); aluno só escolhe.
@@ -5632,10 +5704,15 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
 
         <div style={{background:'var(--panel-bg)', padding: '14px 16px', borderRadius: 14, border:'1px solid var(--panel-border)'}}>
           <div style={{fontSize: 11, fontWeight: 700, color:'var(--mut)', marginBottom: 10, textTransform:'uppercase', letterSpacing:1, fontFamily:'Poppins,sans-serif'}}>Aparência</div>
+          <div className="theme-toggle theme-grid">
+            {TEMAS.map(t => (
+              <button key={t.id} className={`theme-btn${theme === t.id ? ' active' : ''}`} onClick={() => onThemeChange(t.id)}>{t.label}</button>
+            ))}
+          </div>
+          <div style={{fontSize: 11, fontWeight: 700, color:'var(--mut)', margin: '16px 0 10px', textTransform:'uppercase', letterSpacing:1, fontFamily:'Poppins,sans-serif'}}>Sons</div>
           <div className="theme-toggle">
-            <button className={`theme-btn${theme === 'light' ? ' active' : ''}`} onClick={() => onThemeChange('light')}>☀️ Claro</button>
-            <button className={`theme-btn${theme === 'auto' ? ' active' : ''}`} onClick={() => onThemeChange('auto')}>🌓 Auto</button>
-            <button className={`theme-btn${theme === 'dark' ? ' active' : ''}`} onClick={() => onThemeChange('dark')}>🌙 Escuro</button>
+            <button className={`theme-btn${som ? ' active' : ''}`} onClick={() => mudarSom(true)}>🔊 Ligados</button>
+            <button className={`theme-btn${!som ? ' active' : ''}`} onClick={() => mudarSom(false)}>🔇 Desligados</button>
           </div>
         </div>
 

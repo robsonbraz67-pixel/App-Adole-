@@ -399,42 +399,150 @@ export const getAudioCtx = (): AudioContext => {
   return _actx;
 };
 
-export const playSound = (type: 'correct' | 'wrong' | 'ranking') => {
+// ===== Sons =====
+// Todos sintetizados na hora (Web Audio): nenhum arquivo de áudio, zero bytes a
+// mais no app. Os valores vêm da página de teste de sons aprovada em 2026-09-26.
+export type Som = 'correct' | 'wrong' | 'ranking' | 'tempo' | 'perfeito' | 'aba' | 'praticar' | 'voltar'
+  | 'subiu' | 'caiu' | 'ouro' | 'prata' | 'bronze' | 'promocao';
+
+export const somLigado = (): boolean => {
+  try { return localStorage.getItem('som') !== 'off'; } catch { return true; }
+};
+
+type Tom = { f: number; f2?: number; glide?: number; type?: OscillatorType; t?: number; dur: number; vol?: number; a?: number; lp?: number; lp2?: number; detune?: number };
+type Ruido = { f: number; f2?: number; q?: number; type?: BiquadFilterType; t?: number; dur: number; vol?: number; a?: number };
+
+let _ruido: AudioBuffer | null = null;
+
+const tom = (c: AudioContext, o: Tom) => {
+  const t0 = c.currentTime + 0.01 + (o.t || 0);
+  const osc = c.createOscillator(), g = c.createGain();
+  osc.type = o.type || 'sine';
+  osc.frequency.setValueAtTime(o.f, t0);
+  if (o.detune) osc.detune.value = o.detune;
+  if (o.f2) osc.frequency.exponentialRampToValueAtTime(o.f2, t0 + (o.glide || o.dur));
+  const a = o.a ?? 0.005;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(o.vol ?? 0.2, t0 + a);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+  let saida: AudioNode = osc;
+  if (o.lp) {
+    const fl = c.createBiquadFilter();
+    fl.type = 'lowpass';
+    fl.frequency.setValueAtTime(o.lp, t0);
+    if (o.lp2) fl.frequency.exponentialRampToValueAtTime(o.lp2, t0 + o.dur);
+    osc.connect(fl); saida = fl;
+  }
+  saida.connect(g); g.connect(c.destination);
+  osc.start(t0); osc.stop(t0 + o.dur + 0.03);
+};
+
+const ruido = (c: AudioContext, o: Ruido) => {
+  if (!_ruido || _ruido.sampleRate !== c.sampleRate) {
+    _ruido = c.createBuffer(1, c.sampleRate, c.sampleRate);
+    const d = _ruido.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t0 = c.currentTime + 0.01 + (o.t || 0);
+  const src = c.createBufferSource(); src.buffer = _ruido;
+  const fl = c.createBiquadFilter();
+  fl.type = o.type || 'bandpass';
+  fl.frequency.setValueAtTime(o.f, t0);
+  if (o.f2) fl.frequency.exponentialRampToValueAtTime(o.f2, t0 + o.dur);
+  fl.Q.value = o.q ?? 1;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(o.vol ?? 0.2, t0 + (o.a ?? 0.004));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+  src.connect(fl); fl.connect(g); g.connect(c.destination);
+  src.start(t0); src.stop(t0 + o.dur + 0.03);
+};
+
+// Sino: as parciais inarmônicas (2,76× e 5,4×) é que dão o timbre metálico.
+const sino = (c: AudioContext, f: number, t: number, dur: number, vol: number) => {
+  tom(c, { f, t, dur, vol, a: 0.003 });
+  tom(c, { f: f * 2.76, t, dur: dur * 0.6, vol: vol * 0.35, a: 0.003 });
+  tom(c, { f: f * 5.4, t, dur: dur * 0.3, vol: vol * 0.15, a: 0.003 });
+};
+
+const semitom = (f: number, n: number) => f * Math.pow(2, n / 12);
+// Degraus da sequência de acertos: 1º acerto no tom base, até o 6º (+9 semitons).
+const DEGRAUS = [0, 2, 4, 5, 7, 9];
+
+const certa = (c: AudioContext, k: number) => {
+  const tema = document.documentElement.getAttribute('data-theme') || '';
+  if (tema === 'neon') {
+    [523.25, 783.99, 1046.5].forEach((f, i) => [-8, 8].forEach(d =>
+      tom(c, { f: semitom(f, k), type: 'sawtooth', detune: d, t: i * 0.05, dur: 0.22, vol: 0.05, lp: 1200, lp2: 5000 })));
+  } else if (tema.startsWith('mvp')) {
+    tom(c, { f: semitom(987.77, k), type: 'square', dur: 0.09, vol: 0.07, a: 0.002 });
+    tom(c, { f: semitom(1318.51, k), type: 'square', t: 0.08, dur: 0.35, vol: 0.07, a: 0.002 });
+  } else if (tema === 'manga') {
+    ruido(c, { type: 'lowpass', f: 420, dur: 0.1, vol: 0.8, a: 0.002 });
+    tom(c, { f: semitom(190, k), f2: semitom(90, k), dur: 0.11, vol: 0.35, a: 0.002 });
+    ruido(c, { f: semitom(3000, k), q: 3, dur: 0.02, vol: 0.3 });
+  } else {
+    [523.25, 659.25, 783.99].forEach((f, i) => tom(c, { f: semitom(f, k), type: 'triangle', t: i * 0.07, dur: 0.22, vol: 0.22 }));
+    tom(c, { f: semitom(2093, k), t: 0.2, dur: 0.3, vol: 0.05 });
+  }
+};
+
+const errada = (c: AudioContext) => {
+  const tema = document.documentElement.getAttribute('data-theme') || '';
+  if (tema === 'neon') {
+    [-10, 10].forEach(d => tom(c, { f: 220, f2: 110, type: 'sawtooth', detune: d, dur: 0.38, vol: 0.08, lp: 1400, lp2: 300 }));
+  } else if (tema.startsWith('mvp')) {
+    [311.13, 293.66].forEach((f, i) => tom(c, { f, type: 'square', t: i * 0.13, dur: 0.12, vol: 0.07, a: 0.002 }));
+    tom(c, { f: 277.18, type: 'square', t: 0.26, dur: 0.38, vol: 0.07, a: 0.002 });
+  } else if (tema === 'manga') {
+    for (let i = 0; i < 7; i++) ruido(c, { f: 2500 + i * 320, q: 2, dur: 0.05, vol: 0.16, t: i * 0.035 });
+  } else {
+    tom(c, { f: 329.63, type: 'square', dur: 0.14, vol: 0.08, lp: 1200 });
+    tom(c, { f: 261.63, type: 'square', t: 0.15, dur: 0.3, vol: 0.08, lp: 1000 });
+  }
+};
+
+// Navegação toca bem mais baixo que o quiz: som em toda troca de tela cansa.
+export const playSound = (type: Som, opts: { seq?: number; t?: number } = {}) => {
+  if (!somLigado()) return;
   try {
-    const ctx = getAudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    
-    const now = ctx.currentTime;
-    if (type === 'correct') {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(523.25, now);
-      osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.1);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-      osc.start(now);
-      osc.stop(now + 0.2);
-    } else if (type === 'wrong') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(150, now);
-      osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-      osc.start(now);
-      osc.stop(now + 0.2);
-    } else if (type === 'ranking') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.setValueAtTime(554.37, now + 0.1);
-      osc.frequency.setValueAtTime(659.25, now + 0.2);
-      gain.gain.setValueAtTime(0.1, now);
-      gain.gain.linearRampToValueAtTime(0.01, now + 0.5);
-      osc.start(now);
-      osc.stop(now + 0.5);
+    const c = getAudioCtx();
+    const t = opts.t || 0;
+    switch (type) {
+      case 'correct': certa(c, DEGRAUS[Math.min(Math.max((opts.seq || 1) - 1, 0), DEGRAUS.length - 1)]); break;
+      case 'wrong': errada(c); break;
+      case 'tempo':
+        tom(c, { f: 160, f2: 90, dur: 0.12, vol: 0.5, t });
+        tom(c, { f: 140, f2: 80, dur: 0.12, vol: 0.35, t: t + 0.17 });
+        break;
+      case 'perfeito':
+        [392, 523.25, 659.25].forEach((f, i) => tom(c, { f, type: 'triangle', t: t + i * 0.11, dur: 0.16, vol: 0.2 }));
+        tom(c, { f: 783.99, type: 'triangle', t: t + 0.33, dur: 0.65, vol: 0.2 });
+        tom(c, { f: 2093, t: t + 0.42, dur: 0.3, vol: 0.05 });
+        tom(c, { f: 2637, t: t + 0.52, dur: 0.35, vol: 0.04 });
+        break;
+      case 'aba': tom(c, { f: 600, f2: 950, glide: 0.05, dur: 0.07, vol: 0.08, a: 0.003, t }); break;
+      case 'voltar': tom(c, { f: 520, f2: 340, glide: 0.05, dur: 0.07, vol: 0.08, a: 0.003, t }); break;
+      case 'praticar': ruido(c, { f: 350, f2: 3200, q: 1.2, dur: 0.38, vol: 0.2, a: 0.15, t }); break;
+      case 'ranking':
+        for (let i = 0; i < 14; i++) ruido(c, { f: 1800, q: 0.8, dur: 0.05, vol: 0.05 + i * 0.016, t: t + i * 0.045 });
+        [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tom(c, { f, type: 'triangle', t: t + 0.68 + i * 0.025, dur: 0.75, vol: 0.12 }));
+        sino(c, 2093, t + 0.72, 0.6, 0.06);
+        break;
+      case 'subiu':
+        tom(c, { f: 440, f2: 1100, glide: 0.35, dur: 0.4, vol: 0.16, t });
+        sino(c, 1318.51, t + 0.35, 0.6, 0.1);
+        break;
+      case 'caiu': tom(c, { f: 660, f2: 330, dur: 0.45, vol: 0.13, lp: 1500, t }); break;
+      case 'ouro': sino(c, 1318.51, t, 1.3, 0.22); sino(c, 1975.53, t + 0.08, 1.1, 0.08); break;
+      case 'prata': sino(c, 1046.5, t, 1.0, 0.2); break;
+      case 'bronze': sino(c, 783.99, t, 0.9, 0.2); break;
+      case 'promocao':
+        [261.63, 392, 523.25, 659.25].forEach((f, i) => tom(c, { f, type: 'triangle', t: t + i * 0.03, dur: 0.9, vol: 0.11, a: 0.01 }));
+        tom(c, { f: 783.99, type: 'triangle', t: t + 0.25, dur: 0.7, vol: 0.12 });
+        break;
     }
-  } catch(e) {}
+  } catch {}
 };
 
 export const formatDiaSemana = (dia: string): string => {

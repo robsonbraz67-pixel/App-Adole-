@@ -91,11 +91,16 @@
      em produção — só corrige o contraste. */
   --row-bg: rgba(0,0,0,.2);
   --row-bg-strong: rgba(0,0,0,.25);
+
+  --dot: rgba(255,255,255,.06);
 }
 
-/* ===== AUTO LIGHT: sistema prefere claro e não há tema forçado ===== */
+/* ===== AUTO LIGHT: sistema prefere claro e não há tema forçado =====
+   :not([data-theme]) e não :not([data-theme="dark"]): com a segunda forma,
+   quem escolhe Neon/Mangá/Pop num celular em modo claro recebia a paleta clara
+   por cima do tema, porque este seletor pesa mais que [data-theme="neon"]. */
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
+  :root:not([data-theme]) {
     --bg1: #FFFFFF;
     --bg2: #EAEEFB;
     --card: rgba(255,255,255,.85);
@@ -159,6 +164,8 @@
 
     --row-bg: rgba(16,24,56,.04);
     --row-bg-strong: rgba(16,24,56,.06);
+
+    --dot: rgba(16,24,56,.08);
   }
 }
 
@@ -227,6 +234,119 @@
 
   --row-bg: rgba(16,24,56,.04);
   --row-bg-strong: rgba(16,24,56,.06);
+
+  --dot: rgba(16,24,56,.08);
+}
+
+/* ===== TEMAS DE TEMPORADA (Neon, Mangá, Pop) =====
+   Só trocam variáveis, como o claro. Todos têm --card OPACO, então o vidro
+   (backdrop-filter) não mostraria nada por trás — ele é desligado mais abaixo,
+   junto com os blobs e os brilhos animados: nesses temas o app fica mais leve
+   que no padrão, não mais pesado. */
+[data-theme="neon"]{
+  --bg1:#0A0118;--bg2:#150128;
+  --card:#1C0B32;--card2:#230F3D;--card-dark:#12071F;
+  --prof-card1:#1C0B32;--prof-card2:#2A0F45;
+  --gold:#FF2FD6;--gold-dk:#C400A8;--gold-lt:#FF7CEC;
+  --gcrd1:#FF2FD6;--gcrd2:#C400A8;--txg:#1A0018;
+  --magenta:#FF2FD6;--magenta-dk:#B400A0;
+  --teal:#00F0FF;--teal-dk:#00B8C9;
+  --grn:#39FF6A;--grn-dk:#1FB84C;
+  --blu:#7C4DFF;--blu-dk:#5A2FD9;
+  --admin:#7C4DFF;--admin-dk:#5A2FD9;
+  --txt:#FDF4FF;--txt2:#D9C2F0;--mut:#8E7BB8;
+  --g0:rgba(255,255,255,.03);--g1:rgba(255,255,255,.05);--g2:rgba(124,77,255,.08);--g3:rgba(124,77,255,.1);--g4:rgba(255,255,255,.08);--g5:rgba(124,77,255,.16);--g6:rgba(255,255,255,.18);
+  --b1:rgba(255,255,255,.06);--b2:rgba(0,240,255,.18);--b3:rgba(124,77,255,.25);--b4:rgba(255,47,214,.3);--b5:rgba(255,47,214,.4);
+  --scrim:rgba(0,0,0,.35);--scrim2:rgba(0,0,0,.45);
+  --hdr-bg:rgba(10,1,24,.92);--nav-bg:rgba(18,7,31,.95);--hdr-border:rgba(255,47,214,.35);
+  --para-bg:rgba(124,77,255,.08);--para-border:rgba(0,240,255,.5);
+  --notif-bg:rgba(18,7,31,.96);--notif-border:rgba(255,47,214,.4);
+  --panel-bg:rgba(124,77,255,.07);--panel-border:rgba(0,240,255,.15);
+  --input-bg:rgba(0,0,0,.3);--input-border:rgba(0,240,255,.2);
+  --dot:rgba(255,47,214,.12);
+}
+[data-theme="manga"]{
+  --bg1:#EDE4D0;--bg2:#E3D7BC;
+  --card:#F5EEDC;--card2:#EBE1C8;--card-dark:#DCD0AF;
+  --prof-card1:#F5EEDC;--prof-card2:#EBE1C8;
+  --gold:#1A1A1A;--gold-dk:#000000;--gold-lt:#3A3A3A;
+  --gcrd1:#1A1A1A;--gcrd2:#000000;--txg:#F5EEDC;
+  --magenta:#8B2E2E;--magenta-dk:#5E1D1D;
+  --teal:#2E4B3F;--teal-dk:#1C3128;
+  --grn:#4A5A2E;--grn-dk:#333F1F;
+  --blu:#2E3A4B;--blu-dk:#1C2530;
+  --admin:#2E3A4B;--admin-dk:#1C2530;
+  --txt:#1A1408;--txt2:#4A3F2A;--mut:#7A6E52;
+  --danger:#8B2E2E;--success:#2E4B3F;--flame:#8B2E2E;
+  --g0:rgba(26,20,8,.03);--g1:rgba(26,20,8,.05);--g2:rgba(26,20,8,.06);--g3:rgba(26,20,8,.08);--g4:rgba(26,20,8,.1);--g5:rgba(26,20,8,.14);--g6:rgba(26,20,8,.2);
+  --b1:rgba(26,20,8,.15);--b2:rgba(26,20,8,.25);--b3:rgba(26,20,8,.4);--b4:rgba(26,20,8,.7);--b5:rgba(26,20,8,.85);
+  --scrim:rgba(26,20,8,.35);--scrim2:rgba(26,20,8,.5);
+  --hdr-bg:rgba(237,228,208,.95);--nav-bg:rgba(220,208,175,.97);--hdr-border:rgba(26,20,8,.5);
+  --para-bg:rgba(26,20,8,.06);--para-border:rgba(26,20,8,.6);
+  --notif-bg:rgba(245,238,220,.98);--notif-border:rgba(26,20,8,.5);
+  --panel-bg:rgba(26,20,8,.05);--panel-border:rgba(26,20,8,.2);
+  --input-bg:rgba(255,255,255,.4);--input-border:rgba(26,20,8,.3);
+  --row-bg:rgba(26,20,8,.05);--row-bg-strong:rgba(26,20,8,.08);
+  --dot:rgba(26,20,8,.14);
+}
+/* Multiverso Pop: 3 neons fixos (ciano/magenta/amarelo) sempre como
+   preenchimento chapado com tinta preta por cima. --pop-* são os únicos
+   tokens próprios; as regras de componente no fim do arquivo leem só eles. */
+[data-theme="mvp"]{
+  --pop-c:oklch(.68 .19 200);--pop-m:oklch(.68 .19 340);--pop-y:oklch(.68 .19 95);
+  --pop-ink:oklch(.97 0 0);--pop-on:oklch(.15 0 0);--pop-panel:oklch(.22 0 0);--pop-div:oklch(.4 0 0);--pop-track:oklch(.15 0 0);
+  --bg1:oklch(.15 0 0);--bg2:oklch(.15 0 0);
+  --card:var(--pop-panel);--card2:var(--pop-panel);--card-dark:var(--pop-panel);
+  --prof-card1:var(--pop-panel);--prof-card2:var(--pop-panel);
+  --gold:var(--pop-y);--gold-dk:oklch(.4 .15 95);--gold-lt:var(--pop-y);
+  --gcrd1:var(--pop-y);--gcrd2:var(--pop-y);--txg:var(--pop-on);
+  --magenta:var(--pop-m);--magenta-dk:oklch(.5 .19 340);
+  --teal:var(--pop-c);--teal-dk:oklch(.42 .17 200);
+  --grn:var(--pop-c);--grn-dk:oklch(.42 .17 200);
+  --blu:var(--pop-c);--blu-dk:oklch(.42 .17 200);
+  --admin:var(--pop-c);--admin-dk:oklch(.42 .17 200);
+  --txt:var(--pop-ink);--txt2:var(--pop-ink);--mut:oklch(.65 0 0);
+  --danger:var(--pop-m);--success:var(--pop-c);--flame:var(--pop-m);
+  --g0:oklch(.97 0 0/.03);--g1:oklch(.97 0 0/.05);--g2:var(--pop-panel);--g3:var(--pop-panel);--g4:var(--pop-panel);--g5:var(--pop-panel);--g6:oklch(.97 0 0/.2);
+  --b1:var(--pop-div);--b2:var(--pop-div);--b3:var(--pop-div);--b4:var(--pop-div);--b5:var(--pop-div);
+  --scrim:oklch(.15 0 0/.35);--scrim2:oklch(.15 0 0/.5);
+  --hdr-bg:oklch(.15 0 0);--nav-bg:oklch(.15 0 0);--hdr-border:var(--pop-ink);
+  --para-bg:var(--pop-panel);--para-border:var(--pop-c);
+  --notif-bg:var(--pop-panel);--notif-border:var(--pop-ink);
+  --panel-bg:var(--pop-panel);--panel-border:var(--pop-ink);
+  --input-bg:oklch(.15 0 0);--input-border:var(--pop-div);
+  --row-bg:oklch(.15 0 0);--row-bg-strong:oklch(.15 0 0);
+  --r:8px;--rsm:7px;
+  --dot:oklch(.97 0 0/.05);
+}
+/* Pop claro: os preenchimentos neon continuam os mesmos; só o neon usado
+   como TEXTO escurece (--gold/--teal/--magenta), para ter contraste no branco. */
+[data-theme="mvp-light"]{
+  --pop-c:oklch(.68 .19 200);--pop-m:oklch(.68 .19 340);--pop-y:oklch(.68 .19 95);
+  --pop-ink:oklch(.15 0 0);--pop-on:oklch(.15 0 0);--pop-panel:oklch(.92 0 0);--pop-div:oklch(.82 0 0);--pop-track:oklch(.9 0 0);
+  --bg1:oklch(.97 0 0);--bg2:oklch(.97 0 0);
+  --card:var(--pop-panel);--card2:var(--pop-panel);--card-dark:var(--pop-panel);
+  --prof-card1:var(--pop-panel);--prof-card2:var(--pop-panel);
+  --gold:oklch(.4 .15 95);--gold-dk:oklch(.3 .12 95);--gold-lt:oklch(.4 .15 95);
+  --gcrd1:var(--pop-y);--gcrd2:var(--pop-y);--txg:var(--pop-on);
+  --magenta:oklch(.5 .19 340);--magenta-dk:oklch(.4 .17 340);
+  --teal:oklch(.42 .17 200);--teal-dk:oklch(.32 .14 200);
+  --grn:oklch(.42 .17 200);--grn-dk:oklch(.32 .14 200);
+  --blu:oklch(.42 .17 200);--blu-dk:oklch(.32 .14 200);
+  --admin:oklch(.42 .17 200);--admin-dk:oklch(.32 .14 200);
+  --txt:var(--pop-ink);--txt2:var(--pop-ink);--mut:oklch(.4 0 0);
+  --danger:oklch(.5 .19 340);--success:oklch(.42 .17 200);--flame:oklch(.5 .19 340);
+  --g0:oklch(.15 0 0/.03);--g1:oklch(.15 0 0/.05);--g2:var(--pop-panel);--g3:var(--pop-panel);--g4:var(--pop-panel);--g5:var(--pop-panel);--g6:oklch(.15 0 0/.2);
+  --b1:var(--pop-div);--b2:var(--pop-div);--b3:var(--pop-div);--b4:var(--pop-div);--b5:var(--pop-div);
+  --scrim:oklch(.97 0 0/.35);--scrim2:oklch(.97 0 0/.5);
+  --hdr-bg:oklch(.97 0 0);--nav-bg:oklch(.97 0 0);--hdr-border:var(--pop-ink);
+  --para-bg:var(--pop-panel);--para-border:var(--pop-c);
+  --notif-bg:var(--pop-panel);--notif-border:var(--pop-ink);
+  --panel-bg:var(--pop-panel);--panel-border:var(--pop-ink);
+  --input-bg:oklch(.97 0 0);--input-border:var(--pop-div);
+  --row-bg:oklch(.97 0 0);--row-bg-strong:oklch(.97 0 0);
+  --r:8px;--rsm:7px;
+  --dot:oklch(.15 0 0/.08);
 }
 
 /* ===== RESET & BASE ===== */
@@ -236,6 +356,12 @@
    uniforme de antes. --bg2 é o claro (perto da fonte de luz) e --bg1 o
    escuro, por isso a ordem parece invertida em relação aos nomes. */
 body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 15% 0%, var(--bg2) 0%, var(--bg1) 58%);background-attachment:fixed;color:var(--txt);min-height:100dvh;overflow-x:clip;transition:background .3s,color .3s}
+/* Retícula de 9px em todos os temas. Mora numa camada fixa própria e não
+   como mais um fundo do body: fundo com background-attachment:fixed é
+   repintado a cada quadro de rolagem no Android, e uma trama de 9px na tela
+   inteira é o pior caso disso. Como camada fixa, é rasterizada uma vez e a
+   rolagem só a recompõe. */
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(var(--dot) 1.3px,transparent 1.3px) 0 0/9px 9px}
 #root{max-width:480px;margin:0 auto;min-height:100dvh;position:relative;overflow-x:clip}
 ::-webkit-scrollbar{width:0}
 
@@ -253,7 +379,7 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 .btn-login{background:#FFFFFF;color:#101838;box-shadow:0 12px 30px rgba(0,0,0,.35);border-radius:22px;padding:16px 22px;font-size:16px;letter-spacing:-.2px;text-transform:none}
 [data-theme="light"] .btn-login{background:#101838;color:#FFFFFF;box-shadow:0 12px 30px rgba(16,24,56,.22)}
 @media (prefers-color-scheme: light){
-  :root:not([data-theme="dark"]) .btn-login{background:#101838;color:#FFFFFF;box-shadow:0 12px 30px rgba(16,24,56,.22)}
+  :root:not([data-theme]) .btn-login{background:#101838;color:#FFFFFF;box-shadow:0 12px 30px rgba(16,24,56,.22)}
 }
 .g-disc{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,#EA4335,#FBBC05 35%,#34A853 65%,#4285F4);color:#fff;font-weight:900;font-size:13px;font-family:'Poppins',sans-serif}
 
@@ -263,7 +389,7 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 .glass{background:var(--card);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--b5);border-radius:var(--r)}
 [data-theme="light"] .glass{box-shadow:0 10px 26px rgba(16,24,56,.08)}
 @media (prefers-color-scheme: light){
-  :root:not([data-theme="dark"]) .glass{box-shadow:0 10px 26px rgba(16,24,56,.08)}
+  :root:not([data-theme]) .glass{box-shadow:0 10px 26px rgba(16,24,56,.08)}
 }
 
 /* Blobs de luz do fundo. Ficam atrás de tudo e não capturam toque. */
@@ -380,6 +506,8 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 
 /* ===== BADGES ===== */
 .xp-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(255,201,60,.14);border:1px solid rgba(255,201,60,.35);border-radius:30px;padding:6px 13px;color:var(--gold);font-weight:700;font-size:14px;font-family:'Space Grotesk','Poppins',sans-serif;font-variant-numeric:tabular-nums}
+.conquista{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.12);border-radius:30px;padding:7px 16px;font-size:14px;font-weight:800}
+[data-theme^="mvp"] .conquista{background:var(--pop-panel);border:3px solid var(--pop-ink);border-radius:8px}
 .streak-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,92,122,.14);border:1px solid rgba(255,92,122,.35);border-radius:30px;padding:6px 14px;color:var(--magenta);font-weight:700;font-size:14px;font-family:'Space Grotesk','Poppins',sans-serif}
 
 /* ===== CRONOGRAMA ===== */
@@ -575,7 +703,8 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 .star-dot{position:absolute;border-radius:50%;background:rgba(247,198,0,.6)}
 
 /* ===== BOTTOM NAV ===== */
-.bot-nav{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:calc(100% - 32px);max-width:448px;background:var(--nav-bg);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid var(--b3);border-radius:26px;box-shadow:0 14px 34px rgba(0,0,0,.45);padding:8px 10px;z-index:200;transition:background .3s,border-color .3s}
+/* Barra sólida encostada no rodapé, com o Praticar elevado no centro. */
+.bot-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:var(--nav-bg);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--hdr-border);box-shadow:0 -8px 20px rgba(0,0,0,.18);padding:2px 6px calc(10px + env(safe-area-inset-bottom));z-index:200;transition:background .3s,border-color .3s}
 
 /* ===== SELECT LIÇÃO ===== */
 .licao-select{width:100%;padding:12px;border-radius:12px;background:var(--g2);color:var(--txt);border:1.5px solid var(--b3);font-size:14px;font-family:'Poppins',sans-serif;font-weight:700;outline:none;cursor:pointer;transition:border-color .2s,background .3s,color .3s}
@@ -586,6 +715,9 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 .theme-toggle{display:flex;background:var(--g3);border-radius:30px;padding:4px;gap:2px;border:1px solid var(--b3);width:fit-content}
 .theme-btn{background:none;border:none;cursor:pointer;padding:6px 12px;border-radius:24px;font-size:13px;transition:all .2s;color:var(--mut);font-weight:700;font-family:'Poppins',sans-serif;white-space:nowrap}
 .theme-btn.active{background:var(--gold);color:var(--txg);box-shadow:0 2px 8px rgba(247,198,0,.35)}
+.theme-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;border-radius:16px;width:100%}
+.theme-grid .theme-btn{padding:9px 6px;border-radius:12px;overflow:hidden;text-overflow:ellipsis}
+.theme-grid .theme-btn:first-child{grid-column:1/-1}
 
 /* ===== TRILHA DA SEMANA (estilo caminho de progressão) ===== */
 .path-wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0 6px}
@@ -623,11 +755,11 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 [data-theme="light"] .path-tip{box-shadow:0 4px 12px rgba(16,24,56,.2)}
 [data-theme="light"] .path-mascote{filter:drop-shadow(0 4px 10px rgba(16,24,56,.2))}
 @media (prefers-color-scheme: light){
-  :root:not([data-theme="dark"]) .path-node.done,
-  :root:not([data-theme="dark"]) .path-node.pair-both{background:linear-gradient(150deg,#FFE08A,#F0B400);box-shadow:0 4px 12px rgba(16,24,56,.16);color:#5A3E16}
-  :root:not([data-theme="dark"]) .path-node.missed{box-shadow:0 4px 12px rgba(16,24,56,.16)}
-  :root:not([data-theme="dark"]) .path-tip{box-shadow:0 4px 12px rgba(16,24,56,.2)}
-  :root:not([data-theme="dark"]) .path-mascote{filter:drop-shadow(0 4px 10px rgba(16,24,56,.2))}
+  :root:not([data-theme]) .path-node.done,
+  :root:not([data-theme]) .path-node.pair-both{background:linear-gradient(150deg,#FFE08A,#F0B400);box-shadow:0 4px 12px rgba(16,24,56,.16);color:#5A3E16}
+  :root:not([data-theme]) .path-node.missed{box-shadow:0 4px 12px rgba(16,24,56,.16)}
+  :root:not([data-theme]) .path-tip{box-shadow:0 4px 12px rgba(16,24,56,.2)}
+  :root:not([data-theme]) .path-mascote{filter:drop-shadow(0 4px 10px rgba(16,24,56,.2))}
 }
 
 .path-ring{position:absolute;inset:-7px;border-radius:50%;border:4px solid rgba(247,198,0,.35);animation:pulse 2s ease-in-out infinite;pointer-events:none}
@@ -689,23 +821,27 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 .fab-top.show{opacity:1;transform:translateY(0);pointer-events:auto}
 
 /* ===== NAVBAR DE ÍCONES ===== */
-/* Sete itens (o 🙏 entrou com o mural) não cabem com largura livre num
-   celular de 360-375px: a barra estourava e o Perfil saía da tela. Cada
-   item passa a dividir a largura em partes iguais e encolher junto. */
-.nav-row{display:flex;justify-content:space-between;align-items:center}
-.nav-it{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:6px 2px;border-radius:12px;font-family:'Poppins',sans-serif;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.2px;white-space:nowrap;color:var(--mut);transition:color .15s,background .15s,transform .1s}
-.nav-it .nav-ic{font-size:20px;line-height:1;position:relative;display:inline-block}
+/* Cada aba divide a largura em partes iguais e encolhe junto: num celular de
+   360px, largura livre fazia o Perfil sair da tela. */
+.nav-row{display:flex;align-items:flex-end}
+.nav-it{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;cursor:pointer;padding:9px 0 8px;font-family:'Poppins',sans-serif;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;color:var(--mut);transition:color .2s}
+/* O ícone já é um círculo de 40px (transparente fora da aba ativa); as margens
+   negativas fazem ele ocupar só a altura do emoji na barra. */
+.nav-it .nav-ic{position:relative;width:40px;height:40px;margin:-7px 0 -6px;border-radius:50%;border:2px solid transparent;display:flex;align-items:center;justify-content:center;font-size:21px;line-height:1;opacity:.7;transition:transform .28s cubic-bezier(.3,1.5,.5,1),background .2s,box-shadow .2s,opacity .2s}
+/* Aba ativa: o círculo sobe e cresce para fora da barra. Tudo por transform,
+   que o navegador anima na GPU sem recalcular layout nem repintar a barra.
+   O anel na cor da barra é o que "recorta" a borda de cima em volta dele. */
+.nav-it.active{color:var(--gold);font-weight:800}
+.nav-it.active .nav-ic{opacity:1;transform:translateY(-20px) scale(1.5);border-color:var(--nav-bg);background:linear-gradient(180deg,var(--gold-lt),var(--gold));box-shadow:0 4px 0 var(--gold-dk),0 7px 15px rgba(247,198,0,.3)}
+.nav-it:active .nav-ic{transform:scale(.9)}
+.nav-it.active:active .nav-ic{transform:translateY(-18px) scale(1.42)}
 /* O 🙏 chama a atenção sozinho: pulsação lenta e curta, longe do pisca-pisca.
    Quem pediu menos animação no sistema recebe o ícone parado (regra abaixo). */
 @keyframes pulsaOracao{0%,72%,100%{transform:scale(1)}80%{transform:scale(1.18)}88%{transform:scale(.97)}}
 .nav-ic-pulsa{animation:pulsaOracao 2.6s ease-in-out infinite;transform-origin:center}
 .nav-it.active .nav-ic-pulsa{animation:none}
-.nav-dot{position:absolute;top:-2px;right:-5px;width:8px;height:8px;border-radius:50%;background:#E5006D;box-shadow:0 0 0 2px var(--nav-bg)}
+.nav-dot{position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:#E5006D;box-shadow:0 0 0 2px var(--nav-bg)}
 @media (prefers-reduced-motion:reduce){.nav-ic-pulsa{animation:none}}
-/* Telas mais largas continuam com a barra folgada de antes. */
-@media (min-width:400px){.nav-it{font-size:9px;letter-spacing:.5px;padding:6px 6px}.nav-it .nav-ic{font-size:22px}}
-.nav-it.active{color:var(--gold);background:rgba(247,198,0,.14);box-shadow:inset 0 0 0 1.5px rgba(247,198,0,.35)}
-.nav-it:active{transform:scale(.92)}
 
 /* Divisória discreta entre semanas */
 .week-divider{display:flex;align-items:center;gap:10px;padding:22px 4px 2px;cursor:pointer}
@@ -764,6 +900,7 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
 /* ===== RESPONSIVO PARA TELAS MAIORES (tablet/notebook/TV com browser) ===== */
 @media (min-width: 700px) {
   #root { max-width: 720px; }
+  .bot-nav { max-width: 720px; }
   .path-node { width: 76px; height: 76px; font-size: 30px; }
   .path-node.today { width: 86px; height: 86px; font-size: 34px; }
   .unit-title { font-size: 22px; }
@@ -924,3 +1061,127 @@ body{font-family:'Lora','Georgia',serif;background:radial-gradient(120% 90% at 1
    sobreposição, mas continuava sendo um botão flutuante disputando canto com
    outro. A ação mudou de vez para o cabeçalho da tela, que é sticky e não
    disputa canto com ninguém. */
+
+/* ===== TEMAS DE TEMPORADA — ajustes de componente =====
+   Tudo aqui é seletor por [data-theme]: fora desses temas nenhuma regra casa,
+   e o visual padrão fica exatamente como era. */
+
+/* Leveza. Nos quatro temas as superfícies são opacas, então o desfoque não
+   mostraria nada por trás — só custaria GPU a cada quadro. Os blobs
+   (três camadas com blur de 60px animadas sem parar) também não pertencem
+   a nenhum deles. */
+:is([data-theme="neon"],[data-theme="manga"],[data-theme^="mvp"]) .blobs{display:none}
+:is([data-theme="neon"],[data-theme="manga"],[data-theme^="mvp"]) :is(.glass,.unit-card,.path-node.today,.hdr,.bot-nav,.live-controls){-webkit-backdrop-filter:none;backdrop-filter:none}
+
+/* ---- Neon: o brilho dourado do padrão vira magenta/ciano ---- */
+@keyframes ringNeon{0%,100%{box-shadow:0 0 0 0 rgba(0,240,255,.5)}50%{box-shadow:0 0 0 12px rgba(0,240,255,0)}}
+[data-theme="neon"] :is(.stat-xp,.xp-badge){background:rgba(255,47,214,.14);border-color:rgba(255,47,214,.4)}
+[data-theme="neon"] .stat-avatar{border-color:rgba(0,240,255,.5)}
+[data-theme="neon"] .unit-card{border-color:rgba(255,47,214,.45)}
+[data-theme="neon"] .path-node.today{border-color:rgba(0,240,255,.8);animation-name:ringNeon}
+[data-theme="neon"] .path-ring{border-color:rgba(0,240,255,.35)}
+[data-theme="neon"] .path-node.done{box-shadow:0 0 16px rgba(255,47,214,.55)}
+[data-theme="neon"] :is(.btn-gold,.path-tip){box-shadow:0 0 16px rgba(255,47,214,.5)}
+[data-theme="neon"] .nav-it.active .nav-ic{box-shadow:0 4px 0 var(--gold-dk),0 0 14px rgba(255,47,214,.6)}
+[data-theme="neon"] .week-divider.sel .wl{background:rgba(255,47,214,.5)}
+[data-theme="neon"] .theme-btn.active{box-shadow:0 0 12px rgba(255,47,214,.45)}
+
+/* ---- Mangá: tinta sobre papel, sombra dura e nada pulsando ---- */
+[data-theme="manga"] :is(.glass,.unit-card,.purple-card,.oracao-card,.recado-card,.fab-top){border:2px solid var(--txt);box-shadow:3px 3px 0 var(--txt)}
+[data-theme="manga"] :is(.btn-gold,.path-tip,.trail-sticky){box-shadow:3px 3px 0 var(--txt)}
+[data-theme="manga"] .nav-it.active .nav-ic{box-shadow:2px 2px 0 var(--txt)}
+[data-theme="manga"] :is(.stat-xp,.xp-badge){background:transparent;border:2px solid var(--txt)}
+[data-theme="manga"] .stat-avatar{border-color:var(--txt)}
+[data-theme="manga"] :is(.path-node.done,.path-node.pair-both,.path-node.missed){box-shadow:3px 3px 0 var(--txt);animation:none}
+[data-theme="manga"] .path-node.today{border-color:var(--txt);animation:none}
+[data-theme="manga"] .path-ring{border-color:var(--txt);animation:none}
+[data-theme="manga"] .path-mascote{filter:none}
+[data-theme="manga"] .week-divider.sel .wl{background:var(--txt)}
+[data-theme="manga"] .theme-btn.active{box-shadow:none}
+[data-theme="manga"] .btn-login{background:#1A1408;color:#F5EEDC;box-shadow:3px 3px 0 rgba(26,20,8,.35)}
+
+/* ---- Multiverso Pop (escuro e claro) ----
+   Borda grossa na cor da tinta, raio 8px, "placa" dura embaixo, e nada de
+   degradê, brilho ou animação em loop. */
+[data-theme^="mvp"] body{font-synthesis:none}
+/* Fonte: o app escreve 'Poppins'/'Lora' direto em dezenas de estilos inline,
+   então só uma regra com !important troca todas de uma vez. */
+[data-theme^="mvp"] body,[data-theme^="mvp"] body *{font-family:"Work Sans",ui-sans-serif,system-ui,sans-serif!important}
+[data-theme^="mvp"] :is(.unit-title,.stat-xp,.live-code,.live-contagem .numero,.path-tip,.xp-float,.pod-pts,.res-val,.conquista,.live-q-tempo),
+[data-theme^="mvp"] :is(.unit-title,.stat-xp,.live-code,.live-contagem .numero,.path-tip,.xp-float,.pod-pts,.res-val,.conquista,.live-q-tempo) *{font-family:"Bangers",cursive!important;text-transform:uppercase;letter-spacing:.02em}
+/* Aberração cromática: só no XP ganho e nos selos de conquista. */
+[data-theme^="mvp"] .res-xp,[data-theme^="mvp"] .conquista{text-shadow:-3px 2px 0 var(--pop-c),3px -2px 0 var(--pop-y)}
+[data-theme^="mvp"] .res-xp{color:var(--pop-ink)!important;font-size:24px!important}
+
+[data-theme^="mvp"] :is(.glass,.purple-card,.oracao-card,.recado-card,.oracao-novo,.verse-card,.fab-top){border:3px solid var(--pop-ink);border-radius:8px;box-shadow:none;background:var(--pop-panel)}
+[data-theme^="mvp"] .verse-card::before{color:var(--pop-c);opacity:1}
+[data-theme^="mvp"] .hdr{border-bottom-width:3px}
+[data-theme^="mvp"] .unit-card{background:var(--pop-y);color:var(--pop-on);border:3px solid var(--pop-ink);border-radius:8px;box-shadow:none}
+[data-theme^="mvp"] :is(.unit-eyebrow,.unit-campanha){color:oklch(.15 0 0/.75)}
+[data-theme^="mvp"] .unit-title{font-size:22px;text-shadow:none}
+[data-theme^="mvp"] .unit-ic-btn{border-left:3px solid var(--pop-on);opacity:1}
+
+[data-theme^="mvp"] .bot-nav{border-top:3px solid var(--pop-ink);box-shadow:none}
+[data-theme^="mvp"] .nav-it{font-size:11px;font-weight:800;letter-spacing:0}
+[data-theme^="mvp"] .nav-it.active .nav-ic{background:var(--pop-y);border-color:var(--pop-ink);box-shadow:0 3px 0 var(--pop-div)}
+[data-theme^="mvp"] .nav-ic-pulsa{animation:none}
+
+[data-theme^="mvp"] .btn{border:3px solid var(--pop-ink);border-radius:8px;box-shadow:0 5px 0 var(--pop-div);text-transform:uppercase}
+[data-theme^="mvp"] :is(.btn-gold,.btn-magenta){background:var(--pop-m);color:var(--pop-on)}
+[data-theme^="mvp"] :is(.btn-teal,.btn-grn){background:var(--pop-c);color:var(--pop-on)}
+[data-theme^="mvp"] .btn-purple{background:var(--pop-panel);color:var(--pop-ink)}
+[data-theme^="mvp"] .btn-ghost{background:transparent;color:var(--pop-ink);border-color:var(--pop-div);box-shadow:none}
+[data-theme^="mvp"] .btn-login{background:var(--pop-y);color:var(--pop-on);border:3px solid var(--pop-ink);border-radius:8px;box-shadow:0 5px 0 var(--pop-div)}
+
+[data-theme^="mvp"] .qbtn{border:3px solid var(--pop-ink);border-radius:8px;color:var(--pop-on);box-shadow:0 5px 0 var(--pop-div)}
+[data-theme^="mvp"] .qA{background:var(--pop-m)}
+[data-theme^="mvp"] .qB{background:var(--pop-c)}
+[data-theme^="mvp"] .qC{background:var(--pop-y)}
+[data-theme="mvp"] .qD{background:oklch(.97 0 0)}
+[data-theme="mvp-light"] .qD{background:oklch(.92 0 0)}
+[data-theme^="mvp"] :is(.prog-wrap,.timer-wrap){background:var(--pop-track);border:2px solid var(--pop-ink);border-radius:8px;height:12px}
+[data-theme^="mvp"] .timer-wrap{height:14px}
+[data-theme^="mvp"] .prog-bar{height:100%;border-radius:0;background:var(--pop-c)}
+
+[data-theme^="mvp"] .path-node{border-radius:8px}
+[data-theme^="mvp"] :is(.path-node.done,.path-node.pair-both){background:var(--pop-y);color:var(--pop-on);border:3px solid var(--pop-ink);box-shadow:0 6px 0 var(--pop-div);animation:none}
+[data-theme^="mvp"] .path-node.missed{background:var(--pop-c);color:var(--pop-on);border:3px solid var(--pop-ink);box-shadow:0 6px 0 var(--pop-div)}
+[data-theme^="mvp"] .path-node.today{background:var(--pop-panel);border:3px solid var(--pop-ink);box-shadow:0 6px 0 var(--pop-div);animation:none}
+[data-theme^="mvp"] .path-node.pair-me{background:linear-gradient(90deg,var(--pop-y) 0 50%,var(--pop-panel) 50% 100%);border:3px solid var(--pop-ink);box-shadow:0 6px 0 var(--pop-div);color:var(--pop-on)}
+[data-theme^="mvp"] .path-node.pair-partner{background:linear-gradient(90deg,var(--pop-panel) 0 50%,var(--pop-y) 50% 100%);border:3px solid var(--pop-ink);box-shadow:0 6px 0 var(--pop-div);color:var(--pop-on)}
+[data-theme^="mvp"] .path-ring{border:3px solid var(--pop-ink);border-radius:12px;animation:none}
+[data-theme^="mvp"] .path-tip{background:var(--pop-y);color:var(--pop-on);border:2px solid var(--pop-ink);border-radius:7px;box-shadow:none;font-size:14px}
+[data-theme^="mvp"] .path-tip::after{border-top-color:var(--pop-ink)}
+[data-theme^="mvp"] .path-mascote{filter:none}
+[data-theme^="mvp"] .path-mascote img{border-color:var(--pop-ink)}
+[data-theme^="mvp"] .week-divider .wl{height:3px;background:var(--pop-div)}
+[data-theme^="mvp"] .week-divider.sel .wl{background:var(--pop-y)}
+
+[data-theme^="mvp"] .stat-avatar{border:2px solid var(--pop-ink);border-radius:8px}
+[data-theme^="mvp"] :is(.stat-xp,.xp-badge){background:var(--pop-y);color:var(--pop-on);border:2px solid var(--pop-ink);border-radius:8px}
+[data-theme^="mvp"] .stat-xp{font-size:24px}
+[data-theme^="mvp"] .stat-xp-lbl{color:var(--pop-on);opacity:1}
+[data-theme^="mvp"] :is(.stat-fire,.streak-badge){background:var(--pop-m);color:var(--pop-on);border:2px solid var(--pop-ink);border-radius:8px}
+[data-theme^="mvp"] .stat-fire b{color:var(--pop-on)}
+[data-theme^="mvp"] .stat-admin{background:var(--pop-c);border:2px solid var(--pop-ink);border-radius:7px}
+
+[data-theme^="mvp"] .pod-base{border:3px solid var(--pop-ink);border-bottom:none;border-radius:7px 7px 0 0}
+[data-theme^="mvp"] .p1{background:var(--pop-y)}
+[data-theme^="mvp"] .p2{background:var(--pop-c)}
+[data-theme^="mvp"] .p3{background:var(--pop-m)}
+[data-theme^="mvp"] .pod-coroa{animation:none}
+[data-theme^="mvp"] .live-placar-row{background:var(--pop-panel);border:3px solid var(--pop-div);border-radius:8px;box-shadow:none}
+[data-theme^="mvp"] .live-placar-row.r1{border-color:var(--pop-y)}
+[data-theme^="mvp"] .live-placar-row.r2{border-color:var(--pop-c)}
+[data-theme^="mvp"] .live-placar-row.r3{border-color:var(--pop-m)}
+[data-theme^="mvp"] .live-placar-row .barra .fill{background:var(--pop-c);box-shadow:none}
+
+[data-theme^="mvp"] :is(.pd-cell .pd-h.on,.pd-bar .pd-seg.full,.pd-legend i.full,.pair-quem i.dois){background:var(--pop-y)}
+[data-theme^="mvp"] .pd-bar .pd-seg.half{background:repeating-linear-gradient(45deg,var(--pop-y) 0 4px,transparent 4px 8px)}
+[data-theme^="mvp"] .sorteador-vencedor{background:var(--pop-panel);border:3px solid var(--pop-ink);border-radius:8px}
+
+[data-theme^="mvp"] .inp{border:2px solid var(--pop-div);border-radius:8px}
+[data-theme^="mvp"] .inp:focus{border-color:var(--pop-y);box-shadow:0 0 0 3px oklch(.68 .19 95/.35)}
+[data-theme^="mvp"] .theme-toggle{border:2px solid var(--pop-ink);border-radius:8px}
+[data-theme^="mvp"] .theme-btn{border-radius:7px}
+[data-theme^="mvp"] .theme-btn.active{background:var(--pop-y);color:var(--pop-on);box-shadow:none}
