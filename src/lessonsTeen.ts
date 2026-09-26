@@ -3,6 +3,10 @@ import { LICAO_4, LICAO_5, LICAO_6 } from "./data3";
 import { LICAO_7, LICAO_8, LICAO_9 } from "./data4";
 import { LICAO_10, LICAO_11, LICAO_12, LICAO_13 } from "./data5";
 import { LICAO_LA_1 } from "./data6";
+import { LICAO_LA_2, LICAO_LA_3, LICAO_LA_4 } from "./data7";
+import { LICAO_LA_5, LICAO_LA_6, LICAO_LA_7 } from "./data8";
+import { LICAO_LA_8, LICAO_LA_9, LICAO_LA_10 } from "./data9";
+import { LICAO_LA_11, LICAO_LA_12, LICAO_LA_13 } from "./data10";
 
 export const LICAO_1 = {
   titulo: "Lição 1 - Entregando a Vida pela Fé (27 de junho a 3 de julho)",
@@ -100,7 +104,9 @@ const LICOES_TEEN = [
   LICAO_1, LICAO_2, LICAO_3, LICAO_4, LICAO_5, LICAO_6,
   LICAO_7, LICAO_8, LICAO_9, LICAO_10, LICAO_11, LICAO_12, LICAO_13,
   // Temporada "Livro Aberto" começa aqui — não é continuação da anterior.
-  LICAO_LA_1
+  LICAO_LA_1, LICAO_LA_2, LICAO_LA_3, LICAO_LA_4, LICAO_LA_5, LICAO_LA_6,
+  LICAO_LA_7, LICAO_LA_8, LICAO_LA_9, LICAO_LA_10, LICAO_LA_11, LICAO_LA_12,
+  LICAO_LA_13
 ];
 
 export default LICOES_TEEN;
