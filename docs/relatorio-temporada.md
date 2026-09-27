@@ -94,20 +94,22 @@ aparece no encerramento e a urna do sorteio são o MESMO grupo. O top 3 da
 classificação geral também concorre no sorteio — não é excluído por já ter
 pódio.
 
-### 9. Vouchers semanais (regra da temporada Livro Aberto em diante)
+### 9. Tickets: sorteio semanal e sorteio da temporada (desde 27/09/2026)
 
-- **Sorteio semanal:** só semanas **perfeitas** participam — os 7 dias
-  estudados **no dia certo** (regra 1). Um dia atrasado dentro da semana já
-  tira o voucher daquela semana, mesmo que a semana tenha sido "completada"
-  mais tarde.
-- **Sorteio da temporada:** continua contando **todos** os dias estudados,
-  inclusive os atrasados (regra 8, sem mudança) — quem precisar recuperar
-  ainda concorre ao prêmio final.
-- Esta regra ainda **não está implementada em código** (o sorteio semanal do
-  app, `regra: 'semana-completa'` em `src/sorteio.ts`, aceita qualquer semana
-  com os 7 dias feitos, mesmo atrasados). Precisa de uma trilha de trabalho
-  própria antes do primeiro sorteio semanal de Livro Aberto — não é só trocar
-  a leitura do relatório, é mudar quem o Sorteador considera elegível.
+- **Sorteio semanal:** só entra quem fez os **7 dias da semana, cada um no dia
+  certo** (regra 1). Um dia atrasado, ou faltando, e a pessoa fica fora do
+  sorteio daquela semana. Em código: `semanaTodaNoDia()` em
+  `src/relatorioTemporada.ts`, aplicado pelo Sorteador na regra
+  `semana-completa`.
+- **Sorteio da temporada:** continua aceitando atraso (regra 8, sem mudança).
+  Na regra "bilhete por semana", cada semana completa vale 1 ticket — quem
+  juntou mais tickets tem mais chance; na regra "estudou tudo", 1 ticket para
+  quem fez todos os dias liberados.
+- O id `semana-completa` foi mantido (em vez de criar um novo) porque
+  `firestore.rules` valida a lista de regras da coleção `sorteios`. Registros
+  semanais feitos antes de 27/09/2026 seguiram a regra antiga, que aceitava
+  atraso — o registro de ganhadores entrou no ar em 26/09/2026, então são
+  pouquíssimos.
 
 ## O JSON do relatório
 

@@ -1,10 +1,15 @@
 import { collapseByUserWeek, embaralhar } from './utils';
 
 // ===== Regras do sorteio =====
-// semana-completa: quem fez os 7 dias da semana, 1 bilhete cada.
-// temporada-tudo: quem fez TODOS os dias liberados da temporada, 1 bilhete cada.
+// semana-completa: quem fez os 7 dias da semana, CADA UM NO DIA CERTO, 1 bilhete
+//   cada (desde 27/09/2026 — antes aceitava atraso; ver semanaTodaNoDia em
+//   relatorioTemporada.ts). O id ficou o mesmo porque firestore.rules valida
+//   a lista de regras de `sorteios`.
+// temporada-tudo: quem fez TODOS os dias liberados da temporada, 1 bilhete cada
+//   (atraso vale).
 // temporada-bilhete-por-semana: 1 bilhete por semana completa na temporada —
-//   quem foi constante tem mais chance, mas quem fechou uma semana só também entra.
+//   quem foi constante tem mais chance, mas quem fechou uma semana só também entra
+//   (atraso vale).
 export type RegraSorteio = 'semana-completa' | 'temporada-tudo' | 'temporada-bilhete-por-semana';
 
 export type Participante = {
@@ -104,7 +109,7 @@ export const ordemPonderada = (participantes: { bilhetes: number }[]): number[] 
 };
 
 export const REGRA_TEXTO: Record<RegraSorteio, string> = {
-  'semana-completa': '1 bilhete por quem fez os 7 dias',
+  'semana-completa': '1 bilhete por quem fez os 7 dias no dia certo',
   'temporada-tudo': '1 bilhete por quem estudou todos os dias',
   'temporada-bilhete-por-semana': '1 bilhete por semana completa',
 };

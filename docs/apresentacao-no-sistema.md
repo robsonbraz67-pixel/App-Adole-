@@ -55,7 +55,7 @@ Documentos relacionados:
 | Liderança, maratonistas, chama | temporada toda | só a semana |
 | Clube | completou tudo | fez 7 de 7 |
 | Pódio, turma inteira | temporada | semana |
-| Sorteio | regra "estudou tudo" | regra "semana completa" |
+| Sorteio | regra "estudou tudo" (atraso vale) | 7 dias no dia certo |
 | Próxima temporada | aparece se houver lições da próxima | não aparece |
 
 ## Decisões tomadas nesta primeira versão (revisar)
@@ -63,11 +63,9 @@ Documentos relacionados:
 1. **Conquistas automáticas, sem edição.** Se a liderança quiser ajustar o
    texto de algum aluno antes de projetar, o próximo passo é deixar editar na
    prévia (salvando só no aparelho).
-2. **Tickets só explicados e simulados.** O slide de sorteio ainda usa as
-   regras atuais do Sorteador. A regra nova (só
-   semanas 100% no dia certo no sorteio semanal) está descrita em
-   `docs/relatorio-temporada.md` e precisa de mudança própria em
-   `src/sorteio.ts` e no Sorteador.
+2. **Tickets:** o sorteio semanal só aceita quem fez os 7 dias no dia certo
+   (`semanaTodaNoDia`); o da temporada continua aceitando atraso. O slide de
+   sorteio da apresentação usa a mesma regra do Sorteador.
 3. **Nomes como estão no app**, igual ao PPT. Se for preciso, uma opção de
    "só primeiro nome" cabe na tela de preparo.
 
@@ -76,6 +74,5 @@ Documentos relacionados:
 - Testar com uma conta de professor de verdade, numa turma com dados reais,
   num projetor.
 - Edição dos textos na prévia (decisão 1).
-- Vouchers (decisão 2).
 - Trilha de fundo opcional no mistério (o som "suspense de auditório" do
   mural de sons).

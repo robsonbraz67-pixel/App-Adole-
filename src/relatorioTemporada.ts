@@ -134,6 +134,16 @@ export const diaFoiEstudadoNoCerto = (
   return candidatoNoDia < Math.min(...candidatosFora);
 };
 
+// A semana inteira da lição feita no dia certo — é a condição do sorteio
+// SEMANAL (o da temporada continua aceitando atraso). Um dia atrasado, ou
+// um dia faltando, e a semana não conta.
+export const semanaTodaNoDia = (linha: LinhaProgresso, licao: Licao): boolean => {
+  if (!licao?.dias?.length) return false;
+  const vel = velocidadeDoAluno([linha], [licao]);
+  return licao.dias.every(d => linha.done.includes(d.id)
+    && diaFoiEstudadoNoCerto(linha.history?.[String(d.id)], d.data, vel));
+};
+
 // ===== 2) Maior ofensiva REAL: dias seguidos, só no dia certo =====
 //
 // Diferente do 🔥 que o app mostra ao vivo (que conta qualquer dia estudado,

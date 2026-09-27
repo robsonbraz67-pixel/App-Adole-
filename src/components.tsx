@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
 import { planejarBackfill } from './backfillTurmas';
 import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor } from './utils';
-import { montarResumoTemporada, ResumoTemporada } from './relatorioTemporada';
+import { montarResumoTemporada, ResumoTemporada, semanaTodaNoDia } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 
 // Desativado em 2026-07-25: a escola opera com UMA trilha e UM local. As duas
@@ -2278,7 +2278,9 @@ export const useSorteador = (licao: any, turmaId: string | undefined, track: str
       if (regra === 'semana-completa') {
         const rank = await getWeeklyRankingDaTurma(licao.semana, turmaId);
         setUsers(rank
-          .filter((u: any) => !u.isAdmin && !u.isProfessor && u.dias === 7)
+          // Semanal só vale no dia certo: fez a lição atrasada, fica de fora
+          // deste sorteio (mas a semana ainda conta no da temporada).
+          .filter((u: any) => !u.isAdmin && !u.isProfessor && u.dias === 7 && semanaTodaNoDia(u, licao))
           .map((u: any) => ({ id: u.id, nome: u.nome, avatar: u.avatar, xp: u.xp || 0, dias: u.dias, bilhetes: 1, semanasCompletas: 1 })));
       } else {
         const licoes = (await loadTrackLessons(track as Track))
@@ -2729,7 +2731,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
 
         <div style={{fontSize:13, color:'var(--mut)', marginBottom:12, textAlign:'center', lineHeight:1.5}}>
           {tipo === 'semana' ? (
-            <>Sorteia entre os que completaram os <strong style={{color:'var(--txt2)'}}>7 dias</strong> da semana <strong style={{color:'var(--gold)'}}>{sel.licao?.semana}</strong>{naTurma}</>
+            <>Sorteia entre os que fizeram os <strong style={{color:'var(--txt2)'}}>7 dias no dia certo</strong> da semana <strong style={{color:'var(--gold)'}}>{sel.licao?.semana}</strong>{naTurma}<br />Quem estudou algum dia atrasado fica fora do semanal, mas a semana ainda conta no sorteio da temporada.</>
           ) : (
             <>
               Temporada <strong style={{color:'var(--gold)'}}>{sel.licao?.trimestre}</strong> · {plural(licoesDaTemporada.length, 'semana', 'semanas')} · {plural(diasLiberados, 'dia liberado', 'dias liberados')} até hoje{naTurma}

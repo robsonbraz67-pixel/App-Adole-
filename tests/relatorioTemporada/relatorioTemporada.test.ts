@@ -216,3 +216,18 @@ describe('perfisDosAlunos — semanas 100% no dia certo (ticket semanal)', () =>
     expect(p.semanasNoDia).toBe(1);
   });
 });
+
+import { semanaTodaNoDia } from '../../src/relatorioTemporada';
+describe('semanaTodaNoDia — regra do sorteio semanal', () => {
+  it('vale só com os 7 dias feitos, todos no dia certo', () => {
+    expect(semanaTodaNoDia(semanaCompleta('ana', 'W1', DATAS_W1), LICOES[0])).toBe(true);
+  });
+  it('um dia atrasado tira a semana', () => {
+    const atrasou = semanaCompleta('ana', 'W1', [...DATAS_W1.slice(0, 6), '2026-06-30']);
+    expect(semanaTodaNoDia(atrasou, LICOES[0])).toBe(false);
+  });
+  it('um dia faltando tira a semana', () => {
+    const faltou = linha('ana', 'W1', [1, 2, 3, 4, 5, 6], Object.fromEntries(DATAS_W1.slice(0, 6).map((d, i) => [String(i + 1), { emISO: d }])));
+    expect(semanaTodaNoDia(faltou, LICOES[0])).toBe(false);
+  });
+});

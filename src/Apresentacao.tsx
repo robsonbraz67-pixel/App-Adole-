@@ -473,7 +473,7 @@ export const Palco = ({ dados, slides, licao, turmaId, track, jogador, onSair }:
                 <span key={c.id} className="ap-chip"><Av a={c.avatar} />{primeiroNome(c.nome)}</span>
               ))}
             </div>
-            <div className="ap-det">{passo + 1} de {r.clubeDaTemporada.length}{passo === r.clubeDaTemporada.length - 1 ? ' · Guardem esses nomes: eles voltam no sorteio.' : ''}</div>
+            <div className="ap-det">{passo + 1} de {r.clubeDaTemporada.length}{passo === r.clubeDaTemporada.length - 1 ? (dados.modo === 'semana' ? ' · Quem fez tudo no dia certo concorre ao sorteio da semana.' : ' · Guardem esses nomes: eles voltam no sorteio.') : ''}</div>
           </div>
         );
       case 'suspense': {
