@@ -134,6 +134,16 @@ export const diaFoiEstudadoNoCerto = (
   return candidatoNoDia < Math.min(...candidatosFora);
 };
 
+// A semana inteira da lição feita no dia certo — é a condição do sorteio
+// SEMANAL (o da temporada continua aceitando atraso). Um dia atrasado, ou
+// um dia faltando, e a semana não conta.
+export const semanaTodaNoDia = (linha: LinhaProgresso, licao: Licao): boolean => {
+  if (!licao?.dias?.length) return false;
+  const vel = velocidadeDoAluno([linha], [licao]);
+  return licao.dias.every(d => linha.done.includes(d.id)
+    && diaFoiEstudadoNoCerto(linha.history?.[String(d.id)], d.data, vel));
+};
+
 // ===== 2) Maior ofensiva REAL: dias seguidos, só no dia certo =====
 //
 // Diferente do 🔥 que o app mostra ao vivo (que conta qualquer dia estudado,
@@ -336,6 +346,156 @@ export const montarResumoTemporada = (args: {
     diaMaisEstudado: diaMaisEstudado(args.linhasDaTurma, args.licoes).slice(0, 8),
     maratonistas: maratonistas(args.linhasDaTurma, args.licoes).slice(0, 5),
     liderancaPeloExemplo: liderancaPeloExemplo(args.linhasLiderancaTodasTrilhas).slice(0, 5),
-    clubeDaTemporada: clubeDaTemporada(args.linhasDaTurma, args.licoes, hojeISO, {}).map(p => ({ nome: p.nome, xp: p.xp, dias: p.dias })),
+    clubeDaTemporada: clubeDaTemporada(args.linhasDaTurma, args.licoes, hojeISO, {}).map(p => ({ id: p.id, nome: p.nome, avatar: p.avatar, xp: p.xp, dias: p.dias })),
   };
+};
+
+// ===== 9) Apresentação dentro do app (tela 🎬 Apresentação) =====
+//
+// O que o roteiro manual do encerramento de Provado pelo Fogo fazia à mão —
+// um "dado marcante" por aluno e as pistas do mistério do pódio — agora sai
+// daqui, para a apresentação montar os slides sozinha. Funciona para a
+// TEMPORADA (todas as lições do trimestre) e para uma SEMANA (passe só a
+// lição daquela semana em `licoes`): as mesmas regras, recorte menor.
+
+export type PerfilAluno = {
+  userId: string; nome: string; avatar: string;
+  dias: number; xp: number; semanasCompletas: number;
+  semanasNoDia: number;           // semanas com os 7 dias feitos, todos na data certa (ticket do sorteio semanal)
+  pctAcertos: number | null;      // 0–100, uma casa; null sem nenhum acerto registrado
+  noDia: number;                  // dias estudados na data certa (regra 1)
+  ofensiva: { dias: number; inicio?: string; fim?: string };
+  melhorSemana?: { week: string; xp: number };
+  maratona?: { maxNumDia: number; dataMax: string; totalRecuperado: number };
+  entrouEm?: string;              // data de criação da conta (YYYY-MM-DD)
+};
+
+// Título curto da lição: "Lição 3 - Fé Notável (18 a 24 de julho)" → "Fé Notável".
+export const tituloCurtoDaLicao = (l?: { titulo?: string; semana?: string }) =>
+  ((l as any)?.titulo || '').replace(/^Lição\s*\d+\s*[-—]\s*/i, '').replace(/\s*\([^)]*\)\s*$/, '').trim() || l?.semana || '';
+
+export const totalDeDias = (licoes: Licao[]) => licoes.reduce((s, l) => s + l.dias.length, 0);
+
+export const perfisDosAlunos = (
+  linhasDaTurma: LinhaProgresso[],
+  licoes: Licao[],
+  criadoEmPorAluno: Record<string, string>,
+  hojeISO: string = hojeLocalISO(),
+): PerfilAluno[] => {
+  const alunos = collapseByUserWeek(somenteAlunos(linhasDaTurma));
+  const porAluno: Record<string, LinhaProgresso[]> = {};
+  for (const r of alunos) (porAluno[r.userId] ??= []).push(r);
+  const marat = Object.fromEntries(maratonistas(linhasDaTurma, licoes).map(m => [m.userId, m]));
+
+  return Object.entries(porAluno).map(([userId, linhas]) => {
+    const recente = [...linhas].sort((a, b) => (a.week < b.week ? 1 : -1))[0];
+    const criadoEm = criadoEmPorAluno[userId];
+    const vel = velocidadeDoAluno(linhas, licoes);
+    let noDia = 0, somaAc = 0, nAc = 0, semanasNoDia = 0;
+    for (const r of linhas) {
+      let certosNaSemana = 0;
+      for (const dia of r.done) {
+        const e = r.history?.[String(dia)];
+        if (e?.acertos !== undefined) { somaAc += e.acertos; nAc++; }
+        const data = dataDaLicao(licoes, r.week, dia);
+        if (criadoEm && data && data < criadoEm) continue;
+        if (diaFoiEstudadoNoCerto(e, data, vel)) { noDia++; certosNaSemana++; }
+      }
+      const diasDaSemana = licoes.find(l => l.semana === r.week)?.dias.length || 7;
+      if (certosNaSemana >= diasDaSemana) semanasNoDia++;
+    }
+    const melhor = [...linhas].sort((a, b) => (b.xp || 0) - (a.xp || 0))[0];
+    const m = marat[userId];
+    return {
+      userId, nome: recente.nome, avatar: recente.avatar,
+      dias: linhas.reduce((s, r) => s + (r.dias ?? r.done.length), 0),
+      xp: linhas.reduce((s, r) => s + (r.xp || 0), 0),
+      semanasCompletas: linhas.filter(r => (r.dias ?? r.done.length) >= 7).length,
+      semanasNoDia,
+      pctAcertos: nAc ? Math.round((1000 * somaAc) / (4 * nAc)) / 10 : null,
+      noDia,
+      ofensiva: ofensivaReal(linhas, licoes, criadoEm, hojeISO),
+      melhorSemana: melhor ? { week: melhor.week, xp: melhor.xp || 0 } : undefined,
+      maratona: m ? { maxNumDia: m.maxNumDia, dataMax: m.dataMax, totalRecuperado: m.totalRecuperado } : undefined,
+      entrouEm: criadoEm,
+    };
+  }).sort((a, b) => b.dias - a.dias || b.xp - a.xp);
+};
+
+const fmtNum = (n: number) => n.toLocaleString('pt-BR');
+const fmtPct = (n: number) => String(n).replace('.', ',');
+const fmtData = (iso?: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
+
+// Um dado marcante por aluno, sem repetir título: cada categoria vai para o
+// MELHOR aluno nela que ainda não ganhou nenhuma; quem sobra recebe o
+// melhor dado pessoal. O pódio leva a posição na frente ("2º lugar · …").
+// Frases neutras de gênero de propósito: o app não sabe o gênero de ninguém.
+export const conquistasDosAlunos = (perfis: PerfilAluno[], licoes: Licao[]): Record<string, string> => {
+  const meta = totalDeDias(licoes);
+  const inicio = licoes.map(l => l.dias[0]?.data).filter(Boolean).sort()[0] as string | undefined;
+  const pos = new Map(perfis.map((p, i) => [p.userId, i]));
+  const out: Record<string, string> = {};
+  const livre = (p: PerfilAluno) => !out[p.userId];
+  const melhor = (lista: PerfilAluno[], valor: (p: PerfilAluno) => number, minimo = 1) =>
+    lista.filter(p => valor(p) >= minimo).sort((a, b) => valor(b) - valor(a) || (pos.get(a.userId)! - pos.get(b.userId)!))[0];
+
+  // `texto` é o superlativo ("Maior…", "Mais…"); só vale quando o aluno é
+  // mesmo o 1º da TURMA INTEIRA naquilo. Como o pódio fica fora das
+  // categorias, o vencedor da categoria pode perder para alguém do pódio — aí
+  // entra `simples`, sem o superlativo, para a frase não mentir.
+  const categorias: { valor: (p: PerfilAluno) => number; minimo?: number; texto: (p: PerfilAluno) => string; simples: (p: PerfilAluno) => string }[] = [
+    { valor: p => p.ofensiva.dias, minimo: 3,
+      texto: p => `Maior sequência no dia certo: ${p.ofensiva.dias} dias seguidos`, simples: p => `${p.ofensiva.dias} dias seguidos no dia certo` },
+    { valor: p => p.noDia, minimo: 2,
+      texto: p => `Mais pontual da turma: ${p.noDia} dias no dia certo`, simples: p => `${p.noDia} dias estudados no dia certo` },
+    { valor: p => p.maratona?.maxNumDia || 0, minimo: 3,
+      texto: p => `Recorde: ${p.maratona!.maxNumDia} lições num dia só`, simples: p => `${p.maratona!.maxNumDia} lições colocadas em dia num dia só` },
+    { valor: p => p.maratona?.totalRecuperado || 0, minimo: 3,
+      texto: p => `Quem mais colocou em dia: ${p.maratona!.totalRecuperado} lições recuperadas`, simples: p => `${p.maratona!.totalRecuperado} lições recuperadas` },
+    { valor: p => (p.dias >= Math.min(7, meta) ? p.pctAcertos || 0 : 0), minimo: 1,
+      texto: p => `Melhor aproveitamento: ${fmtPct(p.pctAcertos!)}% de acertos`, simples: p => `${fmtPct(p.pctAcertos!)}% de acertos` },
+  ];
+  // Pódio primeiro, para ele não "gastar" uma categoria que outro aluno levaria.
+  const podio = perfis.slice(0, 3);
+  for (const cat of categorias) {
+    const vencedor = melhor(perfis.filter(p => livre(p) && !podio.includes(p)), cat.valor, cat.minimo);
+    if (!vencedor) continue;
+    const maiorDaTurma = Math.max(...perfis.map(cat.valor));
+    out[vencedor.userId] = cat.valor(vencedor) >= maiorDaTurma ? cat.texto(vencedor) : cat.simples(vencedor);
+  }
+  const pessoal = (p: PerfilAluno) => {
+    if (meta && p.dias >= meta) return `Completou todos os ${meta} dias`;
+    if (inicio && p.entrouEm && p.entrouEm > inicio) return `Chegou em ${fmtData(p.entrouEm)} e já soma ${p.dias} dias`;
+    if (p.noDia >= 1) return `${p.noDia} de ${p.dias} dias no dia certo`;
+    if (p.pctAcertos !== null) return `${fmtPct(p.pctAcertos)}% de acertos`;
+    return `${p.dias} dias estudados · ${fmtNum(p.xp)} XP`;
+  };
+  for (const p of perfis) if (livre(p)) out[p.userId] = pessoal(p);
+  podio.forEach((p, i) => {
+    const extra = p.pctAcertos !== null ? `${fmtPct(p.pctAcertos)}% de acertos` : `${fmtNum(p.xp)} XP`;
+    out[p.userId] = `${i + 1}º lugar · ${i === 0 ? `${fmtNum(p.xp)} XP` : extra}`;
+  });
+  return out;
+};
+
+// Pistas do mistério, da mais vaga para a mais reveladora. `**…**` marca o
+// trecho em destaque (a tela renderiza em negrito). A última sempre é o XP,
+// com a diferença para o lugar de baixo — é a que entrega o nome.
+export const pistasDoPodio = (perfis: PerfilAluno[], posicao: number, licoes: Licao[]): string[] => {
+  const p = perfis[posicao];
+  if (!p) return [];
+  const abaixo = perfis[posicao + 1];
+  const meta = totalDeDias(licoes);
+  const rankOfensiva = [...perfis].sort((a, b) => b.ofensiva.dias - a.ofensiva.dias).findIndex(x => x.userId === p.userId) + 1;
+  const pistas: string[] = [];
+  pistas.push(`Estudou **${p.dias} de ${meta} dias**${p.dias >= meta ? ' — não perdeu nenhum' : ''}`);
+  if (p.pctAcertos !== null) pistas.push(`Acertou **${fmtPct(p.pctAcertos)}%** das perguntas`);
+  if (licoes.length > 1 && p.melhorSemana) {
+    const l = licoes.find(x => x.semana === p.melhorSemana!.week);
+    pistas.push(`Melhor semana: **${tituloCurtoDaLicao(l as any) || p.melhorSemana.week}**, com ${fmtNum(p.melhorSemana.xp)} XP`);
+  }
+  pistas.push(`Estudou **${p.noDia} dias** na data certa da lição`);
+  if (rankOfensiva <= 3 && p.ofensiva.dias >= 3) pistas.push(`Tem a ${rankOfensiva}ª maior sequência no dia certo: **${p.ofensiva.dias} dias**`);
+  pistas.push(`Fechou com **${fmtNum(p.xp)} XP**${abaixo ? ` — ${fmtNum(p.xp - abaixo.xp)} à frente do ${posicao + 2}º lugar` : ''}`);
+  return pistas;
 };
