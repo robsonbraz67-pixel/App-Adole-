@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getTrackLessons, loadTrackLessons } from './data';
-import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO, getDiaId } from './utils';
+import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO, agoraLocalHora, getDiaId } from './utils';
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress, getWeeklyRanking } from './firebase';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, MuralOracoes, ReportarProblemaModal, TEMAS, Tema } from './components';
 import { BUILD_ID, buscarBuildPublicado, buscarAvisoNovoEndereco, telaPermiteReload, recarregar, podeRecarregarDeNovo, INTERVALO_CHECAGEM_MS } from './version';
@@ -600,7 +600,12 @@ export default function App() {
          // a sequência das datas da lição, e quem estuda todo dia adiantado
          // aparecia sem ofensiva nenhuma. Só na primeira conclusão: refazer um
          // dia não inventa um dia de estudo novo.
-         ...(isRepeat ? {} : { emISO: hojeLocalISO() }),
+         //
+         // emHora: o horário (HH:mm) do mesmo instante — não decide nada hoje
+         // (a régua de "dia certo" continua sendo só a data), mas é o que os
+         // relatórios de temporada futuros vão precisar para responder "que
+         // horas a turma estuda" sem depender de outro backfill depois.
+         ...(isRepeat ? {} : { emISO: hojeLocalISO(), emHora: agoraLocalHora() }),
          ...(punido ? { reiniciado: true } : {})
       } }
     };

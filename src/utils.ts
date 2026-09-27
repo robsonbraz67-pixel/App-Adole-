@@ -146,6 +146,15 @@ export const hojeLocalISO = (): string => {
   return new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
 };
 
+// Horário local (HH:mm) em que o quiz foi concluído — grava ao lado de emISO
+// (ver App.tsx). Não decide nada sozinho hoje (a regra de "dia certo" continua
+// sendo só a DATA), mas abre a porta para analisar horário preferido de estudo
+// sem precisar de outro backfill depois. Ver docs/relatorio-temporada.md.
+export const agoraLocalHora = (): string => {
+  const h = new Date();
+  return String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0');
+};
+
 const diaAnteriorISO = (iso: string): string => {
   const d = new Date(iso + 'T00:00:00');
   d.setDate(d.getDate() - 1);
