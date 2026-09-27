@@ -5229,6 +5229,20 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
           </div>
         )}
 
+        {/* Atalhos para os manuais estáticos (public/manuais/*.pdf, gerados por
+            scripts/gerar-manuais-pdf.mjs a partir de docs/*.md) — sem dado de
+            aluno, então servem para qualquer professor de qualquer turma. */}
+        <div style={{display:'flex', gap:8, marginBottom:14, fontSize:12}}>
+          <a href="/manuais/relatorio-temporada.pdf" target="_blank" rel="noopener noreferrer" download
+            style={{flex:1, textAlign:'center', padding:'8px 6px', borderRadius:10, border:'1px solid var(--input-border)', background:'var(--input-bg)', color:'var(--txt2)', textDecoration:'none', fontWeight:700}}>
+            📄 Manual de dados (PDF)
+          </a>
+          <a href="/manuais/manual-apresentacao-encerramento.pdf" target="_blank" rel="noopener noreferrer" download
+            style={{flex:1, textAlign:'center', padding:'8px 6px', borderRadius:10, border:'1px solid var(--input-border)', background:'var(--input-bg)', color:'var(--txt2)', textDecoration:'none', fontWeight:700}}>
+            🎤 Manual de apresentação (PDF)
+          </a>
+        </div>
+
         <div style={{display:'flex', gap:6, marginBottom:14}}>
           {abas.map(a => (
             <button key={a.k} onClick={() => setAba(a.k)}
