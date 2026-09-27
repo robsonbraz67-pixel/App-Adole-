@@ -8,7 +8,8 @@ sem precisar reconstruir a metodologia do zero, e sem depender de exportação
 manual do Firestore.
 
 O código que gera esse JSON é `src/relatorioTemporada.ts`, com testes em
-`tests/relatorioTemporada/`. Qualquer mudança de regra deve mexer nos três
+`tests/relatorioTemporada/`; a apresentação que sai dele é
+`src/apresentacaoEncerramento.ts`, com testes em `tests/apresentacao/`. Qualquer mudança de regra deve mexer nos três
 lugares juntos: o código, os testes e este documento — os três descrevem a
 mesma coisa e não podem divergir.
 
@@ -124,10 +125,47 @@ A tela do professor gera exatamente a saída de `montarResumoTemporada()`:
   "melhorSemana": [{ "week": "2026-W38", "estudosNoDia": 64, "alunos": 12, "pctAcertos": 91.8 }, "..."],
   "diaMaisEstudado": [{ "data": "2026-09-23", "alunos": 11 }, "..."],
   "maratonistas": [{ "userId": "...", "nome": "Davi Kloss", "maxNumDia": 38, "dataMax": "2026-09-19", "totalRecuperado": 46 }, "..."],
-  "liderancaPeloExemplo": [{ "nome": "Sioneide Almeida", "dias": 91 }, "..."],
-  "clubeDaTemporada": [{ "nome": "Biazadas", "xp": 41769, "dias": 91 }, "..."]
+  "liderancaPeloExemplo": [{ "nome": "Sioneide Almeida", "dias": 91, "porTrilha": { "teen": 91 } }, "..."],
+  "clubeDaTemporada": [{ "userId": "...", "nome": "Biazadas", "xp": 41769, "dias": 91 }, "..."],
+  "perfis": [{
+    "userId": "...", "nome": "Biazadas", "avatar": "🐶", "dias": 91, "xp": 41769, "semanasCompletas": 13,
+    "criadoEm": "2026-06-20", "pctAcertos": 93.1, "diasNoDiaCerto": 82, "gabaritos": 1,
+    "semanasPerfeitas": 7, "semanasPerfeitasLista": ["2026-W30", "..."],
+    "melhorSemana": { "week": "2026-W30", "xp": 3364 }, "ofensivaReal": 32, "totalRecuperado": 0
+  }, "..."]
 }
 ```
+
+`totais` também traz `diasLiberados` (91 numa temporada de 13 semanas
+encerrada — a régua do "não perdeu nenhum") e `diasLideranca` (os dias de quem
+conduz, todas as trilhas; somado a `dias` dá o "com os professores, foram N
+dias").
+
+`perfis` (um por aluno, na ordem do ranking — `perfilDoAluno()`) é o que
+alimenta as pistas do mistério do pódio e a frase de conquista de cada aluno:
+
+- `pctAcertos`: acertos ÷ perguntas respondidas na temporada (`null` se não há
+  resposta registrada — nunca "0%").
+- `diasNoDiaCerto`: dias estudados na data da lição (regra 1), sem contar
+  nada anterior à criação da conta.
+- `gabaritos`: dias com 4/4 e o XP máximo (500) — "gabaritou um dia".
+- `semanasPerfeitas`: semanas com todos os dias no dia certo (regra 9, a régua
+  dos vouchers).
+- `melhorSemana`: a semana de maior XP do aluno.
+- `avatar` só viaja se for emoji — foto em base64 incharia o JSON.
+
+## Apresentação de encerramento dentro do app
+
+Desde o encerramento de Provado pelo Fogo, a apresentação não precisa mais sair
+do app: na aba **📊 Temporada**, escolha a temporada (o seletor aparece quando
+há mais de uma — o encerramento costuma acontecer quando a próxima já começou)
+e toque em **🎬 Apresentar encerramento no telão**. Os 22 slides do PPT
+original (`SabatinaQuest3tri.pptx`) são remontados a partir deste relatório por
+`src/apresentacaoEncerramento.ts` (testes em `tests/apresentacao/`), com as
+técnicas de `docs/manual-apresentacao-encerramento.md` embutidas. O slide do
+sorteio abre o sorteador da temporada escolhida ali mesmo.
+
+O prompt abaixo continua valendo para quem quiser um PPT editável.
 
 ## Prompt para gerar a próxima apresentação de encerramento
 

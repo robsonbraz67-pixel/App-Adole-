@@ -265,12 +265,17 @@ export const liderancaPeloExemplo = (linhasTodasTrilhas: LinhaProgresso[]) => {
     const diasAtual = atual ? (atual.dias ?? atual.done?.length ?? 0) : -1;
     if (!atual || dias > diasAtual || (dias === diasAtual && r.xp > atual.xp)) melhorPorChave[chave] = r;
   }
-  const porAluno: Record<string, { nome: string; dias: number }> = {};
+  // porTrilha deixa a apresentação contar "36 na trilha de adulto + 8 na de
+  // adolescentes" — o total sozinho esconde que a pessoa estudou em duas.
+  const porAluno: Record<string, { nome: string; dias: number; porTrilha: Record<string, number> }> = {};
   for (const r of Object.values(melhorPorChave)) {
     if (!r.isAdmin && !r.isProfessor) continue;
     if (isRankingHidden(r.nome)) continue;
-    const a = porAluno[r.userId] ??= { nome: r.nome, dias: 0 };
-    a.dias += r.dias ?? r.done?.length ?? 0;
+    const a = porAluno[r.userId] ??= { nome: r.nome, dias: 0, porTrilha: {} };
+    const dias = r.dias ?? r.done?.length ?? 0;
+    const trilha = r.track || 'teen';
+    a.dias += dias;
+    a.porTrilha[trilha] = (a.porTrilha[trilha] || 0) + dias;
   }
   return Object.values(porAluno).sort((a, b) => b.dias - a.dias);
 };
@@ -288,7 +293,51 @@ export const clubeDaTemporada = (
   return participantesDaTemporada(linhasDaTurma, meta, 'temporada-tudo', recorte);
 };
 
-// ===== 8) Resumo completo — o JSON que vira apresentação =====
+// ===== 8) Perfil de cada aluno — as pistas do mistério e as conquistas =====
+// O que a apresentação de encerramento (src/apresentacaoEncerramento.ts) usa
+// para as pistas do pódio ("acertou 92,6% das perguntas", "melhor semana:
+// Lição 13") e para a frase de conquista de cada aluno. Mesmas réguas das
+// seções acima: "dia certo" é a regra 1, e nada antes da conta existir conta.
+//
+// Gabarito = um dia com as 4 respostas certas e o XP máximo (100 da leitura +
+// 4 × 100), ou seja, respondido rápido E no dia certo — o "500 XP perfeitos".
+export const XP_GABARITO = 500;
+
+export const perfilDoAluno = (
+  linhas: LinhaProgresso[],   // só deste aluno, já colapsadas por semana
+  licoes: Licao[],
+  criadoEmISO: string | undefined,
+) => {
+  const vel = velocidadeDoAluno(linhas, licoes);
+  let somaAcertos = 0, respondidos = 0, diasNoDiaCerto = 0, gabaritos = 0, semanasPerfeitas = 0;
+  let melhor: { week: string; xp: number } | undefined;
+  const semanasPerfeitasLista: string[] = [];
+  for (const r of linhas) {
+    let noDiaNaSemana = 0;
+    for (const dia of r.done) {
+      const e = r.history?.[String(dia)];
+      if (e?.acertos !== undefined) { somaAcertos += e.acertos; respondidos++; }
+      if (e?.acertos === 4 && (e.xp ?? 0) >= XP_GABARITO) gabaritos++;
+      const dataLicao = dataDaLicao(licoes, r.week, dia);
+      if (!dataLicao || (criadoEmISO && dataLicao < criadoEmISO)) continue;
+      if (diaFoiEstudadoNoCerto(e, dataLicao, vel)) { diasNoDiaCerto++; noDiaNaSemana++; }
+    }
+    // Semana perfeita (regra 9, vouchers): todos os dias da lição, no dia certo.
+    const diasDaLicao = licoes.find(l => l.semana === r.week)?.dias.length || 7;
+    if (noDiaNaSemana >= diasDaLicao) { semanasPerfeitas++; semanasPerfeitasLista.push(r.week); }
+    if (!melhor || (r.xp || 0) > melhor.xp) melhor = { week: r.week, xp: r.xp || 0 };
+  }
+  return {
+    pctAcertos: respondidos ? Math.round((1000 * somaAcertos) / (4 * respondidos)) / 10 : null,
+    diasNoDiaCerto,
+    gabaritos,
+    semanasPerfeitas,
+    semanasPerfeitasLista,
+    melhorSemana: melhor && melhor.xp > 0 ? melhor : undefined,
+  };
+};
+
+// ===== 9) Resumo completo — o JSON que vira apresentação =====
 // Esta é a forma que docs/relatorio-temporada.md descreve para colar no
 // prompt de um encerramento futuro.
 export type ResumoTemporada = ReturnType<typeof montarResumoTemporada>;
@@ -320,6 +369,25 @@ export const montarResumoTemporada = (args: {
     .map(([userId, a]) => ({ userId, nome: a.nome, ...ofensivaReal(a.linhas, args.licoes, args.criadoEmPorAluno[userId], hojeISO) }))
     .sort((a, b) => b.dias - a.dias);
 
+  const todosMaratonistas = maratonistas(args.linhasDaTurma, args.licoes);
+  const lideranca = liderancaPeloExemplo(args.linhasLiderancaTodasTrilhas);
+  const diasLiberados = Object.values(diasLiberadosPorSemana(args.licoes, hojeISO)).reduce((s, n) => s + n, 0);
+
+  // Um perfil por aluno, na ordem do ranking. O avatar só viaja se for emoji:
+  // foto em base64 incharia o JSON baixado (e ele é para colar num prompt).
+  const perfis = ranking.map(r => {
+    const a = porAluno[r.userId];
+    const avatar = [...a.linhas].sort((x, y) => (x.week < y.week ? 1 : -1))[0]?.avatar || '';
+    return {
+      ...r,
+      avatar: avatar.startsWith('data:') || avatar.length > 16 ? '' : avatar,
+      criadoEm: args.criadoEmPorAluno[r.userId],
+      ...perfilDoAluno(a.linhas, args.licoes, args.criadoEmPorAluno[r.userId]),
+      ofensivaReal: ofensivas.find(o => o.userId === r.userId)?.dias || 0,
+      totalRecuperado: todosMaratonistas.find(m => m.userId === r.userId)?.totalRecuperado || 0,
+    };
+  });
+
   return {
     turma: args.turmaNome,
     trimestre: args.trimestre,
@@ -329,13 +397,19 @@ export const montarResumoTemporada = (args: {
       dias: ranking.reduce((s, r) => s + r.dias, 0),
       xp: ranking.reduce((s, r) => s + r.xp, 0),
       semanasCompletas: ranking.reduce((s, r) => s + r.semanasCompletas, 0),
+      // Dias liberados até hoje (91 numa temporada de 13 semanas encerrada) —
+      // a régua de "não perdeu nenhum" e do "Clube dos 91".
+      diasLiberados,
+      // Os mesmos dias, somando quem conduz (todas as trilhas).
+      diasLideranca: lideranca.reduce((s, l) => s + l.dias, 0),
     },
     ranking,
     ofensivaReal: ofensivas.slice(0, 5),
     melhorSemana: melhorSemana(args.linhasDaTurma, args.licoes).slice(0, 5),
     diaMaisEstudado: diaMaisEstudado(args.linhasDaTurma, args.licoes).slice(0, 8),
-    maratonistas: maratonistas(args.linhasDaTurma, args.licoes).slice(0, 5),
-    liderancaPeloExemplo: liderancaPeloExemplo(args.linhasLiderancaTodasTrilhas).slice(0, 5),
-    clubeDaTemporada: clubeDaTemporada(args.linhasDaTurma, args.licoes, hojeISO, {}).map(p => ({ nome: p.nome, xp: p.xp, dias: p.dias })),
+    maratonistas: todosMaratonistas.slice(0, 5),
+    liderancaPeloExemplo: lideranca.slice(0, 5),
+    clubeDaTemporada: clubeDaTemporada(args.linhasDaTurma, args.licoes, hojeISO, {}).map(p => ({ userId: p.id, nome: p.nome, xp: p.xp, dias: p.dias })),
+    perfis,
   };
 };

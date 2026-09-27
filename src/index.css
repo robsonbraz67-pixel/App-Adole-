@@ -1249,3 +1249,149 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 [data-theme^="mvp"] .theme-toggle{border:2px solid var(--pop-ink);border-radius:8px}
 [data-theme^="mvp"] .theme-btn{border-radius:7px}
 [data-theme^="mvp"] .theme-btn.active{background:var(--pop-y);color:var(--pop-on);box-shadow:none}
+
+/* ===== APRESENTAÇÃO DE ENCERRAMENTO (src/ApresentacaoEncerramento.tsx) =====
+   O PPT de Provado pelo Fogo recriado em 16:9. Medidas em cqh/cqw a partir do
+   original (13,33" × 7,5"): 1pt = .185cqh, 1" = 13,33cqh = 7,5cqw.
+   Três fundos, os mesmos do PPT: fogo (brasa no canto), palco (holofote no
+   centro, para os momentos de revelação) e azul (a próxima temporada). */
+.ap-palco{position:fixed;inset:0;z-index:4900;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#000;color:#FFF5EA;font-family:'Poppins',Calibri,sans-serif;
+  --ap-eyebrow:#FFB35C;--ap-titulo:#FFF5EA;--ap-sub:#FFD9B0;--ap-mut:#E8B98E;--ap-ouro:#FFD27A;--ap-borda:#FFB35C;--ap-card:rgba(255,255,255,.07)}
+.ap-palco.t-azul{--ap-eyebrow:#7FD3F5;--ap-titulo:#FFFFFF;--ap-sub:#CDEEFA;--ap-mut:#A4D4E6;--ap-borda:#7FD3F5;--ap-card:rgba(255,255,255,.08)}
+.ap-tela{position:relative;width:min(100vw,calc(100dvh * 16 / 9));height:min(100dvh,calc(100vw * 9 / 16));container-type:size;overflow:hidden;cursor:pointer;user-select:none;animation:apEntra .45s ease}
+.t-fogo .ap-tela{background:radial-gradient(90% 110% at 85% 100%,#9A3412 0%,#4A1509 42%,#1A0B08 78%)}
+.t-palco .ap-tela{background:radial-gradient(60% 65% at 50% 52%,#C2410C 0%,#6B1D0A 45%,#1A0B08 100%)}
+.t-azul .ap-tela{background:radial-gradient(90% 110% at 85% 100%,#1E6A8C 0%,#0E3448 45%,#08151C 80%)}
+@keyframes apEntra{from{opacity:0}to{opacity:1}}
+@keyframes apSobe{from{opacity:0;transform:translateY(3cqh)}to{opacity:1;transform:none}}
+@keyframes apPop{0%{opacity:0;transform:scale(.4)}70%{transform:scale(1.08)}100%{opacity:1;transform:scale(1)}}
+@keyframes apPulsa{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:.8;transform:scale(1.06)}}
+.ap-entra{animation:apSobe .6s ease both}
+.ap-pop{display:inline-block;animation:apPop .55s cubic-bezier(.2,.9,.3,1.2) both}
+
+.ap-conteudo{position:absolute;inset:0;padding:6cqh 5.25cqw 0;display:flex;flex-direction:column}
+.ap-centro{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 5cqw}
+.ap-eyebrow{font-size:2.6cqh;font-weight:800;letter-spacing:.14em;color:var(--ap-eyebrow);line-height:1.2}
+.ap-titulo{font-family:Cambria,Georgia,serif;font-weight:700;font-size:7.4cqh;line-height:1.15;color:var(--ap-titulo);margin-top:1.2cqh}
+.ap-titulo.menor{font-size:5.9cqh}
+.ap-sub{font-size:3.3cqh;color:var(--ap-sub);margin-top:1cqh}
+.ap-rodape{position:absolute;left:5.25cqw;right:5.25cqw;bottom:5cqh;font-size:2.6cqh;color:var(--ap-mut);line-height:1.35}
+.ap-emoji{font-size:14.8cqh;line-height:1.1}
+
+/* capa (e próxima temporada) */
+.ap-capa{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;transition:opacity 1.6s ease}
+.ap-capa.cortina{opacity:0}
+.ap-canto{position:absolute;top:6cqh;left:5.25cqw}
+.t-azul .ap-capa .ap-canto{position:static;margin-bottom:1cqh}
+.ap-capa-titulo{font-family:Cambria,Georgia,serif;font-weight:700;font-size:12.6cqh;line-height:1.1;color:var(--ap-titulo)}
+.t-azul .ap-capa-titulo{font-size:11.5cqh}
+.ap-capa-sub{font-size:4cqh;color:var(--ap-sub);margin-top:1.5cqh}
+.ap-capa-linha{font-size:3.3cqh;color:var(--ap-mut);margin-top:1cqh}
+.t-azul .ap-capa-linha{font-size:2.8cqh}
+
+/* números */
+.ap-numeros{display:grid;grid-template-columns:repeat(4,1fr);gap:2.3cqw;margin-top:9cqh}
+.ap-num-card{background:var(--ap-card);border:.25cqh solid var(--ap-borda);border-radius:2.5cqh;height:30.7cqh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 1cqw}
+.ap-num-valor{font-family:Cambria,Georgia,serif;font-weight:700;font-size:8.6cqh;color:var(--ap-eyebrow);font-variant-numeric:tabular-nums;line-height:1.1}
+.ap-num-rotulo{font-size:2.8cqh;color:var(--ap-sub);margin-top:1.5cqh;text-align:center}
+
+/* dia mais estudado */
+.ap-dia{display:grid;grid-template-columns:1fr 1fr;gap:5cqw;margin-top:6cqh;align-items:center}
+.ap-dia-data{font-family:Cambria,Georgia,serif;font-weight:700;font-size:20.4cqh;line-height:1;color:var(--ap-eyebrow)}
+.ap-dia-legenda{font-size:3.2cqh;color:var(--ap-sub);margin-top:1.5cqh}
+.ap-dia-lateral{display:flex;flex-direction:column;gap:2.4cqh;font-size:3cqh;font-weight:700;line-height:1.35;color:var(--ap-eyebrow)}
+.ap-dia-lateral .claro{color:#FFE3C4}
+
+/* pódio (melhor semana, liderança, maratonistas, ofensiva) */
+.ap-podio{display:grid;grid-template-columns:repeat(3,1fr);gap:2.8cqw;margin-top:7cqh;align-items:end;padding:0 1.6cqw}
+.ap-podio-card{background:var(--ap-card);border:.2cqh solid rgba(255,255,255,.35);border-radius:2.5cqh;padding:2.7cqh 1.9cqw;min-height:38.7cqh;display:flex;flex-direction:column;justify-content:center;gap:1cqh;transition:box-shadow .4s}
+.ap-podio-card.ap-p1{order:-1;background:rgba(255,179,92,.18);border-color:var(--ap-borda);min-height:46.7cqh}
+.ap-podio-card.on.ap-p1{box-shadow:0 0 5cqh rgba(255,179,92,.35)}
+.ap-podio-pos{font-family:Cambria,Georgia,serif;font-weight:700;font-size:4.8cqh;color:var(--ap-eyebrow)}
+.ap-p1 .ap-podio-pos{font-size:6.3cqh;color:var(--ap-ouro)}
+.ap-podio-titulo{font-size:3.4cqh;font-weight:800;color:var(--ap-titulo);min-height:4.5cqh;line-height:1.2}
+.ap-p1 .ap-podio-titulo{font-size:4.1cqh}
+.ap-podio-destaque{font-size:3cqh;font-weight:800;color:var(--ap-sub)}
+.ap-p1 .ap-podio-destaque{font-size:3.5cqh}
+.ap-podio-detalhe{font-size:2.35cqh;color:var(--ap-mut);line-height:1.35}
+
+/* grade de nomes (clube, urna) */
+.ap-grade{display:grid;gap:3.4cqh 2.9cqw;margin-top:5cqh;padding:0 2.7cqw}
+.ap-grade.c3{grid-template-columns:repeat(3,1fr)}
+.ap-grade.c4{grid-template-columns:repeat(4,1fr);gap:2.4cqh 2cqw}
+.ap-grade.c5{grid-template-columns:repeat(5,1fr);gap:2cqh 1.6cqw}
+.ap-chip{height:13.3cqh;border-radius:2cqh;border:.2cqh dashed rgba(255,179,92,.35);display:flex;align-items:center;justify-content:center;font-size:3.5cqh;font-weight:800;color:var(--ap-titulo);text-align:center;padding:0 1cqw;overflow:hidden}
+.ap-grade.c4 .ap-chip,.ap-grade.c5 .ap-chip{height:10cqh;font-size:2.9cqh}
+.ap-chip.on{background:rgba(255,179,92,.18);border:.2cqh solid var(--ap-borda)}
+
+/* frases de palco */
+.ap-frase{font-family:Cambria,Georgia,serif;font-weight:700;font-size:6.3cqh;line-height:1.3;color:#FFF5EA}
+.ap-frase.ouro{color:#FFD27A}
+.ap-frase.azul{color:#7FD3F5}
+.t-azul .ap-frase{font-size:8.1cqh}
+.ap-frase.grande{font-size:8.9cqh}
+.ap-frase-legenda{font-size:3.5cqh;color:var(--ap-sub);margin-top:2.5cqh}
+.t-azul .ap-frase-legenda{font-size:4cqh;margin-top:4cqh}
+
+/* mistério */
+.ap-misterio-titulo{margin-top:1.2cqh;background:#E23B1F;border-radius:1.4cqh;padding:1.6cqh 2cqw;font-family:Cambria,Georgia,serif;font-weight:700;font-size:6.6cqh;color:#FFF5EA;line-height:1.1}
+.ap-pistas{display:flex;flex-direction:column;gap:2cqh;margin-top:3.5cqh}
+.ap-pista{display:flex;align-items:center;gap:2cqw;min-height:8.5cqh}
+.ap-pista-n{flex:none;width:6.7cqh;height:6.7cqh;border-radius:50%;background:rgba(255,179,92,.2);color:var(--ap-eyebrow);font-weight:800;font-size:3.3cqh;display:flex;align-items:center;justify-content:center;opacity:.45}
+.ap-pista.on .ap-pista-n{opacity:1;background:rgba(255,179,92,.3)}
+.ap-pista-txt{font-size:3.05cqh;font-weight:700;color:#FFE3C4;line-height:1.3}
+.ap-pista.on .ap-pista-txt{animation:apSobe .5s ease both}
+
+/* revelação: "?" → silêncio (tela escurece) → nome */
+.ap-revela{transition:filter .25s ease}
+.ap-revela.silencio{filter:brightness(.12)}
+.ap-revela-rotulo{font-size:4.1cqh;font-weight:800;letter-spacing:.12em;color:#FFD27A}
+.ap-revela-interroga{font-family:Cambria,Georgia,serif;font-weight:700;font-size:30cqh;line-height:1.1;color:#FFF5EA;animation:apPulsa 1.6s ease-in-out infinite}
+.ap-revela-avatar{font-size:24cqh;line-height:1.15;margin-top:1cqh}
+.ap-revela-avatar img{width:26cqh;height:26cqh;border-radius:50%;object-fit:cover}
+.ap-revela-nome{font-family:Cambria,Georgia,serif;font-weight:700;font-size:14cqh;line-height:1.05;color:#FFF5EA;text-shadow:0 .6cqh 2cqh rgba(0,0,0,.5)}
+.ap-revela-detalhe{font-size:3.7cqh;color:#FFD9B0;margin-top:1.5cqh}
+
+/* a turma inteira, um por vez */
+.ap-turma-destaque{display:flex;align-items:center;gap:4cqw;margin:6cqh auto 0;width:80%;background:var(--ap-card);border:.25cqh solid var(--ap-borda);border-radius:3cqh;padding:4cqh 4cqw;animation:apSobe .45s ease both}
+.ap-turma-avatar{font-size:17cqh;line-height:1}
+.ap-turma-nome{font-family:Cambria,Georgia,serif;font-weight:700;font-size:8cqh;line-height:1.1;color:var(--ap-titulo)}
+.ap-turma-conquista{font-size:4.3cqh;font-weight:800;color:var(--ap-eyebrow);margin-top:1.4cqh;line-height:1.25}
+.ap-turma-num{font-size:2.9cqh;color:var(--ap-mut);margin-top:1.2cqh}
+.ap-turma-fila{position:absolute;left:5.25cqw;right:5.25cqw;bottom:5cqh;display:flex;flex-wrap:wrap;justify-content:center;gap:1.2cqh 1cqw}
+.ap-turma-chip{font-size:2.2cqh;font-weight:700;padding:.6cqh 1.2cqw;border-radius:99px;border:.15cqh solid rgba(255,255,255,.2);color:rgba(255,245,234,.5)}
+.ap-turma-chip.feito{color:var(--ap-sub);border-color:rgba(255,179,92,.45)}
+.ap-turma-chip.atual{color:#1A0B08;background:var(--ap-eyebrow);border-color:var(--ap-eyebrow)}
+
+/* sorteio */
+.ap-btn-sorteio{width:auto!important;margin-top:4cqh;font-size:3cqh!important;padding:1.8cqh 3cqw!important}
+
+/* cartões e simulação (azul) */
+.ap-cartoes{display:grid;grid-template-columns:1fr 1fr;gap:3.8cqw;margin-top:5.5cqh;padding:0 .8cqw}
+.ap-cartao{background:var(--ap-card);border:.2cqh solid var(--ap-borda);border-radius:2.5cqh;padding:4cqh 2.7cqw;min-height:42.7cqh}
+.ap-cartao-titulo{font-size:3.7cqh;font-weight:800;color:var(--ap-eyebrow)}
+.ap-cartao-titulo.pequeno{font-size:2.4cqh;margin-top:1.8cqh}
+.ap-cartao-titulo.pequeno:first-child{margin-top:0}
+.ap-cartao-texto{font-size:2.9cqh;color:#E5F4FA;margin-top:2.5cqh;line-height:1.45}
+.ap-sim{display:grid;grid-template-columns:1fr 1fr;gap:3cqw;margin-top:3cqh}
+.ap-sim.so-tabela{grid-template-columns:1fr;max-width:60%}
+.ap-tabela{border-collapse:collapse;font-size:2.4cqh;align-self:start}
+.ap-tabela th{text-align:left;color:var(--ap-eyebrow);font-weight:800;padding:.9cqh 1cqw;border-bottom:.2cqh solid var(--ap-borda)}
+.ap-tabela td{padding:.8cqh 1cqw;color:#E5F4FA;border-bottom:.1cqh solid rgba(255,255,255,.12)}
+.ap-sim-ex{min-height:0;padding:3cqh 2.5cqw}
+.ap-sim-linha{font-size:2.6cqh;color:#E5F4FA;margin-top:1cqh;line-height:1.35}
+.ap-sim-linha.fraco{color:var(--ap-sub);font-size:2.5cqh}
+.ap-sim-ordem{font-size:2.8cqh;font-weight:800;color:#fff;margin-top:1cqh;line-height:1.45}
+
+/* controles, notas, tela preta */
+.ap-hud{position:fixed;right:14px;bottom:12px;display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.45);border-radius:99px;padding:4px 8px;font-size:12px;color:rgba(255,255,255,.75);opacity:.25;transition:opacity .2s;z-index:1}
+.ap-hud:hover,.ap-hud:focus-within{opacity:1}
+.ap-hud button{background:none;border:0;color:inherit;font-size:15px;padding:4px 7px;cursor:pointer;border-radius:8px}
+.ap-hud button:hover{background:rgba(255,255,255,.12)}
+.ap-notas{position:fixed;left:14px;right:180px;bottom:12px;max-height:34vh;overflow:auto;background:rgba(10,10,10,.88);color:#f5f5f5;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:12px 16px;font-size:clamp(14px,1.8vh,20px);line-height:1.45;z-index:1}
+.ap-notas b{color:#FFB35C;margin-right:6px}
+.ap-preto{position:fixed;inset:0;background:#000;z-index:2;cursor:pointer}
+@media (prefers-reduced-motion: reduce){
+  .ap-tela,.ap-entra,.ap-pop,.ap-pista.on .ap-pista-txt,.ap-turma-destaque{animation:none}
+  .ap-revela-interroga{animation:none;opacity:.6}
+}

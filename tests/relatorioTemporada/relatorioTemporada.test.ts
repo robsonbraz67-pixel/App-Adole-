@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   diaFoiEstudadoNoCerto, velocidadeDoAluno, ofensivaReal, melhorSemana,
-  diaMaisEstudado, maratonistas, liderancaPeloExemplo, type Licao, type LinhaProgresso,
+  diaMaisEstudado, maratonistas, liderancaPeloExemplo, perfilDoAluno, montarResumoTemporada, type Licao, type LinhaProgresso,
 } from '../../src/relatorioTemporada';
 
 // Duas semanas de 7 dias cada, com datas reais — o bastante para testar
@@ -134,6 +134,57 @@ describe('liderancaPeloExemplo — admin/professor, somando todas as trilhas', (
       linha('aluno', 'W1', [1], {}, { isAdmin: false, isProfessor: false }),
     ];
     const r = liderancaPeloExemplo(linhas);
-    expect(r).toEqual([{ nome: 'robgo', dias: 5 }]);
+    expect(r).toEqual([{ nome: 'robgo', dias: 5, porTrilha: { teen: 2, adult: 3 } }]);
+  });
+});
+
+describe('perfilDoAluno — as pistas do mistério e as conquistas', () => {
+  const W1 = (dia: number) => `2026-06-2${dia - 1}`;
+  it('acertos, dias no dia certo, gabarito, melhor semana e semana perfeita', () => {
+    const noDia = Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map(d => [String(d), { emISO: W1(d), xp: 400, acertos: 3 }]));
+    noDia['1'] = { emISO: W1(1), xp: 500, acertos: 4 }; // gabarito: 4/4 e XP máximo
+    const linhas = [
+      { ...linha('ana', 'W1', [1, 2, 3, 4, 5, 6, 7], noDia), xp: 2900 },
+      { ...linha('ana', 'W2', [1, 2], { '1': { emISO: '2026-07-01', xp: 300, acertos: 2 }, '2': { emISO: '2026-07-20', xp: 200, acertos: 1 } }), xp: 500 },
+    ];
+    const p = perfilDoAluno(linhas, LICOES, undefined);
+    // 3×6 + 4 + 2 + 1 = 25 acertos em 9 dias respondidos → 25/36
+    expect(p.pctAcertos).toBe(69.4);
+    expect(p.diasNoDiaCerto).toBe(8);   // os 7 da W1 + o 1º da W2 (o 2º foi atrasado)
+    expect(p.gabaritos).toBe(1);
+    expect(p.semanasPerfeitas).toBe(1);
+    expect(p.semanasPerfeitasLista).toEqual(['W1']);
+    expect(p.melhorSemana).toEqual({ week: 'W1', xp: 2900 });
+  });
+
+  it('dia anterior à criação da conta não conta como "no dia certo"', () => {
+    const linhas = [linha('ana', 'W1', [1, 2], { '1': { emISO: W1(1) }, '2': { emISO: W1(2) } })];
+    expect(perfilDoAluno(linhas, LICOES, W1(2)).diasNoDiaCerto).toBe(1);
+  });
+
+  it('sem nenhuma resposta registrada, o percentual fica null (nunca 0%)', () => {
+    expect(perfilDoAluno([linha('ana', 'W1', [1], {})], LICOES, undefined).pctAcertos).toBeNull();
+  });
+});
+
+describe('montarResumoTemporada — perfis e totais usados pela apresentação', () => {
+  it('um perfil por aluno, na ordem do ranking, com dias liberados e dias da liderança', () => {
+    const r = montarResumoTemporada({
+      linhasDaTurma: [linha('ana', 'W1', [1, 2, 3]), linha('bia', 'W1', [1])],
+      linhasLiderancaTodasTrilhas: [linha('prof', 'W1', [1, 2], {}, { isProfessor: true })],
+      licoes: LICOES, criadoEmPorAluno: {}, turmaNome: 'T', trimestre: 'T', hojeISO: '2026-07-07',
+    });
+    expect(r.perfis.map(p => p.userId)).toEqual(['ana', 'bia']);
+    expect(r.totais.diasLiberados).toBe(14);
+    expect(r.totais.diasLideranca).toBe(2);
+    expect(r.perfis[0]).toMatchObject({ avatar: '🦁', dias: 3 });
+  });
+
+  it('foto (data URL) não viaja no JSON — só emoji', () => {
+    const r = montarResumoTemporada({
+      linhasDaTurma: [linha('ana', 'W1', [1], {}, { avatar: 'data:image/png;base64,AAAA' })],
+      linhasLiderancaTodasTrilhas: [], licoes: LICOES, criadoEmPorAluno: {}, turmaNome: 'T', trimestre: 'T', hojeISO: '2026-07-07',
+    });
+    expect(r.perfis[0].avatar).toBe('');
   });
 });

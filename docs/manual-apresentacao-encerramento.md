@@ -73,6 +73,49 @@ evento inteiro — valem para qualquer encerramento:
 - [ ] Ter celulares com o app já instalado à mão para o ritual coletivo do
       fechamento
 
+## Apresentando pelo app
+
+A aba **📊 Temporada** do painel do professor abre a apresentação pronta, em
+tela cheia (**🎬 Apresentar encerramento no telão**). As técnicas acima já vêm
+embutidas nos slides:
+
+| Tecla (ou passador de slides) | O que faz |
+|---|---|
+| → · Espaço · PageDown | Próximo passo: revela o próximo número, pista ou nome; no fim do slide, vai para o próximo |
+| ← · PageUp | Volta um passo |
+| N | Mostra/esconde as notas do apresentador (o que dizer em cada slide) |
+| B ou . | Tela preta (de novo para voltar) |
+| S | No slide do sorteio, abre o sorteador (Esc volta para os slides) |
+
+- **Capa** começa em tela preta; o primeiro clique faz o título surgir.
+- **Números, dia mais estudado, pódios:** mostram "?" até o clique — dá tempo
+  de pedir os palpites. Os pódios revelam do 3º para o 1º.
+- **Clube da temporada:** um nome por clique, para chamar cada um a ficar em pé.
+- **Mistério do pódio:** uma pista por clique, com a trilha de suspense.
+- **Revelação:** o clique corta todo o som e segura o silêncio (1 s no 3º e no
+  2º lugar, 2 s no 1º) antes de o nome aparecer, com som de impacto e confete.
+- **A turma inteira:** um aluno por clique, com a frase de conquista dele.
+- O **✕** no canto fecha a apresentação (o Esc não fecha, para um toque sem
+  querer não derrubar a noite). Reabrir volta ao mesmo slide.
+
+### Sons
+
+Cada deixa de áudio procura um arquivo gravado em `public/sons/encerramento/`.
+Sem o arquivo, o app usa um som sintetizado próprio (contador, impacto,
+campeão, virada) ou fica em silêncio (fogo, suspense, aplausos) — e o som da
+igreja cobre essas deixas. Use só áudio de licença livre (Mixkit, Pixabay,
+Freesound CC0), em MP3:
+
+| Arquivo | Quando toca |
+|---|---|
+| `abertura.mp3` | Clique que tira a capa do preto (fogo crepitando / batida grave subindo) |
+| `swoosh.mp3` | Cada número, data ou nome de pódio revelado |
+| `suspense.mp3` | Em loop durante os mistérios do pódio; corta no clique da revelação |
+| `impacto.mp3` | Revelação do 3º e do 2º lugar |
+| `campeao.mp3` | Revelação do 1º lugar |
+| `aplausos.mp3` | Logo depois de cada revelação |
+| `virada.mp3` | Slide da próxima temporada (troca de clima) |
+
 ## Como usar isto com o relatório de dados
 
 1. Baixe o relatório da sua turma (painel do professor → aba 📊 Temporada →

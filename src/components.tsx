@@ -6,6 +6,10 @@ import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, 
 import { montarResumoTemporada, ResumoTemporada } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 
+// Só quem conduz abre a apresentação de encerramento — carrega sob demanda,
+// do mesmo jeito que o modo ao vivo (App.tsx).
+const ApresentacaoDoRelatorio = React.lazy(() => import('./ApresentacaoEncerramento').then(m => ({ default: m.ApresentacaoDoRelatorio })));
+
 // Desativado em 2026-07-25: a escola opera com UMA trilha e UM local. As duas
 // ferramentas continuam inteiras por baixo (modelo de dados, regras, convites
 // por código, atribuição de professor) — só a UI saiu do caminho. Para
@@ -2848,6 +2852,78 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   );
 };
 
+/* ===== SORTEIO DA TEMPORADA DENTRO DA APRESENTAÇÃO DE ENCERRAMENTO =====
+   O slide "Sorteio ao vivo" abre isto por cima dos slides: o mesmo telão do
+   Sorteador, já na regra do encerramento (o Clube da Temporada inteiro, 1
+   bilhete cada — docs/relatorio-temporada.md, regra 8) e na temporada que está
+   sendo encerrada, não na lição atual do app (que depois do dia 1 já é a
+   temporada nova). Esc volta para os slides. */
+export const SorteioTemporadaTelao = ({ jogador, turmaId, track, trimestre, turmaNome, onSair }: {
+  jogador: any; turmaId: string; track: string; trimestre: string; turmaNome?: string; onSair: () => void;
+}) => {
+  const regra: RegraSorteio = 'temporada-tudo';
+  const licao = useMemo(() => ({ trimestre }), [trimestre]);
+  const { users, ganhador, idx, animando, loading, carregar, iniciar, sorteados } = useSorteador(licao, turmaId, track, regra);
+  useEffect(() => { carregar(); }, [trimestre, turmaId, track]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [registro, setRegistro] = useState<EstadoRegistro>('livre');
+  useEffect(() => { setRegistro('livre'); }, [ganhador]);
+  const registrar = async () => {
+    if (!ganhador || registro === 'salvando' || registro === 'salvo') return;
+    setRegistro('salvando');
+    try {
+      await registrarSorteio({
+        turmaId, track, tipo: 'temporada', periodo: trimestre, regra,
+        ganhadorId: ganhador.id,
+        ganhadorNome: (ganhador.nome || 'Sem nome').slice(0, 80),
+        ganhadorAvatar: ganhador.avatar?.startsWith('data:') ? '' : (ganhador.avatar || '').slice(0, 64),
+        participantes: users.length,
+        bilhetes: users.length,
+        sorteadoPor: jogador.id,
+        sorteadoPorNome: (jogador.nome || 'Liderança').slice(0, 80),
+      });
+      setRegistro('salvo');
+    } catch (e) {
+      console.error('registrarSorteio', e);
+      setRegistro('erro');
+    }
+  };
+
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onSair(); return; }
+      if ((e.key === ' ' || e.key === 'Enter' || e.key === 'PageDown' || e.key === 'ArrowRight') && !animando && users.length > 0) {
+        e.preventDefault();
+        iniciar();
+      }
+    };
+    window.addEventListener('keydown', tecla);
+    return () => window.removeEventListener('keydown', tecla);
+  }, [animando, users.length, iniciar, onSair]);
+
+  return (
+    <SorteadorTelao
+      eyebrow="🏆 Sorteio final da temporada"
+      titulo={trimestre}
+      regra={regra}
+      turmaNome={turmaNome}
+      users={users}
+      totalBilhetes={users.length}
+      ganhador={ganhador}
+      idx={idx}
+      animando={animando}
+      loading={loading}
+      sorteados={sorteados}
+      registro={registro}
+      podeRegistrar={true}
+      onRegistrar={registrar}
+      onCarregar={carregar}
+      onSortear={iniciar}
+      onSair={onSair}
+    />
+  );
+};
+
 /* ===== MURAL DE ORAÇÕES ===== */
 // Pedidos de oração da TURMA. Escopo, anonimato e quem pode apagar estão
 // explicados na regra de `pedidosOracao` (firestore.rules) — a tela aqui só
@@ -5090,13 +5166,24 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
 // Aba "📊 Temporada" do painel do professor — mostra o resumo de
 // src/relatorioTemporada.ts e deixa baixar o JSON cru. O JSON é o que
 // docs/relatorio-temporada.md ensina a colar num prompt (Claude Code ou
-// outro assistente) para montar o PPT de encerramento; a tela aqui é só uma
-// prévia rápida, não substitui o roteiro completo do documento.
-const RelatorioTemporadaAba = ({ relatorio, carregando, erro, onBaixar }: {
+// outro assistente) para montar um PPT editável. O botão 🎬 abre a
+// apresentação de encerramento pronta (src/apresentacaoEncerramento.ts),
+// montada deste mesmo relatório.
+const RelatorioTemporadaAba = ({ relatorio, carregando, erro, onBaixar, temporadas, temporada, onTemporada, onApresentar }: {
   relatorio: ResumoTemporada | null; carregando: boolean; erro: string; onBaixar: () => void;
+  temporadas: string[]; temporada: string; onTemporada: (t: string) => void; onApresentar: () => void;
 }) => {
-  if (erro) return <div style={{background:'var(--panel-bg)', padding:16, borderRadius:12, color:'var(--mut)', fontSize:13}}>{erro}</div>;
-  if (carregando || !relatorio) return <div style={{background:'var(--panel-bg)', padding:16, borderRadius:12, color:'var(--mut)', fontSize:13}}>Montando o relatório da temporada...</div>;
+  // Qual temporada: o encerramento acontece quando a próxima já começou, e a
+  // lição "atual" do app já é a da temporada nova — por isso dá para escolher.
+  const seletor = temporadas.length > 1 && (
+    <div className="theme-toggle" role="group" aria-label="Temporada do relatório" style={{marginBottom:12, flexWrap:'wrap'}}>
+      {temporadas.map(t => (
+        <button key={t} className={`theme-btn${t === temporada ? ' active' : ''}`} onClick={() => onTemporada(t)}>{t}</button>
+      ))}
+    </div>
+  );
+  if (erro) return <>{seletor}<div style={{background:'var(--panel-bg)', padding:16, borderRadius:12, color:'var(--mut)', fontSize:13}}>{erro}</div></>;
+  if (carregando || !relatorio) return <>{seletor}<div style={{background:'var(--panel-bg)', padding:16, borderRadius:12, color:'var(--mut)', fontSize:13}}>Montando o relatório da temporada...</div></>;
 
   const linha = (rotulo: string, valor: string | number) => (
     <div style={{display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--input-border)', fontSize:13}}>
@@ -5106,11 +5193,16 @@ const RelatorioTemporadaAba = ({ relatorio, carregando, erro, onBaixar }: {
   );
 
   return (
+    <>
+    {seletor}
     <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:20}}>
       <div style={{fontSize:12, color:'var(--mut)', marginBottom:10, lineHeight:1.5}}>
-        Resumo de <strong>{relatorio.trimestre}</strong>, {relatorio.totais.alunos} aluno(s). Baixe o JSON e
-        siga o manual em <code>docs/relatorio-temporada.md</code> para transformar em apresentação de encerramento.
+        Resumo de <strong>{relatorio.trimestre}</strong>, {relatorio.totais.alunos} aluno(s). O botão abaixo abre a
+        apresentação de encerramento pronta, em tela cheia para o telão (N mostra as notas do apresentador).
       </div>
+
+      <button className="btn btn-gold" onClick={onApresentar} disabled={relatorio.totais.alunos === 0}
+        style={{width:'100%', marginBottom:14}}>🎬 Apresentar encerramento no telão</button>
 
       {linha('Dias estudados (turma toda)', relatorio.totais.dias)}
       {linha('XP conquistado', relatorio.totais.xp)}
@@ -5144,8 +5236,9 @@ const RelatorioTemporadaAba = ({ relatorio, carregando, erro, onBaixar }: {
         </div>
       )}
 
-      <button className="btn btn-gold" onClick={onBaixar} style={{width:'100%', marginTop:16}}>⬇️ Baixar relatório (.json)</button>
+      <button className="btn btn-ghost" onClick={onBaixar} style={{width:'100%', marginTop:16}}>⬇️ Baixar relatório (.json)</button>
     </div>
+    </>
   );
 };
 
@@ -5163,6 +5256,12 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
   const [relatorio, setRelatorio] = useState<ResumoTemporada | null>(null);
   const [carregandoRelatorio, setCarregandoRelatorio] = useState(false);
   const [erroRelatorio, setErroRelatorio] = useState('');
+  // Chave (turma|temporada) do relatório em tela: trocar qualquer uma das
+  // duas pede outro relatório.
+  const [chaveRelatorio, setChaveRelatorio] = useState('');
+  const [temporadaEscolhida, setTemporadaEscolhida] = useState('');
+  const [licoesDaTurma, setLicoesDaTurma] = useState<any[]>([]);
+  const [apresentando, setApresentando] = useState(false);
 
   const turmaId = conducao.turmaId;
   // Vem da lista que o hook já leu — nada de um getTurma() por turma aberta.
@@ -5178,6 +5277,7 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
     // impede a aba Ranking de mostrar a turma errada com o nome da nova.
     setRanking(null);
     setRelatorio(null);
+    setChaveRelatorio('');
     setAlunos([]);
     getUsersDaTurma(turmaId)
       .then(us => { if (vivo) setAlunos(us); })
@@ -5221,15 +5321,44 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
   // por isso pega de brinde o progresso da liderança em OUTRAS trilhas (ex.:
   // um admin que também estuda na trilha adulto), que a liderancaPeloExemplo
   // usa; o recorte por turma/trilha para os alunos é feito aqui, no cliente.
+  // Lições da trilha da turma: dão a lista de temporadas para escolher e o
+  // nome de cada semana na apresentação.
   useEffect(() => {
-    if (aba !== 'relatorio' || relatorio || carregandoRelatorio) return;
-    if (!turma?.track || !licao?.trimestre || alunos.length === 0) return;
+    if (aba !== 'relatorio' || !turma?.track) return;
+    let vivo = true;
+    loadTrackLessons(turma.track).then(ls => { if (vivo) setLicoesDaTurma(ls || []); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [aba, turma?.track]);
+
+  // Temporadas que já começaram, da mais recente para a mais antiga.
+  const temporadas = useMemo(() => {
+    const hoje = hojeLocalISO();
+    const inicio: Record<string, string> = {};
+    for (const l of licoesDaTurma) {
+      if (l.isAdminOnly || !l.trimestre) continue;
+      const d = l.dias?.[0]?.data;
+      if (d && (!inicio[l.trimestre] || d < inicio[l.trimestre])) inicio[l.trimestre] = d;
+    }
+    return Object.entries(inicio).filter(([, d]) => d <= hoje).sort((a, b) => (a[1] < b[1] ? 1 : -1)).map(([t]) => t);
+  }, [licoesDaTurma]);
+  const temporadaDoRelatorio = temporadaEscolhida || licao?.trimestre || '';
+
+  // O efeito NÃO depende de "carregando": dependia, e ligar o carregando
+  // re-disparava o efeito, cuja limpeza (vivo = false) jogava fora o
+  // relatório que acabava de chegar — a aba ficava em "Montando..." para
+  // sempre. Agora quem diz "já tenho" é a chave turma|temporada.
+  useEffect(() => {
+    if (aba !== 'relatorio') return;
+    if (!turma?.track || !temporadaDoRelatorio || alunos.length === 0) return;
+    const chave = `${turmaId}|${temporadaDoRelatorio}`;
+    if (chaveRelatorio === chave) return;
     let vivo = true;
     setCarregandoRelatorio(true);
     setErroRelatorio('');
+    setRelatorio(null);
     (async () => {
       try {
-        const licoes = (await loadTrackLessons(turma.track)).filter((l: any) => !l.isAdminOnly && l.trimestre === licao.trimestre);
+        const licoes = (await loadTrackLessons(turma.track)).filter((l: any) => !l.isAdminOnly && l.trimestre === temporadaDoRelatorio);
         if (!licoes.length) throw new Error('Não achei as lições desta temporada.');
         const semanas = licoes.map((l: any) => l.semana);
         const rows = await getSeasonProgress(semanas);
@@ -5240,17 +5369,32 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
         for (const a of alunos) if (a.criadoEm) criadoEmPorAluno[a.id] = String(a.criadoEm).slice(0, 10);
         const resumo = montarResumoTemporada({
           linhasDaTurma, linhasLiderancaTodasTrilhas: linhasLideranca, licoes, criadoEmPorAluno,
-          turmaNome: turma.nome, trimestre: licao.trimestre,
+          turmaNome: turma.nome, trimestre: temporadaDoRelatorio,
         });
-        if (vivo) setRelatorio(resumo);
+        if (vivo) { setRelatorio(resumo); setChaveRelatorio(chave); }
       } catch (e: any) {
-        if (vivo) setErroRelatorio(e?.message || 'Não foi possível montar o relatório.');
+        if (vivo) { setErroRelatorio(e?.message || 'Não foi possível montar o relatório.'); setChaveRelatorio(chave); }
       } finally {
         if (vivo) setCarregandoRelatorio(false);
       }
     })();
     return () => { vivo = false; };
-  }, [aba, relatorio, carregandoRelatorio, turma, licao?.trimestre, alunos, turmaId]);
+  }, [aba, chaveRelatorio, turma, temporadaDoRelatorio, alunos, turmaId]);
+
+  const contextoApresentacao = useMemo(() => ({
+    licoes: licoesDaTurma.filter((l: any) => !l.isAdminOnly),
+    track: turma?.track,
+    hojeISO: hojeLocalISO(),
+  }), [licoesDaTurma, turma?.track]);
+
+  // Tela cheia tem que ser pedida no próprio clique (fora do gesto o
+  // navegador recusa) — por isso aqui, e não dentro da apresentação.
+  const apresentar = () => {
+    setApresentando(true);
+    const el = document.documentElement as any;
+    const pedir = el.requestFullscreen || el.webkitRequestFullscreen;
+    try { const p = pedir?.call(el); p?.catch?.(() => {}); } catch {}
+  };
 
   const baixarRelatorio = () => {
     if (!relatorio) return;
@@ -5258,7 +5402,7 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `relatorio-temporada-${(turma?.nome || 'turma').replace(/\s+/g, '-').toLowerCase()}-${licao?.trimestre || ''}.json`;
+    a.download = `relatorio-temporada-${(turma?.nome || 'turma').replace(/\s+/g, '-').toLowerCase()}-${relatorio.trimestre || ''}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -5400,7 +5544,32 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
             carregando={carregandoRelatorio}
             erro={erroRelatorio}
             onBaixar={baixarRelatorio}
+            temporadas={temporadas}
+            temporada={temporadaDoRelatorio}
+            onTemporada={setTemporadaEscolhida}
+            onApresentar={apresentar}
           />
+        )}
+
+        {apresentando && relatorio && (
+          <React.Suspense fallback={null}>
+            <ApresentacaoDoRelatorio
+              resumo={relatorio}
+              contexto={contextoApresentacao}
+              chaveMemoria={`apresentacao:${chaveRelatorio}`}
+              onSair={() => setApresentando(false)}
+              renderSorteio={fechar => (
+                <SorteioTemporadaTelao
+                  jogador={jogador}
+                  turmaId={turmaId}
+                  track={turma.track}
+                  trimestre={relatorio.trimestre}
+                  turmaNome={turma.nome}
+                  onSair={fechar}
+                />
+              )}
+            />
+          </React.Suspense>
         )}
 
         <div style={{display:'flex', gap:8, marginTop:6}}>
