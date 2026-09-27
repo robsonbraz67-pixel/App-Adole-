@@ -336,7 +336,7 @@ export const montarResumoTemporada = (args: {
     diaMaisEstudado: diaMaisEstudado(args.linhasDaTurma, args.licoes).slice(0, 8),
     maratonistas: maratonistas(args.linhasDaTurma, args.licoes).slice(0, 5),
     liderancaPeloExemplo: liderancaPeloExemplo(args.linhasLiderancaTodasTrilhas).slice(0, 5),
-    clubeDaTemporada: clubeDaTemporada(args.linhasDaTurma, args.licoes, hojeISO, {}).map(p => ({ nome: p.nome, xp: p.xp, dias: p.dias })),
+    clubeDaTemporada: clubeDaTemporada(args.linhasDaTurma, args.licoes, hojeISO, {}).map(p => ({ id: p.id, nome: p.nome, avatar: p.avatar, xp: p.xp, dias: p.dias })),
   };
 };
 

@@ -49,7 +49,7 @@ const NOTAS: Record<TipoSlide, string> = {
   lideranca: 'Quem conduz também estudou — puxe um aplauso para a liderança.',
   maratonistas: 'Chame o 1º lugar para ficar em pé enquanto lê o número.',
   chama: 'Leia o número antes do nome e faça 1 segundo de silêncio antes de apontar quem é.',
-  clube: 'Chame essas pessoas para ficarem em pé, uma a uma — elas voltam no sorteio.',
+  clube: 'Um nome por toque: chame cada pessoa para ficar em pé quando o nome entrar — elas voltam no sorteio.',
   suspense: 'Pausa real de 2 a 3 segundos, em silêncio, olhando para quem está de pé.',
   misterio: 'Leia uma pista por vez, devagar. Deixe a turma chutar entre uma e outra.',
   revelacao: 'O rufar toca sozinho e o nome aparece na batida. Puxe os aplausos!',
@@ -88,7 +88,7 @@ export const montarSlides = (d: Dados): Slide[] => {
   if (r.liderancaPeloExemplo.length) add('lideranca', 'Liderança pelo exemplo', 'lado');
   if (r.maratonistas.length) add('maratonistas', 'Maratonistas', 'sobe');
   if (r.ofensivaReal[0]?.dias >= 2) add('chama', 'Chama acesa', 'zoom');
-  if (r.clubeDaTemporada.length) add('clube', d.modo === 'semana' ? 'Semana completa' : 'Clube da temporada', 'fade');
+  if (r.clubeDaTemporada.length) add('clube', d.modo === 'semana' ? 'Semana completa' : 'Clube da temporada', 'fade', r.clubeDaTemporada.length);
   const podio = Math.min(3, d.perfis.length);
   if (podio) {
     add('suspense', 'Suspense', 'fade');
@@ -258,44 +258,71 @@ const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, registr
     }
   };
 
+  // Mesmo desenho do telão do Sorteador (SorteadorTelao em components.tsx):
+  // nome grande no centro, a fila de quem ainda concorre embaixo dele com a
+  // luz correndo durante o giro, e quem já saiu descendo para a lista final.
   return (
-    <div className="ap-slide centro">
+    <div className="ap-slide ap-sorteio">
       {ganhador && !animando && <Confetti show={true} />}
-      <div className="ap-eyebrow">Sorteio ao vivo · {turmaNome}</div>
-      <div className="ap-sub">{REGRA_TEXTO[regra]}</div>
-      {loading ? (
-        <div className="ap-sub">Carregando participantes…</div>
-      ) : users.length === 0 ? (
-        <div className="ap-sub">Ninguém concorre neste período.</div>
-      ) : ganhador && !animando ? (
-        <div className="ap-revela">
-          <AvatarSorteio u={ganhador} className="av ap-pulso" />
-          <div className="nome ap-pulso">{ganhador.nome}</div>
-          <div className="ap-sub">{detalheDoGanhador(ganhador as Participante, regra)}</div>
-        </div>
-      ) : animando ? (
-        <div className="ap-revela">
-          <AvatarSorteio u={atual} className="av" />
-          <div className="nome girando">{primeiroNome(atual?.nome)}</div>
-        </div>
-      ) : (
-        <div className="ap-chips">
-          {naFila.map(u => <span key={u.id} className="ap-chip"><AvatarSorteio u={u} className="" />{primeiroNome(u.nome)}</span>)}
+      <div className="ap-sorteio-topo">
+        <div className="ap-eyebrow">Sorteio ao vivo · {turmaNome}</div>
+        <div className="ap-det">{REGRA_TEXTO[regra]}{users.length ? ` · ${naFila.length} concorrendo` : ''}</div>
+      </div>
+      <div className="st-centro">
+        {loading ? (
+          <div className="st-vazio"><div className="st-legenda">Carregando participantes…</div></div>
+        ) : users.length === 0 ? (
+          <div className="st-vazio"><div className="st-emoji-grande">🎰</div><div className="st-legenda">Ninguém concorre neste período.</div></div>
+        ) : ganhador && !animando ? (
+          <div className="st-vencedor" key={ganhador.id}>
+            <div className="st-eyebrow ouro">🏆 Vencedor</div>
+            <AvatarSorteio u={ganhador} className="st-av-win" />
+            <div className="st-nome-win">{ganhador.nome}</div>
+            <div className="st-detalhe">{detalheDoGanhador(ganhador as Participante, regra)}</div>
+          </div>
+        ) : animando ? (
+          <div className="st-girando">
+            <AvatarSorteio u={atual} className="st-av" />
+            <div className="st-nome">{primeiroNome(atual?.nome)}</div>
+          </div>
+        ) : (
+          <div className="st-vazio">
+            <div className="st-emoji-grande">🎰</div>
+            <div className="st-legenda">{naFila.length ? 'Pronto para sortear — aperte Espaço' : 'Todos já foram sorteados'}</div>
+          </div>
+        )}
+      </div>
+      {naFila.length > 0 && (
+        <div className="st-fila" aria-hidden="true">
+          {naFila.map(u => (
+            <span key={u.id} className={`st-chip${animando && u.id === atual?.id ? ' on' : ''}`}>
+              <AvatarSorteio u={u} className="st-chip-av" />
+              {primeiroNome(u.nome)}
+            </span>
+          ))}
         </div>
       )}
-      {users.length > 0 && (
-        <div className="ap-acoes">
-          <button className={`btn btn-gold st-btn${animando || !naFila.length ? ' btn-dis' : ''}`} onClick={iniciar} disabled={animando || !naFila.length}>
-            {animando ? '🎰 Sorteando…' : !naFila.length ? 'Todos já sorteados' : ganhador ? '🔁 Sortear de novo' : '🎰 Sortear!'}
-          </button>
-          {ganhador && !animando && <BotaoRegistrar estado={registro} onRegistrar={registrar} className="st-btn st-btn-reg" />}
-        </div>
-      )}
-      {sorteados.length > 0 && (
-        <div className="ap-chips ap-sorteados">
-          {sorteados.map((u, i) => <span key={u.id} className="ap-chip done"><b>{i + 1}º</b>{primeiroNome(u.nome)}</span>)}
-        </div>
-      )}
+      <div className="st-base">
+        {users.length > 0 && (
+          <div className="st-acoes">
+            <button className={`btn btn-gold st-btn${animando || !naFila.length ? ' btn-dis' : ''}`} onClick={iniciar} disabled={animando || !naFila.length}>
+              {animando ? '🎰 Sorteando…' : !naFila.length ? 'Todos já sorteados' : ganhador ? '🔁 Sortear de novo' : '🎰 Sortear!'}
+            </button>
+            {ganhador && !animando && <BotaoRegistrar estado={registro} onRegistrar={registrar} className="st-btn st-btn-reg" />}
+          </div>
+        )}
+        {sorteados.length > 0 && (
+          <div className="st-sorteados" aria-label="Já sorteados">
+            {sorteados.map((u, k) => (
+              <span key={u.id} className="st-chip done">
+                <span className="st-chip-pos">{k + 1}º</span>
+                <AvatarSorteio u={u} className="st-chip-av" />
+                {primeiroNome(u.nome)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -327,6 +354,7 @@ export const Palco = ({ dados, slides, licao, turmaId, track, jogador, onSair }:
     if (slide.tipo === 'numeros' && passo === 1) tocarEfeito('whoosh', { vol: 0.7 });
     if (slide.tipo === 'virada') tocarEfeito('sino', { vol: 0.6 });
     if (slide.tipo === 'misterio' && passo > 0) tocarEfeito('whoosh', { vol: 0.35 });
+    if (slide.tipo === 'clube') tocarEfeito('whoosh', { vol: 0.3 });
   }, [i, passo]);
 
   useEffect(() => {
@@ -426,10 +454,22 @@ export const Palco = ({ dados, slides, licao, turmaId, track, jogador, onSair }:
           <div className="ap-slide centro">
             <div className="ap-eyebrow">{dados.modo === 'semana' ? '7 de 7 dias' : `${totalDeDias(dados.licoes)} de ${totalDeDias(dados.licoes)} dias`}</div>
             <div className="ap-titulo">{dados.modo === 'semana' ? 'Fecharam a semana inteira' : `O Clube dos ${totalDeDias(dados.licoes)}`}</div>
+            {/* Um por toque: o último a entrar chega grande e depois se junta à fila. */}
+            {(() => {
+              const c = r.clubeDaTemporada[passo];
+              return c && (
+                <div className="ap-entrada" key={c.id}>
+                  <Av a={c.avatar} className="av" />
+                  <div className="nome">{c.nome}</div>
+                </div>
+              );
+            })()}
             <div className="ap-chips">
-              {r.clubeDaTemporada.map(c => <span key={c.nome} className="ap-chip">{c.nome}</span>)}
+              {r.clubeDaTemporada.slice(0, passo).map(c => (
+                <span key={c.id} className="ap-chip"><Av a={c.avatar} />{primeiroNome(c.nome)}</span>
+              ))}
             </div>
-            <div className="ap-det">Guardem esses nomes. Eles voltam no sorteio.</div>
+            <div className="ap-det">{passo + 1} de {r.clubeDaTemporada.length}{passo === r.clubeDaTemporada.length - 1 ? ' · Guardem esses nomes: eles voltam no sorteio.' : ''}</div>
           </div>
         );
       case 'suspense': {
