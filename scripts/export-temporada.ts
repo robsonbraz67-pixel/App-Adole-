@@ -21,12 +21,13 @@ export const run = async () => {
     snap.forEach(d => {
       const p = d.data();
       const history: Record<string, any> = {};
-      for (const [dia, e] of Object.entries<any>(p.history || {})) history[dia] = { emISO: e?.emISO ?? null, xp: e?.xp ?? 0, acertos: e?.acertos ?? null, reiniciado: !!e?.reiniciado };
+      for (const [dia, e] of Object.entries<any>(p.history || {})) history[dia] = { emISO: e?.emISO ?? null, xp: e?.xp ?? 0, acertos: e?.acertos ?? null, reiniciado: !!e?.reiniciado, campos: Object.keys(e || {}).filter(k => k !== 'nota' && k !== 'hl') };
       progress.push({
         id: d.id, userId: p.userId, week: p.week, track: p.track || 'teen', trimestre: p.trimestre ?? null,
         turmaId: p.turmaId ?? null, locationId: p.locationId ?? null,
         nome: p.nome, avatar: p.avatar, xp: p.xp || 0, done: p.done || [], history,
         isAdmin: !!p.isAdmin, isProfessor: !!p.isProfessor, isGuest: !!p.isGuest,
+        updatedAt: p.updatedAt?.toDate?.().toISOString() ?? null,
       });
     });
   }
