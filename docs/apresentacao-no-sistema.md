@@ -45,6 +45,27 @@ Documentos relacionados:
 - **Sorteio:** usa o `useSorteador` de verdade, com "já sorteados" embaixo e o
   botão Registrar. Nesse slide, Espaço sorteia e → avança.
 
+## Sons e sincronia
+
+Todos gravados (Mixkit), em `public/sons/`, e só tocam com o som do app
+ligado. O instante forte de cada arquivo foi medido na forma de onda e está
+em `ATAQUE_S` (`src/utils.ts`); a apresentação agenda cada som no relógio de
+áudio para esse instante cair exatamente quando a tela muda.
+
+| Momento | Som | Como sincroniza |
+|---|---|---|
+| Capa | `riser.mp3` (trecho final do riser do mural) | começa ao avançar da tela escura; o título aparece no ápice, 7,0 s depois |
+| Números | `whoosh.mp3` | o número aparece no "vuush", 0,99 s depois |
+| Pistas, clube, turma | `whoosh.mp3` a partir de 0,87 s | começa perto do "vuush", então o texto entra junto |
+| Mistérios | `suspense.mp3` em loop (1–38 s) | entra no primeiro mistério, segue entre as pistas, sai em fade quando o rufar começa |
+| Revelação | `sorteio-tambor.mp3` + `impacto.mp3` + `fanfarra.mp3` (1º) + `aplausos.mp3` | nome na batida do tambor (5,25 s); impacto agendado 0,69 s antes para o golpe cair na batida; aplausos logo depois |
+| Sorteio | `sorteio-tambor.mp3` | o do Sorteador (mesma sincronia) |
+| Próxima temporada | `sino.mp3` a partir do ataque | toca junto com a entrada do slide |
+
+Medido no navegador: título da capa a 7,00 s do início do riser, número a
+0,99 s do whoosh, nome da revelação a 7 ms da batida. Ao sair de um slide,
+os sons longos dele (riser, aplausos, suspense) saem em fade.
+
 ## Semana × temporada
 
 | Slide | Temporada | Semana |

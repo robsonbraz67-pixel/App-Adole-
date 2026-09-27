@@ -999,6 +999,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .ap-chip.done{opacity:.6;font-size:2.3cqh;padding:.8cqh 1.8cqh}
 .ap-chip.done b{color:var(--gold)}
 .ap-sorteados{padding-top:1.2cqh;border-top:.15cqh solid var(--b3)}
+.ap-espera{width:1px;height:1px}
+.ap-espera-dica{font-size:2.4cqh;color:var(--mut);font-weight:600;opacity:.6}
+@keyframes ap-piscar{50%{opacity:.35}}
+.ap-pisca{animation:ap-piscar .5s ease infinite}
 .ap-entrada{display:flex;flex-direction:column;align-items:center;gap:1.2cqh;animation:ap-pulso .7s cubic-bezier(.2,.8,.2,1) both}
 .ap-entrada .av{font-size:16cqh;line-height:1}
 .ap-entrada .av.ap-av-img{width:17cqh;height:17cqh;border-radius:50%;object-fit:cover}
@@ -1051,7 +1055,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .ap-anim-sobe{animation:ap-sobe .55s cubic-bezier(.2,.8,.2,1) both}
 .ap-anim-lado{animation:ap-lado .5s cubic-bezier(.2,.8,.2,1) both}
 .ap-pulso{animation:ap-pulso .7s cubic-bezier(.2,.8,.2,1) both}
-@media (prefers-reduced-motion: reduce){.ap-entrada,.ap-chips .ap-chip,.ap-anim-fade,.ap-anim-zoom,.ap-anim-sobe,.ap-anim-lado,.ap-pulso,.ap-pistas li.nova{animation:none}}
+@media (prefers-reduced-motion: reduce){.ap-pisca,.ap-entrada,.ap-chips .ap-chip,.ap-anim-fade,.ap-anim-zoom,.ap-anim-sobe,.ap-anim-lado,.ap-pulso,.ap-pistas li.nova{animation:none}}
 @media (prefers-reduced-motion:reduce){.st-girando{animation:none}}
 
 /* ===== RESPONSIVO PARA TELAS MAIORES (tablet/notebook/TV com browser) ===== */

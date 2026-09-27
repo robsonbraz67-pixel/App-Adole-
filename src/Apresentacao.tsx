@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { loadTrackLessons } from './data';
-import { hojeLocalISO, somLigado, tocarSorteioTambor, precarregarSorteioTambor, tocarEfeito, precarregarEfeitos } from './utils';
+import { hojeLocalISO, somLigado, tocarSorteioTambor, precarregarSorteioTambor, tocarEfeito, precarregarEfeitos, ATAQUE_S, SUSPENSE_LOOP, SomTocando } from './utils';
 import { getSeasonProgress, getUsersDaTurma, registrarSorteio } from './firebase';
 import {
   montarResumoTemporada, perfisDosAlunos, conquistasDosAlunos, pistasDoPodio, tituloCurtoDaLicao, totalDeDias,
@@ -42,7 +42,7 @@ type TipoSlide = 'capa' | 'numeros' | 'diaMais' | 'melhorSemana' | 'lideranca' |
 type Slide = { tipo: TipoSlide; titulo: string; passos: number; pos?: number; nota: string; anim: 'fade' | 'zoom' | 'sobe' | 'lado' };
 
 const NOTAS: Record<TipoSlide, string> = {
-  capa: 'Tela preta antes de abrir. Som ambiente subindo nos 3 segundos antes do título.',
+  capa: 'Começa com a tela escura. Ao avançar, o riser sobe por 7 segundos e o título aparece no ápice do som.',
   numeros: 'Pergunte antes de revelar: "quantos dias vocês acham que a turma estudou?" Deixe 2 ou 3 chutes em voz alta.',
   diaMais: 'Conte como história, não como dado: o que aconteceu nesse dia? Qual era a lição?',
   melhorSemana: 'Pergunte qual lição foi a mais estudada antes de avançar.',
@@ -83,7 +83,7 @@ export const montarSlides = (d: Dados): Slide[] => {
   const r = d.resumo;
   const add = (tipo: TipoSlide, titulo: string, anim: Slide['anim'], passos = 1, pos?: number) =>
     s.push({ tipo, titulo, passos, pos, nota: NOTAS[tipo], anim });
-  add('capa', 'Capa', 'fade');
+  add('capa', 'Capa', 'fade', 2);
   add('numeros', 'Números', 'zoom', 2);
   if (r.diaMaisEstudado[0]) add('diaMais', 'Dia mais estudado', 'lado');
   if (d.modo === 'temporada' && r.melhorSemana.length) add('melhorSemana', 'Melhor semana', 'sobe');
@@ -145,6 +145,51 @@ const carregarDados = async (args: {
   };
 };
 
+// Espera o instante forte de um som que já começou para mostrar algo na
+// tela. Sem som, mostra na hora.
+const useMostrarNoAtaque = (tocar: () => Promise<SomTocando | null>, ataque: number) => {
+  const [mostrar, setMostrar] = useState(false);
+  useEffect(() => {
+    let vivo = true, t: ReturnType<typeof setTimeout> | null = null, som: SomTocando | null = null;
+    tocar().then(s => {
+      if (!vivo) { s?.parar(0.3); return; }
+      som = s;
+      if (!s) { setMostrar(true); return; }
+      const falta = (s.inicio + ataque - s.ctx.currentTime) * 1000;
+      t = setTimeout(() => vivo && setMostrar(true), Math.max(0, falta));
+    });
+    return () => { vivo = false; if (t) clearTimeout(t); som?.parar(0.8); };
+  }, []);
+  return mostrar;
+};
+
+// Capa: o riser sobe e o título aparece no ápice (ATAQUE_S.riser).
+const CapaComRiser = ({ dados, jaTocou, onTocou }: { dados: Dados; jaTocou: boolean; onTocou: () => void }) => {
+  const mostrar = useMostrarNoAtaque(() => {
+    if (jaTocou) return Promise.resolve(null); // voltou para a capa: não repete os 7 s
+    onTocou();
+    return tocarEfeito('riser', { vol: 0.7 });
+  }, ATAQUE_S.riser);
+  return (
+    <div className="ap-slide centro">
+      {mostrar ? (
+        <>
+          <div className="ap-emoji ap-pulso">{dados.modo === 'semana' ? '📖' : '🔥'}</div>
+          <div className="ap-eyebrow ap-pulso">{dados.modo === 'semana' ? 'Encerramento da semana' : 'Encerramento da temporada'}</div>
+          <div className="ap-titulo ap-pulso">{dados.rotulo}</div>
+          <div className="ap-sub ap-pulso">{dados.turmaNome}</div>
+        </>
+      ) : <div className="ap-espera" aria-hidden="true" />}
+    </div>
+  );
+};
+
+// Números: o whoosh "puxa" o número, que aparece no vuush (ATAQUE_S.whoosh).
+const NumeroNoWhoosh = ({ children }: { children: React.ReactNode }) => {
+  const mostrar = useMostrarNoAtaque(() => tocarEfeito('whoosh', { vol: 0.75 }), ATAQUE_S.whoosh);
+  return mostrar ? <>{children}</> : <div className="ap-hero ap-pisca">?</div>;
+};
+
 // ===== Slide: revelação com o rufar sincronizado =====
 // Monta de novo a cada entrada no slide (key no pai): o rufar começa, os
 // avatares giram e o nome aparece na BATIDA do arquivo — a mesma
@@ -158,13 +203,22 @@ const SlideRevelacao = ({ perfil, candidatos, pos }: { perfil: PerfilAluno; cand
     let vivo = true;
     const lista = candidatos.length ? candidatos : [perfil];
     let revelou = false;
+    const sons: SomTocando[] = [];
+    const guardar = (p: Promise<SomTocando | null>) => p.then(x => { if (!x) return; if (vivo) sons.push(x); else x.parar(0.3); });
+    // Agenda os sons da revelação para o INSTANTE FORTE de cada um cair onde
+    // deve: o golpe do impacto na batida, a fanfarra logo depois, os aplausos
+    // entrando quando o nome já está na tela. `batida` é o relógio de áudio.
+    const agendarSons = (ctx: AudioContext | null, batida: number | null) => {
+      const em = (desejado: number, nome: keyof typeof ATAQUE_S) =>
+        ctx && batida !== null ? { quando: batida + desejado - ATAQUE_S[nome] } : { em: Math.max(0, desejado - ATAQUE_S[nome] + 0.7) };
+      guardar(tocarEfeito('impacto', { vol: 0.75, ...em(0, 'impacto') }));
+      if (pos === 0) guardar(tocarEfeito('fanfarra', { vol: 0.6, ...em(0.35, 'fanfarra') }));
+      guardar(tocarEfeito('aplausos', { vol: 0.55, dur: 9, ...em(pos === 0 ? 2.2 : 0.6, 'aplausos') }));
+    };
     const revelar = () => {
       if (!vivo || revelou) return;
       revelou = true;
       setRevelado(true);
-      tocarEfeito('impacto', { vol: 0.7 });
-      if (pos === 0) tocarEfeito('fanfarra', { vol: 0.6, em: 0.4 });
-      tocarEfeito('aplausos', { vol: 0.55, em: pos === 0 ? 2.4 : 0.8, dur: 8 });
     };
     (async () => {
       const tambor = somLigado() ? await tocarSorteioTambor() : null;
@@ -175,13 +229,14 @@ const SlideRevelacao = ({ perfil, candidatos, pos }: { perfil: PerfilAluno; cand
         const tick = () => {
           if (!vivo) return;
           setGiro(++i % lista.length);
-          if (++passos >= 26) { revelar(); return; }
+          if (++passos >= 26) { agendarSons(null, null); timer.current = setTimeout(revelar, ATAQUE_S.impacto * 1000); return; }
           timer.current = setTimeout(tick, passos < 14 ? 70 : passos < 21 ? 130 : 220);
         };
         tick();
         return;
       }
       const { ctx, batidaEm } = tambor;
+      agendarSons(ctx, batidaEm);
       const limite = setTimeout(revelar, (batidaEm - ctx.currentTime + 1.5) * 1000); // se o relógio de áudio parar
       const tick = () => {
         if (!vivo || revelou) { clearTimeout(limite); return; }
@@ -192,7 +247,7 @@ const SlideRevelacao = ({ perfil, candidatos, pos }: { perfil: PerfilAluno; cand
       };
       tick();
     })();
-    return () => { vivo = false; if (timer.current) clearTimeout(timer.current); };
+    return () => { vivo = false; if (timer.current) clearTimeout(timer.current); sons.forEach(x => x.parar(0.8)); };
   }, []);
 
   const girando = (candidatos.length ? candidatos : [perfil])[giro];
@@ -342,7 +397,31 @@ export const Palco = ({ dados, slides, licao, turmaId, track, jogador, onSair }:
   const slide = slides[i];
   const r = dados.resumo;
 
-  useEffect(() => { precarregarSorteioTambor(); precarregarEfeitos(['whoosh', 'impacto', 'fanfarra', 'aplausos', 'sino']); }, []);
+  const capaTocou = useRef(false);
+  const iRef = useRef(i);
+  iRef.current = i;
+  useEffect(() => { precarregarSorteioTambor(); precarregarEfeitos(['riser', 'whoosh', 'suspense', 'impacto', 'fanfarra', 'aplausos', 'sino']); }, []);
+
+  // Trilha de suspense por baixo dos mistérios: entra no primeiro, segue
+  // entre as pistas e sai (fade) no instante em que a revelação começa — o
+  // rufar entra no lugar dela. Um mistério por lugar do pódio.
+  const suspense = useRef<SomTocando | null>(null);
+  const pedindoSuspense = useRef(false);
+  useEffect(() => {
+    if (slide.tipo === 'misterio') {
+      if (!suspense.current && !pedindoSuspense.current) {
+        pedindoSuspense.current = true;
+        tocarEfeito('suspense', { vol: 0.32, loop: SUSPENSE_LOOP }).then(x => {
+          pedindoSuspense.current = false;
+          if (slides[iRef.current]?.tipo === 'misterio') suspense.current = x; else x?.parar(0.4);
+        });
+      }
+    } else if (suspense.current) {
+      suspense.current.parar(0.6);
+      suspense.current = null;
+    }
+  }, [i]);
+  useEffect(() => () => { suspense.current?.parar(0.3); }, []);
 
   const avancar = useCallback(() => {
     if (passo < slide.passos - 1) setPasso(p => p + 1);
@@ -353,12 +432,15 @@ export const Palco = ({ dados, slides, licao, turmaId, track, jogador, onSair }:
     else if (i > 0) { const ant = slides[i - 1]; setI(x => x - 1); setPasso(ant.passos - 1); }
   }, [passo, i, slides]);
 
-  // Sons que acompanham um passo específico.
+  // Sons curtos que acompanham um passo. O whoosh começa do meio do arquivo
+  // (perto do "vuush") para a pista ou o nome entrar junto com ele, sem
+  // esperar 1 s de subida; o sino idem, a partir do ataque.
   useEffect(() => {
-    if (slide.tipo === 'numeros' && passo === 1) tocarEfeito('whoosh', { vol: 0.7 });
-    if (slide.tipo === 'virada') tocarEfeito('sino', { vol: 0.6 });
-    if (slide.tipo === 'misterio' && passo > 0) tocarEfeito('whoosh', { vol: 0.35 });
-    if (slide.tipo === 'clube') tocarEfeito('whoosh', { vol: 0.3 });
+    const vuush = ATAQUE_S.whoosh - 0.12;
+    if (slide.tipo === 'misterio' && passo > 0) tocarEfeito('whoosh', { vol: 0.4, desde: vuush });
+    if (slide.tipo === 'clube') tocarEfeito('whoosh', { vol: 0.35, desde: vuush });
+    if (slide.tipo === 'turma' && passo > 0) tocarEfeito('whoosh', { vol: 0.25, desde: vuush });
+    if (slide.tipo === 'virada') tocarEfeito('sino', { vol: 0.6, desde: ATAQUE_S.sino - 0.05 });
   }, [i, passo]);
 
   useEffect(() => {
@@ -376,13 +458,10 @@ export const Palco = ({ dados, slides, licao, turmaId, track, jogador, onSair }:
   const conteudo = () => {
     switch (slide.tipo) {
       case 'capa':
-        return (
-          <div className="ap-slide centro">
-            <div className="ap-emoji">{dados.modo === 'semana' ? '📖' : '🔥'}</div>
-            <div className="ap-eyebrow">{dados.modo === 'semana' ? 'Encerramento da semana' : 'Encerramento da temporada'}</div>
-            <div className="ap-titulo">{dados.rotulo}</div>
-            <div className="ap-sub">{dados.turmaNome}</div>
-          </div>
+        return passo === 0 ? (
+          <div className="ap-slide centro"><div className="ap-espera-dica">Aperte → para começar</div></div>
+        ) : (
+          <CapaComRiser dados={dados} jaTocou={capaTocou.current} onTocou={() => { capaTocou.current = true; }} />
         );
       case 'numeros':
         return passo === 0 ? (
@@ -394,13 +473,15 @@ export const Palco = ({ dados, slides, licao, turmaId, track, jogador, onSair }:
         ) : (
           <div className="ap-slide centro">
             <div className="ap-eyebrow">{dados.modo === 'semana' ? 'A semana em números' : 'A temporada em números'}</div>
-            <div className="ap-hero ap-pulso">{fmt(r.totais.dias)}</div>
-            <div className="ap-sub">dias estudados juntos</div>
-            <div className="ap-cards" style={{ ['--n' as any]: 3 }}>
-              <div className="ap-card"><div className="val">{r.totais.alunos}</div><div className="det">adolescentes</div></div>
-              <div className="ap-card"><div className="val">{r.totais.semanasCompletas}</div><div className="det">semanas completas</div></div>
-              <div className="ap-card"><div className="val">{fmt(r.totais.xp)}</div><div className="det">XP conquistados</div></div>
-            </div>
+            <NumeroNoWhoosh>
+              <div className="ap-hero ap-pulso">{fmt(r.totais.dias)}</div>
+              <div className="ap-sub">dias estudados juntos</div>
+              <div className="ap-cards" style={{ ['--n' as any]: 3 }}>
+                <div className="ap-card"><div className="val">{r.totais.alunos}</div><div className="det">adolescentes</div></div>
+                <div className="ap-card"><div className="val">{r.totais.semanasCompletas}</div><div className="det">semanas completas</div></div>
+                <div className="ap-card"><div className="val">{fmt(r.totais.xp)}</div><div className="det">XP conquistados</div></div>
+              </div>
+            </NumeroNoWhoosh>
           </div>
         );
       case 'diaMais': {

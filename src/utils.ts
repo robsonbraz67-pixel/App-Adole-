@@ -447,37 +447,69 @@ const carregarSorteioBuffer = (c: AudioContext) => carregarArquivo(c, 'sorteio-t
 
 // Efeitos gravados da apresentação de encerramento (Mixkit, mesma licença do
 // rufar). Respeitam o botão de som do app como todo o resto.
-export type EfeitoGravado = 'whoosh' | 'impacto' | 'fanfarra' | 'aplausos' | 'sino';
+//
+// Os tempos abaixo foram medidos na forma de onda de cada arquivo (ffmpeg,
+// janelas de 10ms) — são o que permite casar som e imagem: quem chama agenda
+// o arquivo para que o INSTANTE FORTE caia exatamente quando a tela muda.
+// Trocou um arquivo, remeça e atualize aqui.
+export type EfeitoGravado = 'whoosh' | 'impacto' | 'fanfarra' | 'aplausos' | 'sino' | 'riser' | 'suspense';
+export const ATAQUE_S: Record<EfeitoGravado, number> = {
+  whoosh: 0.99,    // o "vuush" forte chega em ~1,0s (pico 1,07s)
+  impacto: 0.69,   // o golpe começa em 0,69s (pico 1,40s)
+  fanfarra: 0.27,
+  aplausos: 0.89,
+  sino: 0.25,
+  riser: 7.0,      // riser.mp3 é o trecho final do original, cortado para o ápice cair em 7,0s
+  suspense: 1.0,   // trilha contínua; o loop vai de 1,0s a 38,0s (antes e depois é fade)
+};
+export const SUSPENSE_LOOP = { inicio: 1.0, fim: 38.0 };
+
 export const precarregarEfeitos = (nomes: EfeitoGravado[]) => {
   try { const c = getAudioCtx(); nomes.forEach(n => { carregarArquivo(c, n).catch(() => {}); }); } catch {}
 };
-// `em`: atraso em segundos. Devolve uma função que corta o som (fade curto).
-export const tocarEfeito = async (nome: EfeitoGravado, opts: { vol?: number; em?: number; dur?: number } = {}): Promise<() => void> => {
-  const nada = () => {};
-  if (!somLigado()) return nada;
+
+export type SomTocando = { ctx: AudioContext; inicio: number; parar: (fade?: number) => void };
+
+// Toca um efeito. `quando`: instante exato no relógio do AudioContext (tem
+// prioridade sobre `em`, atraso em segundos a partir de agora). `desde`:
+// começa do meio do arquivo. `loop`: repete o trecho [inicio, fim].
+// Devolve null sem som (desligado, falhou, ou áudio pausado pelo navegador).
+export const tocarEfeito = async (nome: EfeitoGravado, opts: {
+  vol?: number; em?: number; quando?: number; desde?: number; dur?: number; loop?: { inicio: number; fim: number };
+} = {}): Promise<SomTocando | null> => {
+  if (!somLigado()) return null;
   try {
     const c = getAudioCtx();
     const buf = await carregarArquivo(c, nome);
+    if (c.state !== 'running') {
+      await Promise.race([c.resume().catch(() => {}), new Promise(r => setTimeout(r, 300))]);
+      if ((c.state as AudioContextState) !== 'running') return null;
+    }
     const src = c.createBufferSource();
     src.buffer = buf;
+    if (opts.loop) { src.loop = true; src.loopStart = opts.loop.inicio; src.loopEnd = opts.loop.fim; }
     const g = c.createGain();
-    const t0 = c.currentTime + 0.02 + (opts.em || 0);
-    g.gain.setValueAtTime(opts.vol ?? 0.6, t0);
+    const vol = opts.vol ?? 0.6;
+    const t0 = Math.max(c.currentTime + 0.02, opts.quando ?? c.currentTime + 0.02 + (opts.em || 0));
+    g.gain.setValueAtTime(vol, t0);
     if (opts.dur) {
-      g.gain.setValueAtTime(opts.vol ?? 0.6, t0 + Math.max(0, opts.dur - 0.5));
+      g.gain.setValueAtTime(vol, t0 + Math.max(0, opts.dur - 0.5));
       g.gain.linearRampToValueAtTime(0.0001, t0 + opts.dur);
     }
     src.connect(g); g.connect(c.destination);
-    src.start(t0);
+    src.start(t0, opts.desde || 0);
     if (opts.dur) src.stop(t0 + opts.dur + 0.05);
-    return () => {
-      const now = c.currentTime;
-      g.gain.cancelScheduledValues(now);
-      g.gain.setValueAtTime(g.gain.value, now);
-      g.gain.linearRampToValueAtTime(0.0001, now + 0.15);
-      try { src.stop(now + 0.2); } catch {}
+    return {
+      ctx: c, inicio: t0,
+      parar: (fade = 0.15) => {
+        const now = c.currentTime;
+        g.gain.cancelScheduledValues(now);
+        g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), now);
+        g.gain.linearRampToValueAtTime(0.0001, now + fade);
+        try { src.stop(now + fade + 0.05); } catch {}
+      },
     };
-  } catch { return nada; }
+  } catch { return null; }
 };
 
 // Chame ao abrir a tela do Sorteador — pré-carrega o arquivo pra tocarSorteioTambor()
