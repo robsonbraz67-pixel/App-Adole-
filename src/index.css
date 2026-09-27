@@ -932,6 +932,11 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .st-chip.win{border-color:var(--gold);color:var(--gold)}
 .st-chip-av{font-size:2.8cqh;line-height:1}
 .st-chip-av.img{width:3cqh;height:3cqh;border-radius:50%;object-fit:cover}
+/* Quem já ganhou nesta sessão: mesma pastilha, apagada e com a posição —
+   fica claro que aquele nome não concorre mais, sem sumir da tela. */
+.st-sorteados{display:flex;flex-wrap:wrap;justify-content:center;gap:.8cqh;max-height:9cqh;overflow:hidden;padding-top:.8cqh;border-top:.15cqh solid var(--b3)}
+.st-chip.done{opacity:.55;font-size:2.1cqh;padding:.6cqh 1.4cqh}
+.st-chip-pos{font-weight:900;color:var(--gold)}
 .st-base{display:flex;flex-direction:column;align-items:center;gap:1.2cqh}
 .st-btn{width:auto;font-size:3.6cqh;padding:2cqh 7cqh;border-radius:3cqh}
 .st-dica{font-size:2cqh;color:var(--mut);font-weight:600}
