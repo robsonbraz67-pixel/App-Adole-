@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
 import { planejarBackfill } from './backfillTurmas';
-import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo } from './utils';
+import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor } from './utils';
 import { montarResumoTemporada, ResumoTemporada } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 
@@ -2253,6 +2253,11 @@ const useSorteador = (licao: any, turmaId: string | undefined, track: string, re
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
+  // Pré-carrega o rufar de tambor assim que a tela abre — sem isso, o
+  // primeiro clique em SORTEAR ficaria esperando o download do arquivo (só
+  // então tocaria), e a animação começaria fora de sincronia com o áudio.
+  useEffect(() => { precarregarSorteioTambor(); }, []);
+
   // Trocou a semana (ou a trilha): a lista carregada é de outro sorteio. Zerar
   // aqui evita o pior caso — sortear entre os elegíveis da semana anterior
   // achando que é a nova, sem nada na tela denunciando.
@@ -2313,7 +2318,7 @@ const useSorteador = (licao: any, turmaId: string | undefined, track: string, re
     } catch {}
   };
 
-  const iniciar = () => {
+  const iniciar = async () => {
     if (users.length === 0) return;
     // Era `.sort(() => Math.random() - 0.5)` — o mesmo shuffle enviesado que
     // o embaralhar() de utils.ts já corrigiu pras alternativas do quiz (ver o
@@ -2327,23 +2332,51 @@ const useSorteador = (licao: any, turmaId: string | undefined, track: string, re
     const winner = fila[0];
     setQueue(fila.slice(1));
     setGanhador(null); setAnimando(true);
-    let step = 0;
     let cur = Math.floor(Math.random() * users.length); // posição inicial aleatória
-    const TOTAL = 30;
-    const tick = () => {
-      cur = (cur + 1) % users.length;
-      setIdx(cur); step++;
-      const fast = step < TOTAL * .5;
-      const delay = fast ? 55 : step < TOTAL * .8 ? 110 : 200;
-      playTick(fast);
-      if (step >= TOTAL) {
-        setIdx(winner); setGanhador(users[winner]); setAnimando(false);
-        setTimeout(playWin, 150);
-        return;
-      }
-      timer.current = setTimeout(tick, delay);
+
+    const revelar = () => {
+      setIdx(winner); setGanhador(users[winner]); setAnimando(false);
+      setTimeout(playWin, 150);
     };
-    timer.current = setTimeout(tick, 55);
+
+    // O rufar de tambor tem uma BATIDA marcada no arquivo (ver
+    // SORTEIO_BATIDA_S em utils.ts) — o nome sorteado precisa aparecer bem
+    // nesse instante, não num tempo fixo de JavaScript que desalinha do som.
+    const tambor = somLigado() ? await tocarSorteioTambor() : null;
+
+    if (!tambor) {
+      // Sem som (desligado, ou o arquivo não carregou): volta pro tempo fixo
+      // de sempre, com os ticks sintetizados marcando o ritmo.
+      let step = 0;
+      const TOTAL = 30;
+      const tick = () => {
+        cur = (cur + 1) % users.length;
+        setIdx(cur); step++;
+        const fast = step < TOTAL * .5;
+        const delay = fast ? 55 : step < TOTAL * .8 ? 110 : 200;
+        playTick(fast);
+        if (step >= TOTAL) { revelar(); return; }
+        timer.current = setTimeout(tick, delay);
+      };
+      timer.current = setTimeout(tick, 55);
+      return;
+    }
+
+    // Com o áudio real: cada passo relê o relógio do AudioContext (não conta
+    // no setTimeout) e decide o próximo intervalo pela distância até a
+    // batida — acelera conforme se aproxima, do jeito que um rufar de
+    // verdade cresce, e corrige sozinho qualquer atraso da thread principal
+    // em vez de acumular deriva.
+    const { ctx, batidaEm } = tambor;
+    const tick = () => {
+      const restante = batidaEm - ctx.currentTime;
+      if (restante <= 0.05) { revelar(); return; }
+      cur = (cur + 1) % users.length;
+      setIdx(cur);
+      const proximo = Math.min(0.26, Math.max(0.055, restante * 0.16), restante);
+      timer.current = setTimeout(tick, proximo * 1000);
+    };
+    tick();
   };
 
   return { users, ganhador, idx, animando, loading, carregar, iniciar };
