@@ -1,0 +1,26 @@
+name: Matricular Aluno
+
+# Matrícula pontual (scripts/matricular-aluno.ts) — roda no push deste branch
+# quando o próprio workflow ou o script mudam. Não publica o site.
+on:
+  push:
+    branches: ['export/temporada-*']
+    paths: ['.github/workflows/matricular-aluno.yml', 'scripts/matricular-aluno.ts']
+
+jobs:
+  matricular:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Matricular
+        run: npx tsx scripts/matricular-aluno.ts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FB_FIRESTORE_DB: ${{ secrets.FB_FIRESTORE_DB }}
+          USER_ID: 1mULAbymbnU40ZrloDkMdgmHGlb2
+          TURMA_ID: vhaDdRAvuY9uQhGIVYxV
