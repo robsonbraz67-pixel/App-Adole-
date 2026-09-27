@@ -137,3 +137,72 @@ describe('liderancaPeloExemplo — admin/professor, somando todas as trilhas', (
     expect(r).toEqual([{ nome: 'robgo', dias: 5 }]);
   });
 });
+
+// ===== Apresentação: perfis, conquistas e pistas =====
+import { perfisDosAlunos, conquistasDosAlunos, pistasDoPodio } from '../../src/relatorioTemporada';
+
+const semanaCompleta = (userId: string, week: string, datas: string[], xpPorDia = 450, extra: Partial<LinhaProgresso> = {}) =>
+  linha(userId, week, [1, 2, 3, 4, 5, 6, 7],
+    Object.fromEntries(datas.map((d, i) => [String(i + 1), { emISO: d, xp: xpPorDia, acertos: 4 }])),
+    { xp: xpPorDia * 7, ...extra });
+
+const DATAS_W1 = LICOES[0].dias.map(d => d.data!);
+const DATAS_W2 = LICOES[1].dias.map(d => d.data!);
+
+describe('perfisDosAlunos', () => {
+  it('ordena como o ranking (dias, depois XP) e soma as semanas de cada um', () => {
+    const linhas = [
+      semanaCompleta('ana', 'W1', DATAS_W1, 450), semanaCompleta('ana', 'W2', DATAS_W2, 450),
+      semanaCompleta('bia', 'W1', DATAS_W1, 480),
+    ];
+    const ps = perfisDosAlunos(linhas, LICOES, {}, '2026-07-07');
+    expect(ps.map(p => [p.userId, p.dias, p.semanasCompletas])).toEqual([['ana', 14, 2], ['bia', 7, 1]]);
+    expect(ps[0].noDia).toBe(14);
+    expect(ps[0].pctAcertos).toBe(100);
+  });
+
+  it('deixa admin e professor de fora', () => {
+    const linhas = [semanaCompleta('prof', 'W1', DATAS_W1, 450, { isProfessor: true }), semanaCompleta('ana', 'W1', DATAS_W1)];
+    expect(perfisDosAlunos(linhas, LICOES, {}, '2026-07-07').map(p => p.userId)).toEqual(['ana']);
+  });
+});
+
+describe('conquistasDosAlunos', () => {
+  it('dá um texto para cada aluno, e o pódio leva a posição na frente', () => {
+    const linhas = ['a', 'b', 'c', 'd', 'e'].map((id, i) => semanaCompleta(id, 'W1', DATAS_W1, 500 - i * 10));
+    const ps = perfisDosAlunos(linhas, [LICOES[0]], {}, '2026-06-26');
+    const c = conquistasDosAlunos(ps, [LICOES[0]]);
+    expect(Object.keys(c).sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(c.a).toMatch(/^1º lugar/);
+    expect(c.b).toMatch(/^2º lugar/);
+    expect(c.c).toMatch(/^3º lugar/);
+    // Fora do pódio, os títulos de categoria não se repetem.
+    expect(c.d).not.toBe(c.e);
+  });
+});
+
+describe('pistasDoPodio', () => {
+  it('termina no XP com a diferença para o lugar de baixo', () => {
+    const linhas = [semanaCompleta('a', 'W1', DATAS_W1, 500), semanaCompleta('b', 'W1', DATAS_W1, 480)];
+    const ps = perfisDosAlunos(linhas, [LICOES[0]], {}, '2026-06-26');
+    const pistas = pistasDoPodio(ps, 0, [LICOES[0]]);
+    expect(pistas[0]).toContain('7 de 7 dias');
+    expect(pistas[pistas.length - 1]).toContain('140 à frente do 2º lugar');
+  });
+
+  it('posição sem ninguém devolve lista vazia', () => {
+    expect(pistasDoPodio([], 0, LICOES)).toEqual([]);
+  });
+});
+
+describe('conquistasDosAlunos — superlativo só para o 1º da turma inteira', () => {
+  it('quem só perde para alguém do pódio não ganha "Maior…"/"Mais…"', () => {
+    // 'a' (pódio) estuda tudo no dia certo; 'd' e 'e' têm menos dias no dia certo.
+    const semAtraso = semanaCompleta('a', 'W1', DATAS_W1, 500);
+    const outros = ['b', 'c'].map((id, i) => semanaCompleta(id, 'W1', DATAS_W1, 490 - i * 10));
+    const d = linha('d', 'W1', [1, 2, 3], { '1': { emISO: DATAS_W1[0], xp: 480, acertos: 4 }, '2': { emISO: DATAS_W1[1], xp: 480, acertos: 4 }, '3': { emISO: DATAS_W1[2], xp: 480, acertos: 4 } });
+    const ps = perfisDosAlunos([semAtraso, ...outros, d], [LICOES[0]], {}, '2026-06-26');
+    const c = conquistasDosAlunos(ps, [LICOES[0]]);
+    expect(c.d).not.toMatch(/^(Maior|Mais|Melhor|Recorde|Quem mais)/);
+  });
+});

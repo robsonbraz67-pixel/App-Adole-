@@ -431,19 +431,53 @@ export const somLigado = (): boolean => {
 // senão o nome aparece fora do tempo do som.
 export const SORTEIO_BATIDA_S = 5.25;
 
-let _sorteioBuffer: AudioBuffer | null = null;
-let _sorteioCarregando: Promise<AudioBuffer> | null = null;
-
-const carregarSorteioBuffer = (c: AudioContext): Promise<AudioBuffer> => {
-  if (_sorteioBuffer) return Promise.resolve(_sorteioBuffer);
-  if (!_sorteioCarregando) {
-    _sorteioCarregando = fetch('/sons/sorteio-tambor.mp3')
-      .then(r => r.arrayBuffer())
+// Arquivos de public/sons/, decodificados uma vez e guardados. Falha de
+// download não fica em cache: a próxima chamada tenta de novo.
+const _arquivos: Record<string, Promise<AudioBuffer>> = {};
+const carregarArquivo = (c: AudioContext, nome: string): Promise<AudioBuffer> => {
+  if (!_arquivos[nome]) {
+    _arquivos[nome] = fetch(`/sons/${nome}.mp3`)
+      .then(r => { if (!r.ok) throw new Error(nome); return r.arrayBuffer(); })
       .then(b => c.decodeAudioData(b))
-      .then(buf => { _sorteioBuffer = buf; return buf; })
-      .catch(e => { _sorteioCarregando = null; throw e; });
+      .catch(e => { delete _arquivos[nome]; throw e; });
   }
-  return _sorteioCarregando;
+  return _arquivos[nome];
+};
+const carregarSorteioBuffer = (c: AudioContext) => carregarArquivo(c, 'sorteio-tambor');
+
+// Efeitos gravados da apresentação de encerramento (Mixkit, mesma licença do
+// rufar). Respeitam o botão de som do app como todo o resto.
+export type EfeitoGravado = 'whoosh' | 'impacto' | 'fanfarra' | 'aplausos' | 'sino';
+export const precarregarEfeitos = (nomes: EfeitoGravado[]) => {
+  try { const c = getAudioCtx(); nomes.forEach(n => { carregarArquivo(c, n).catch(() => {}); }); } catch {}
+};
+// `em`: atraso em segundos. Devolve uma função que corta o som (fade curto).
+export const tocarEfeito = async (nome: EfeitoGravado, opts: { vol?: number; em?: number; dur?: number } = {}): Promise<() => void> => {
+  const nada = () => {};
+  if (!somLigado()) return nada;
+  try {
+    const c = getAudioCtx();
+    const buf = await carregarArquivo(c, nome);
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const g = c.createGain();
+    const t0 = c.currentTime + 0.02 + (opts.em || 0);
+    g.gain.setValueAtTime(opts.vol ?? 0.6, t0);
+    if (opts.dur) {
+      g.gain.setValueAtTime(opts.vol ?? 0.6, t0 + Math.max(0, opts.dur - 0.5));
+      g.gain.linearRampToValueAtTime(0.0001, t0 + opts.dur);
+    }
+    src.connect(g); g.connect(c.destination);
+    src.start(t0);
+    if (opts.dur) src.stop(t0 + opts.dur + 0.05);
+    return () => {
+      const now = c.currentTime;
+      g.gain.cancelScheduledValues(now);
+      g.gain.setValueAtTime(g.gain.value, now);
+      g.gain.linearRampToValueAtTime(0.0001, now + 0.15);
+      try { src.stop(now + 0.2); } catch {}
+    };
+  } catch { return nada; }
 };
 
 // Chame ao abrir a tela do Sorteador — pré-carrega o arquivo pra tocarSorteioTambor()
@@ -464,6 +498,14 @@ export const tocarSorteioTambor = async (): Promise<{ ctx: AudioContext; batidaE
   try {
     const c = getAudioCtx();
     const buf = await carregarSorteioBuffer(c);
+    // Contexto pausado (o navegador ainda não viu um clique/tecla) não toca e
+    // não anda o relógio — quem esperasse a batida ficaria girando para
+    // sempre. Tenta retomar por um instante; se não der, devolve null e quem
+    // chamou usa o tempo fixo.
+    if (c.state !== 'running') {
+      await Promise.race([c.resume().catch(() => {}), new Promise(r => setTimeout(r, 300))]);
+      if ((c.state as AudioContextState) !== 'running') return null;
+    }
     const src = c.createBufferSource();
     src.buffer = buf;
     const g = c.createGain();

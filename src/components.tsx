@@ -2242,7 +2242,7 @@ export const SeletorTurmaAtiva = ({ turmas, turmaId, onEscolher, nota }: {
 // prêmio sair para um nome que ninguém daquela sala conhecia.
 // Semana: quem fez os 7 dias, 1 bilhete cada. Temporada: as 13 semanas
 // somadas, pela regra escolhida (ver src/sorteio.ts).
-const useSorteador = (licao: any, turmaId: string | undefined, track: string, regra: RegraSorteio) => {
+export const useSorteador = (licao: any, turmaId: string | undefined, track: string, regra: RegraSorteio) => {
   const [users, setUsers] = useState<Participante[]>([]);
   const [ganhador, setGanhador] = useState<any | null>(null);
   const [idx, setIdx] = useState(0);
@@ -2385,9 +2385,13 @@ const useSorteador = (licao: any, turmaId: string | undefined, track: string, re
     // verdade cresce, e corrige sozinho qualquer atraso da thread principal
     // em vez de acumular deriva.
     const { ctx, batidaEm } = tambor;
+    // Trava de segurança: se o relógio de áudio parar (aba em segundo plano,
+    // áudio suspenso no meio), revela mesmo assim um pouco depois da batida.
+    const limite = setTimeout(() => { if (timer.current) clearTimeout(timer.current); revelar(); },
+      (batidaEm - ctx.currentTime + 1.5) * 1000);
     const tick = () => {
       const restante = batidaEm - ctx.currentTime;
-      if (restante <= 0.05) { revelar(); return; }
+      if (restante <= 0.05) { clearTimeout(limite); revelar(); return; }
       pos = (pos + 1) % elegiveis.length;
       setIdx(elegiveis[pos]);
       const proximo = Math.min(0.26, Math.max(0.055, restante * 0.16), restante);
@@ -2399,7 +2403,7 @@ const useSorteador = (licao: any, turmaId: string | undefined, track: string, re
   return { users, ganhador, idx, animando, loading, carregar, iniciar, sorteados };
 };
 
-const AvatarSorteio = ({ u, className }: { u: any; className: string }) =>
+export const AvatarSorteio = ({ u, className }: { u: any; className: string }) =>
   u?.avatar?.startsWith('data:')
     ? <img src={u.avatar} className={`${className} img`} alt="" />
     : <span className={className}>{u?.avatar || '👤'}</span>;
@@ -2408,7 +2412,7 @@ const tituloDaLicao = (l: any) => (l?.titulo || '').replace(/^Lição\s*\d+\s*[-
 
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
-const detalheDoGanhador = (g: Participante, regra: RegraSorteio) =>
+export const detalheDoGanhador = (g: Participante, regra: RegraSorteio) =>
   regra === 'semana-completa' ? `${g.xp} XP · ${g.dias} dias`
   : regra === 'temporada-tudo' ? `${g.dias} dias estudados na temporada`
   : `${plural(g.bilhetes, 'bilhete', 'bilhetes')} · ${plural(g.semanasCompletas, 'semana completa', 'semanas completas')}`;
@@ -2416,9 +2420,9 @@ const detalheDoGanhador = (g: Participante, regra: RegraSorteio) =>
 const rotuloDoChip = (u: Participante, regra: RegraSorteio) =>
   (u.nome?.split(' ')[0] || '') + (regra === 'temporada-bilhete-por-semana' ? ` ×${u.bilhetes}` : '');
 
-type EstadoRegistro = 'livre' | 'salvando' | 'salvo' | 'erro';
+export type EstadoRegistro = 'livre' | 'salvando' | 'salvo' | 'erro';
 
-const BotaoRegistrar = ({ estado, onRegistrar, className = '' }: { estado: EstadoRegistro; onRegistrar: () => void; className?: string }) => (
+export const BotaoRegistrar = ({ estado, onRegistrar, className = '' }: { estado: EstadoRegistro; onRegistrar: () => void; className?: string }) => (
   <button
     className={`btn ${estado === 'salvo' ? 'btn-teal' : 'btn-ghost'} ${className}${estado === 'salvando' || estado === 'salvo' ? ' btn-dis' : ''}`}
     onClick={onRegistrar}
@@ -5149,7 +5153,7 @@ const RelatorioTemporadaAba = ({ relatorio, carregando, erro, onBaixar }: {
   );
 };
 
-const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: any) => {
+const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador, onApresentacao }: any) => {
   // A turma do painel é a que ele está CONDUZINDO (Fase 6), não mais a do
   // perfil dele: um professor pode conduzir mais de uma, e pode conduzir uma
   // de que não faz parte.
@@ -5406,17 +5410,18 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
         <div style={{display:'flex', gap:8, marginTop:6}}>
           <button className="btn btn-gold" onClick={onModoAoVivo} style={{flex:1}}>🎮 MODO AO VIVO</button>
           {onSorteador && <button className="btn btn-ghost" onClick={onSorteador} style={{flex:1}}>🎰 SORTEIO</button>}
+          {onApresentacao && <button className="btn btn-ghost" onClick={onApresentacao} style={{flex:1}}>🎬 APRESENTAÇÃO</button>}
         </div>
       </div>
     </div>
   );
 };
 
-export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador }: any) => {
+export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApresentacao }: any) => {
   // Professor com escopo de turma não vê o painel do sistema: vê o dele.
   // Admin continua vendo tudo, inclusive quando também é professor.
   if (PROFESSOR_ESCOPO_TURMA && jogador?.isProfessor && !jogador?.isAdmin) {
-    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} />;
+    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} onApresentacao={onApresentacao} />;
   }
 
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
@@ -5576,7 +5581,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador }: any
   // Depois de TODOS os hooks: a condição muda em tempo de execução, e um
   // retorno antecipado lá em cima puliria os hooks seguintes.
   if (semAcessoGlobal) {
-    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} />;
+    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} onApresentacao={onApresentacao} />;
   }
 
   return (
@@ -5776,6 +5781,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador }: any
           <div style={{display:'flex', gap:8, marginTop:16}}>
             <button className="btn btn-gold" onClick={onModoAoVivo} style={{flex:1}}>🎮 MODO AO VIVO</button>
             {onSorteador && <button className="btn btn-ghost" onClick={onSorteador} style={{flex:1}}>🎰 SORTEIO</button>}
+          {onApresentacao && <button className="btn btn-ghost" onClick={onApresentacao} style={{flex:1}}>🎬 APRESENTAÇÃO</button>}
           </div>
         )}
       </div>
