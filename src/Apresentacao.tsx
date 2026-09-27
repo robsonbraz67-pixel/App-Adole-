@@ -37,7 +37,7 @@ export type Dados = {
 };
 
 type TipoSlide = 'capa' | 'numeros' | 'diaMais' | 'melhorSemana' | 'lideranca' | 'maratonistas' | 'chama'
-  | 'clube' | 'suspense' | 'misterio' | 'revelacao' | 'turma' | 'sorteio' | 'virada' | 'fechamento';
+  | 'clube' | 'suspense' | 'misterio' | 'revelacao' | 'turma' | 'sorteio' | 'regras' | 'tickets' | 'virada' | 'fechamento';
 
 type Slide = { tipo: TipoSlide; titulo: string; passos: number; pos?: number; nota: string; anim: 'fade' | 'zoom' | 'sobe' | 'lado' };
 
@@ -55,6 +55,8 @@ const NOTAS: Record<TipoSlide, string> = {
   revelacao: 'O rufar toca sozinho e o nome aparece na batida. Puxe os aplausos!',
   turma: 'Um aluno por vez: leia a conquista, aplausos rápidos, próximo.',
   sorteio: 'Convide alguém que NÃO concorre para apertar Espaço. Quem já saiu vai para baixo.',
+  regras: 'Mostre um ticket impresso (ou o celular com o app) enquanto explica: objeto na mão fixa a regra.',
+  tickets: 'Deixe claro que é uma simulação para mostrar a régua nova, não um sorteio que aconteceu.',
   virada: 'Troque o clima: do intenso para o leve. É o único ponto em que a direção muda.',
   fechamento: 'Não deixe a tela vazia: peça para todos abrirem o app e começarem a próxima lição juntos.',
 };
@@ -99,6 +101,8 @@ export const montarSlides = (d: Dados): Slide[] => {
   }
   if (d.perfis.length) add('turma', 'A turma inteira', 'sobe', d.perfis.length);
   add('sorteio', 'Sorteio ao vivo', 'zoom');
+  add('regras', 'As regras novas: tickets', 'sobe');
+  if (d.perfis.length) add('tickets', d.modo === 'semana' ? 'Quem teria o ticket da semana' : 'Se os tickets já valessem', 'lado');
   if (d.modo === 'temporada' && d.proxima) add('virada', 'Próxima temporada', 'fade');
   add('fechamento', 'Fechamento', 'fade');
   return s;
@@ -525,6 +529,64 @@ export const Palco = ({ dados, slides, licao, turmaId, track, jogador, onSair }:
             registrarTecla={fn => { teclaDoSlide.current = fn; }}
           />
         );
+      case 'regras':
+        return (
+          <div className="ap-slide">
+            <div className="ap-eyebrow">As regras novas</div>
+            <div className="ap-titulo">Estudou no dia certo? Ganhou ticket. 🎫</div>
+            <div className="ap-regras">
+              <div className="ap-card">
+                <div className="pos">🎫 Sorteio semanal</div>
+                <div className="txt">Só entra quem fez os <b>7 dias da semana, cada um no dia certo</b>. Um dia atrasado já tira o ticket daquela semana.</div>
+              </div>
+              <div className="ap-card">
+                <div className="pos">🏆 Sorteio geral</div>
+                <div className="txt">Cada <b>semana completa vale 1 ticket</b>, mesmo com atraso. Quem juntar mais tickets tem mais chance no sorteio da temporada.</div>
+              </div>
+            </div>
+            <div className="ap-det">Toda semana é uma chance nova. Chegou atrasado? Ainda vale no geral — mas o ticket da semana é de quem estudou no dia.</div>
+          </div>
+        );
+      case 'tickets': {
+        if (dados.modo === 'semana') {
+          const noDia = dados.perfis.filter(p => p.semanasNoDia >= 1);
+          const atrasados = dados.perfis.filter(p => p.semanasNoDia < 1 && p.semanasCompletas >= 1);
+          return (
+            <div className="ap-slide centro">
+              <div className="ap-eyebrow">Simulação · esta semana</div>
+              <div className="ap-titulo">{noDia.length ? `${noDia.length} teriam o ticket da semana` : 'Ninguém fechou a semana toda no dia certo'}</div>
+              <div className="ap-chips">
+                {noDia.map(p => <span key={p.userId} className="ap-chip">🎫 <Av a={p.avatar} />{primeiroNome(p.nome)}</span>)}
+              </div>
+              {atrasados.length > 0 && (
+                <div className="ap-det">{atrasados.length} fecharam a semana com atraso: ficam sem o ticket semanal, mas a semana conta no geral.</div>
+              )}
+            </div>
+          );
+        }
+        const lista = [...dados.perfis]
+          .filter(p => p.semanasCompletas > 0)
+          .sort((a, b) => b.semanasNoDia - a.semanasNoDia || b.semanasCompletas - a.semanasCompletas)
+          .slice(0, 12);
+        const semanas = dados.licoes.length;
+        return (
+          <div className="ap-slide">
+            <div className="ap-eyebrow">Simulação · se a regra já valesse nesta temporada</div>
+            <div className="ap-titulo">Quantos tickets cada um teria</div>
+            <div className="ap-lista">
+              {lista.map(p => (
+                <div key={p.userId} className="ap-linha">
+                  <Av a={p.avatar} className="av" />
+                  <span className="nome">{p.nome}</span>
+                  <span className="sem" title="Semanas com os 7 dias no dia certo">🎫 {p.semanasNoDia}/{semanas}</span>
+                  <span className="ger" title="Tickets do sorteio geral">🏆 {p.semanasCompletas}</span>
+                </div>
+              ))}
+            </div>
+            <div className="ap-det">🎫 semanas em que teria concorrido ao sorteio semanal · 🏆 tickets no sorteio geral. Não é resultado de sorteio.</div>
+          </div>
+        );
+      }
       case 'virada':
         return (
           <div className="ap-slide centro ap-virada">

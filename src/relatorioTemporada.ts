@@ -351,6 +351,7 @@ export const montarResumoTemporada = (args: {
 export type PerfilAluno = {
   userId: string; nome: string; avatar: string;
   dias: number; xp: number; semanasCompletas: number;
+  semanasNoDia: number;           // semanas com os 7 dias feitos, todos na data certa (ticket do sorteio semanal)
   pctAcertos: number | null;      // 0–100, uma casa; null sem nenhum acerto registrado
   noDia: number;                  // dias estudados na data certa (regra 1)
   ofensiva: { dias: number; inicio?: string; fim?: string };
@@ -380,13 +381,18 @@ export const perfisDosAlunos = (
     const recente = [...linhas].sort((a, b) => (a.week < b.week ? 1 : -1))[0];
     const criadoEm = criadoEmPorAluno[userId];
     const vel = velocidadeDoAluno(linhas, licoes);
-    let noDia = 0, somaAc = 0, nAc = 0;
-    for (const r of linhas) for (const dia of r.done) {
-      const e = r.history?.[String(dia)];
-      if (e?.acertos !== undefined) { somaAc += e.acertos; nAc++; }
-      const data = dataDaLicao(licoes, r.week, dia);
-      if (criadoEm && data && data < criadoEm) continue;
-      if (diaFoiEstudadoNoCerto(e, data, vel)) noDia++;
+    let noDia = 0, somaAc = 0, nAc = 0, semanasNoDia = 0;
+    for (const r of linhas) {
+      let certosNaSemana = 0;
+      for (const dia of r.done) {
+        const e = r.history?.[String(dia)];
+        if (e?.acertos !== undefined) { somaAc += e.acertos; nAc++; }
+        const data = dataDaLicao(licoes, r.week, dia);
+        if (criadoEm && data && data < criadoEm) continue;
+        if (diaFoiEstudadoNoCerto(e, data, vel)) { noDia++; certosNaSemana++; }
+      }
+      const diasDaSemana = licoes.find(l => l.semana === r.week)?.dias.length || 7;
+      if (certosNaSemana >= diasDaSemana) semanasNoDia++;
     }
     const melhor = [...linhas].sort((a, b) => (b.xp || 0) - (a.xp || 0))[0];
     const m = marat[userId];
@@ -395,6 +401,7 @@ export const perfisDosAlunos = (
       dias: linhas.reduce((s, r) => s + (r.dias ?? r.done.length), 0),
       xp: linhas.reduce((s, r) => s + (r.xp || 0), 0),
       semanasCompletas: linhas.filter(r => (r.dias ?? r.done.length) >= 7).length,
+      semanasNoDia,
       pctAcertos: nAc ? Math.round((1000 * somaAc) / (4 * nAc)) / 10 : null,
       noDia,
       ofensiva: ofensivaReal(linhas, licoes, criadoEm, hojeISO),

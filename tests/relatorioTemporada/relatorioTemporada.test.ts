@@ -206,3 +206,13 @@ describe('conquistasDosAlunos — superlativo só para o 1º da turma inteira', 
     expect(c.d).not.toMatch(/^(Maior|Mais|Melhor|Recorde|Quem mais)/);
   });
 });
+
+describe('perfisDosAlunos — semanas 100% no dia certo (ticket semanal)', () => {
+  it('conta a semana só quando os 7 dias foram na data certa', () => {
+    const perfeita = semanaCompleta('ana', 'W1', DATAS_W1);
+    const umAtrasado = semanaCompleta('ana', 'W2', [...DATAS_W2.slice(0, 6), '2026-07-20']);
+    const [p] = perfisDosAlunos([perfeita, umAtrasado], LICOES, {}, '2026-07-21');
+    expect(p.semanasCompletas).toBe(2);
+    expect(p.semanasNoDia).toBe(1);
+  });
+});

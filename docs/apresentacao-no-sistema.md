@@ -36,6 +36,12 @@ Documentos relacionados:
 - **Turma inteira:** um aluno por toque, com a conquista gerada por
   `conquistasDosAlunos` (sem repetir título; superlativo só para quem é 1º da
   turma inteira naquilo).
+- **Regras dos tickets e simulação:** logo depois do sorteio, um slide explica
+  a régua nova (sorteio semanal só para quem fez os 7 dias no dia certo;
+  sorteio geral com 1 ticket por semana completa, atraso ainda vale) e outro
+  simula, com os dados reais, quantos tickets cada aluno teria
+  (`PerfilAluno.semanasNoDia` e `semanasCompletas`). Na semana, mostra quem
+  teria o ticket daquela semana.
 - **Sorteio:** usa o `useSorteador` de verdade, com "já sorteados" embaixo e o
   botão Registrar. Nesse slide, Espaço sorteia e → avança.
 
@@ -57,7 +63,8 @@ Documentos relacionados:
 1. **Conquistas automáticas, sem edição.** Se a liderança quiser ajustar o
    texto de algum aluno antes de projetar, o próximo passo é deixar editar na
    prévia (salvando só no aparelho).
-2. **Vouchers ainda não.** O sorteio usa as regras atuais. A regra nova (só
+2. **Tickets só explicados e simulados.** O slide de sorteio ainda usa as
+   regras atuais do Sorteador. A regra nova (só
    semanas 100% no dia certo no sorteio semanal) está descrita em
    `docs/relatorio-temporada.md` e precisa de mudança própria em
    `src/sorteio.ts` e no Sorteador.
