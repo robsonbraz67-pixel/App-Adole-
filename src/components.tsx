@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
 import { planejarBackfill } from './backfillTurmas';
-import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo } from './utils';
+import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor } from './utils';
 import { montarResumoTemporada, ResumoTemporada } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 
@@ -2249,19 +2249,31 @@ const useSorteador = (licao: any, turmaId: string | undefined, track: string, re
   const [animando, setAnimando] = useState(false);
   const [loading, setLoading] = useState(false);
   const [queue, setQueue] = useState<number[]>([]);
+  // Quem já saiu sorteado NESTA sessão (mais de um prêmio seguido, sem sair
+  // da tela) — some do giro e da fila de cima, e vai pra lista de baixo. É
+  // diferente do `historico` da tela normal (RegistroSorteio[] do Firestore):
+  // aquele é o que já foi REGISTRADO como prêmio em qualquer dia; este é só
+  // "quem girou e ganhou agora há pouco", mesmo que ninguém tenha clicado em
+  // Registrar ainda.
+  const [sorteados, setSorteados] = useState<Participante[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  // Pré-carrega o rufar de tambor assim que a tela abre — sem isso, o
+  // primeiro clique em SORTEAR ficaria esperando o download do arquivo (só
+  // então tocaria), e a animação começaria fora de sincronia com o áudio.
+  useEffect(() => { precarregarSorteioTambor(); }, []);
 
   // Trocou a semana (ou a trilha): a lista carregada é de outro sorteio. Zerar
   // aqui evita o pior caso — sortear entre os elegíveis da semana anterior
   // achando que é a nova, sem nada na tela denunciando.
   useEffect(() => {
-    setUsers([]); setGanhador(null); setQueue([]); setIdx(0);
+    setUsers([]); setGanhador(null); setQueue([]); setIdx(0); setSorteados([]);
   }, [licao?.semana, licao?.trimestre, turmaId, track, regra]);
 
   const carregar = async () => {
-    setLoading(true); setGanhador(null); setQueue([]);
+    setLoading(true); setGanhador(null); setQueue([]); setSorteados([]);
     try {
       if (regra === 'semana-completa') {
         const rank = await getWeeklyRankingDaTurma(licao.semana, turmaId);
@@ -2313,7 +2325,7 @@ const useSorteador = (licao: any, turmaId: string | undefined, track: string, re
     } catch {}
   };
 
-  const iniciar = () => {
+  const iniciar = async () => {
     if (users.length === 0) return;
     // Era `.sort(() => Math.random() - 0.5)` — o mesmo shuffle enviesado que
     // o embaralhar() de utils.ts já corrigiu pras alternativas do quiz (ver o
@@ -2324,29 +2336,67 @@ const useSorteador = (licao: any, turmaId: string | undefined, track: string, re
     // mais, toda semana.
     // Com 1 bilhete para todos, a ordem ponderada é um Fisher-Yates comum.
     let fila = queue.length > 0 ? queue : ordemPonderada(users);
+    if (fila.length === 0) return; // todo mundo desta lista já foi sorteado
     const winner = fila[0];
     setQueue(fila.slice(1));
     setGanhador(null); setAnimando(true);
-    let step = 0;
-    let cur = Math.floor(Math.random() * users.length); // posição inicial aleatória
-    const TOTAL = 30;
-    const tick = () => {
-      cur = (cur + 1) % users.length;
-      setIdx(cur); step++;
-      const fast = step < TOTAL * .5;
-      const delay = fast ? 55 : step < TOTAL * .8 ? 110 : 200;
-      playTick(fast);
-      if (step >= TOTAL) {
-        setIdx(winner); setGanhador(users[winner]); setAnimando(false);
-        setTimeout(playWin, 150);
-        return;
-      }
-      timer.current = setTimeout(tick, delay);
+
+    // O giro só passa por quem ainda não ganhou nesta sessão — quem já saiu
+    // sorteado não deveria "concorrer de novo" na tela, mesmo a fila (acima)
+    // já garantindo que ele não seria escolhido de novo. `winner` nunca está
+    // em `sorteados` ainda (só entra em revelar(), abaixo), então a lista
+    // de elegíveis sempre tem pelo menos ele.
+    const sorteadosIds = new Set(sorteados.map(s => s.id));
+    const elegiveis = users.map((_, i) => i).filter(i => !sorteadosIds.has(users[i].id));
+    let pos = Math.floor(Math.random() * elegiveis.length); // posição inicial aleatória
+
+    const revelar = () => {
+      setIdx(winner); setGanhador(users[winner]); setAnimando(false);
+      setSorteados(prev => [...prev, users[winner]]);
+      setTimeout(playWin, 150);
     };
-    timer.current = setTimeout(tick, 55);
+
+    // O rufar de tambor tem uma BATIDA marcada no arquivo (ver
+    // SORTEIO_BATIDA_S em utils.ts) — o nome sorteado precisa aparecer bem
+    // nesse instante, não num tempo fixo de JavaScript que desalinha do som.
+    const tambor = somLigado() ? await tocarSorteioTambor() : null;
+
+    if (!tambor) {
+      // Sem som (desligado, ou o arquivo não carregou): volta pro tempo fixo
+      // de sempre, com os ticks sintetizados marcando o ritmo.
+      let step = 0;
+      const TOTAL = 30;
+      const tick = () => {
+        pos = (pos + 1) % elegiveis.length;
+        setIdx(elegiveis[pos]); step++;
+        const fast = step < TOTAL * .5;
+        const delay = fast ? 55 : step < TOTAL * .8 ? 110 : 200;
+        playTick(fast);
+        if (step >= TOTAL) { revelar(); return; }
+        timer.current = setTimeout(tick, delay);
+      };
+      timer.current = setTimeout(tick, 55);
+      return;
+    }
+
+    // Com o áudio real: cada passo relê o relógio do AudioContext (não conta
+    // no setTimeout) e decide o próximo intervalo pela distância até a
+    // batida — acelera conforme se aproxima, do jeito que um rufar de
+    // verdade cresce, e corrige sozinho qualquer atraso da thread principal
+    // em vez de acumular deriva.
+    const { ctx, batidaEm } = tambor;
+    const tick = () => {
+      const restante = batidaEm - ctx.currentTime;
+      if (restante <= 0.05) { revelar(); return; }
+      pos = (pos + 1) % elegiveis.length;
+      setIdx(elegiveis[pos]);
+      const proximo = Math.min(0.26, Math.max(0.055, restante * 0.16), restante);
+      timer.current = setTimeout(tick, proximo * 1000);
+    };
+    tick();
   };
 
-  return { users, ganhador, idx, animando, loading, carregar, iniciar };
+  return { users, ganhador, idx, animando, loading, carregar, iniciar, sorteados };
 };
 
 const AvatarSorteio = ({ u, className }: { u: any; className: string }) =>
@@ -2379,8 +2429,10 @@ const BotaoRegistrar = ({ estado, onRegistrar, className = '' }: { estado: Estad
 );
 
 /* ===== SORTEADOR — MODO TELÃO (16:9) ===== */
-const SorteadorTelao = ({ eyebrow, titulo, regra, turmaNome, users, totalBilhetes, ganhador, idx, animando, loading, registro, podeRegistrar, onRegistrar, onCarregar, onSortear, onSair }: any) => {
+const SorteadorTelao = ({ eyebrow, titulo, regra, turmaNome, users, totalBilhetes, ganhador, idx, animando, loading, sorteados = [], registro, podeRegistrar, onRegistrar, onCarregar, onSortear, onSair }: any) => {
   const atual = users[idx];
+  const sorteadosIds = new Set(sorteados.map((u: Participante) => u.id));
+  const naFila = users.filter((u: Participante) => !sorteadosIds.has(u.id));
   return createPortal(
     <div className="st-palco" role="dialog" aria-modal="true" aria-label="Sorteio em tela cheia">
       {ganhador && !animando && <Confetti show={true} />}
@@ -2425,10 +2477,10 @@ const SorteadorTelao = ({ eyebrow, titulo, regra, turmaNome, users, totalBilhete
           )}
         </div>
 
-        {users.length > 0 && (
+        {naFila.length > 0 && (
           <div className="st-fila" aria-hidden="true">
-            {users.map((u: Participante, i: number) => (
-              <span key={u.id} className={`st-chip${animando && i === idx ? ' on' : ''}${ganhador && !animando && u.id === ganhador.id ? ' win' : ''}`}>
+            {naFila.map((u: Participante, i: number) => (
+              <span key={u.id} className={`st-chip${animando && u.id === atual?.id ? ' on' : ''}`}>
                 <AvatarSorteio u={u} className="st-chip-av" />
                 {rotuloDoChip(u, regra)}
               </span>
@@ -2443,6 +2495,17 @@ const SorteadorTelao = ({ eyebrow, titulo, regra, turmaNome, users, totalBilhete
                 {animando ? '🎰 Sorteando…' : ganhador ? '🔁 Sortear de novo' : '🎰 Sortear!'}
               </button>
               {ganhador && !animando && podeRegistrar && <BotaoRegistrar estado={registro} onRegistrar={onRegistrar} className="st-btn st-btn-reg" />}
+            </div>
+          )}
+          {sorteados.length > 0 && (
+            <div className="st-sorteados" aria-label="Já sorteados nesta rodada">
+              {sorteados.map((u: Participante, i: number) => (
+                <span key={u.id} className="st-chip done">
+                  <span className="st-chip-pos">{i + 1}º</span>
+                  <AvatarSorteio u={u} className="st-chip-av" />
+                  {u.nome?.split(' ')[0]}
+                </span>
+              ))}
             </div>
           )}
           <div className="st-dica">Espaço ou Enter sorteia · Esc sai</div>
@@ -2474,8 +2537,12 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   const setRegraTemporada = (r: Exclude<RegraSorteio, 'semana-completa'>) => { ss('sorteioRegraTemporada', r); setRegraTemporadaState(r); };
   const regra: RegraSorteio = tipo === 'semana' ? 'semana-completa' : regraTemporada;
 
-  const { users, ganhador, idx, animando, loading, carregar, iniciar } = useSorteador(sel.licao, turmaDoSorteio, sel.track, regra);
+  const { users, ganhador, idx, animando, loading, carregar, iniciar, sorteados } = useSorteador(sel.licao, turmaDoSorteio, sel.track, regra);
   const totalBilhetes = users.reduce((s, u) => s + u.bilhetes, 0);
+  // Quem já ganhou nesta rodada some da lista de elegíveis e vai pro rodapé
+  // "Já sorteados" — ver o comentário em `sorteados`, dentro de useSorteador.
+  const sorteadosIds = new Set(sorteados.map(u => u.id));
+  const naFila = users.filter(u => !sorteadosIds.has(u.id));
 
   const licoesDaTemporada = getTrackLessons(sel.track as Track).filter((l: any) => !l.isAdminOnly && l.trimestre === sel.licao?.trimestre);
   const diasLiberados = Object.values(diasLiberadosPorSemana(licoesDaTemporada, hojeLocalISO())).reduce((s, n) => s + n, 0);
@@ -2615,6 +2682,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
           idx={idx}
           animando={animando}
           loading={loading}
+          sorteados={sorteados}
           registro={registro}
           podeRegistrar={!!turmaDoSorteio}
           onRegistrar={registrar}
@@ -2682,11 +2750,11 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
         {users.length > 0 && (
           <>
             <div style={{fontSize:13, color:'var(--mut)', marginBottom:10, textAlign:'center'}}>
-              {users.length} participante{users.length !== 1 ? 's elegíveis' : ' elegível'}
+              {naFila.length} participante{naFila.length !== 1 ? 's elegíveis' : ' elegível'}
               {regra === 'temporada-bilhete-por-semana' ? ` · ${totalBilhetes} bilhetes na urna` : ''}:
             </div>
             <div className="sorteador-chips">
-              {users.map(u => (
+              {naFila.map(u => (
                 <div key={u.id} style={{display:'flex', alignItems:'center', gap:5, background:'var(--g3)', borderRadius:8, padding:'5px 10px'}}>
                   {u.avatar?.startsWith('data:')
                     ? <img src={u.avatar} style={{width:22, height:22, borderRadius:'50%', objectFit:'cover'}} alt="" />
@@ -2695,6 +2763,23 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
                 </div>
               ))}
             </div>
+
+            {sorteados.length > 0 && (
+              <>
+                <div style={{fontSize:12, color:'var(--mut)', margin:'4px 0 8px', textAlign:'center'}}>Já sorteados nesta rodada:</div>
+                <div className="sorteador-chips" style={{marginBottom:20}}>
+                  {sorteados.map((u, i) => (
+                    <div key={u.id} style={{display:'flex', alignItems:'center', gap:5, background:'var(--g1)', borderRadius:8, padding:'5px 10px', opacity:.6}}>
+                      <span style={{fontSize:12, fontWeight:900, color:'var(--gold)'}}>{i + 1}º</span>
+                      {u.avatar?.startsWith('data:')
+                        ? <img src={u.avatar} style={{width:20, height:20, borderRadius:'50%', objectFit:'cover'}} alt="" />
+                        : <span style={{fontSize:16}}>{u.avatar || '👤'}</span>}
+                      <span style={{fontSize:12, color:'var(--txt2)', fontWeight:700}}>{u.nome?.split(' ')[0]}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
             {(animando || ganhador) && (
               <div className="sorteador-slot">

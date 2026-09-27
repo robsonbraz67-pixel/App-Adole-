@@ -418,6 +418,65 @@ export const somLigado = (): boolean => {
   try { return localStorage.getItem('som') !== 'off'; } catch { return true; }
 };
 
+// ===== Sorteio: rufar de tambor sincronizado com a revelação =====
+// Única exceção à regra "tudo sintetizado" acima: um rufar de tambor de
+// verdade dá o suspense que osciladores não reproduzem bem. Gravado (Mixkit,
+// licença livre, sem crédito obrigatório), mora em public/sons/ — arquivo
+// estático, não entra no bundle JS.
+//
+// A BATIDA (o instante em que o prato bate, fim do rufar) foi medida na
+// forma de onda: a energia salta de pico ~15k para ~30k em 5,25s (ffmpeg
+// astats, janelas de 10ms). É esse instante que o Sorteador usa para revelar
+// o ganhador — trocou o arquivo, tem que remedir e atualizar esta constante,
+// senão o nome aparece fora do tempo do som.
+export const SORTEIO_BATIDA_S = 5.25;
+
+let _sorteioBuffer: AudioBuffer | null = null;
+let _sorteioCarregando: Promise<AudioBuffer> | null = null;
+
+const carregarSorteioBuffer = (c: AudioContext): Promise<AudioBuffer> => {
+  if (_sorteioBuffer) return Promise.resolve(_sorteioBuffer);
+  if (!_sorteioCarregando) {
+    _sorteioCarregando = fetch('/sons/sorteio-tambor.mp3')
+      .then(r => r.arrayBuffer())
+      .then(b => c.decodeAudioData(b))
+      .then(buf => { _sorteioBuffer = buf; return buf; })
+      .catch(e => { _sorteioCarregando = null; throw e; });
+  }
+  return _sorteioCarregando;
+};
+
+// Chame ao abrir a tela do Sorteador — pré-carrega o arquivo pra tocarSorteioTambor()
+// não esperar o download na hora do clique. Falha em silêncio (sem internet,
+// o Sorteador continua funcionando, só sem o rufar).
+export const precarregarSorteioTambor = () => {
+  try { carregarSorteioBuffer(getAudioCtx()); } catch {}
+};
+
+// Toca o rufar e devolve o instante (no relógio do AudioContext, não do
+// JavaScript) em que a batida final acontece. Quem chama agenda a revelação
+// do ganhador comparando esse instante com ctx.currentTime — o relógio de
+// áudio não atrasa sob carga da thread principal como setTimeout atrasaria,
+// então a batida e o nome aparecem juntos mesmo se a tela estiver ocupada
+// animando a lista de nomes.
+export const tocarSorteioTambor = async (): Promise<{ ctx: AudioContext; batidaEm: number } | null> => {
+  if (!somLigado()) return null;
+  try {
+    const c = getAudioCtx();
+    const buf = await carregarSorteioBuffer(c);
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const g = c.createGain();
+    g.gain.value = 0.55;
+    src.connect(g); g.connect(c.destination);
+    const t0 = c.currentTime + 0.05;
+    src.start(t0);
+    return { ctx: c, batidaEm: t0 + SORTEIO_BATIDA_S };
+  } catch {
+    return null;
+  }
+};
+
 type Tom = { f: number; f2?: number; glide?: number; type?: OscillatorType; t?: number; dur: number; vol?: number; a?: number; lp?: number; lp2?: number; detune?: number };
 type Ruido = { f: number; f2?: number; q?: number; type?: BiquadFilterType; t?: number; dur: number; vol?: number; a?: number };
 
