@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
 import { planejarBackfill } from './backfillTurmas';
 import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo } from './utils';
+import { montarResumoTemporada, ResumoTemporada } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 
 // Desativado em 2026-07-25: a escola opera com UMA trilha e UM local. As duas
@@ -5001,6 +5002,68 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
 // funcionar inteira. Escrita assim, ela atravessa a mudança sem perceber.
 //
 // Atrás de PROFESSOR_ESCOPO_TURMA, que começa em false.
+// Aba "📊 Temporada" do painel do professor — mostra o resumo de
+// src/relatorioTemporada.ts e deixa baixar o JSON cru. O JSON é o que
+// docs/relatorio-temporada.md ensina a colar num prompt (Claude Code ou
+// outro assistente) para montar o PPT de encerramento; a tela aqui é só uma
+// prévia rápida, não substitui o roteiro completo do documento.
+const RelatorioTemporadaAba = ({ relatorio, carregando, erro, onBaixar }: {
+  relatorio: ResumoTemporada | null; carregando: boolean; erro: string; onBaixar: () => void;
+}) => {
+  if (erro) return <div style={{background:'var(--panel-bg)', padding:16, borderRadius:12, color:'var(--mut)', fontSize:13}}>{erro}</div>;
+  if (carregando || !relatorio) return <div style={{background:'var(--panel-bg)', padding:16, borderRadius:12, color:'var(--mut)', fontSize:13}}>Montando o relatório da temporada...</div>;
+
+  const linha = (rotulo: string, valor: string | number) => (
+    <div style={{display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px solid var(--input-border)', fontSize:13}}>
+      <span style={{color:'var(--mut)'}}>{rotulo}</span>
+      <span style={{fontWeight:800, color:'var(--txt2)'}}>{valor}</span>
+    </div>
+  );
+
+  return (
+    <div style={{background:'var(--panel-bg)', padding:12, borderRadius:12, marginBottom:20}}>
+      <div style={{fontSize:12, color:'var(--mut)', marginBottom:10, lineHeight:1.5}}>
+        Resumo de <strong>{relatorio.trimestre}</strong>, {relatorio.totais.alunos} aluno(s). Baixe o JSON e
+        siga o manual em <code>docs/relatorio-temporada.md</code> para transformar em apresentação de encerramento.
+      </div>
+
+      {linha('Dias estudados (turma toda)', relatorio.totais.dias)}
+      {linha('XP conquistado', relatorio.totais.xp)}
+      {linha('Semanas completas', relatorio.totais.semanasCompletas)}
+      {linha('No Clube da Temporada (tudo, mesmo atrasado)', relatorio.clubeDaTemporada.length)}
+
+      {relatorio.ofensivaReal[0] && (
+        <div style={{marginTop:14}}>
+          <div style={{fontSize:11, color:'var(--gold)', fontWeight:900, textTransform:'uppercase', letterSpacing:'.06em'}}>Maior ofensiva real</div>
+          {relatorio.ofensivaReal.slice(0, 3).map(o => (
+            <div key={o.userId} style={{fontSize:13, color:'var(--txt2)', padding:'4px 0'}}>{o.nome}: <strong>{o.dias} dias seguidos</strong></div>
+          ))}
+        </div>
+      )}
+
+      {relatorio.melhorSemana[0] && (
+        <div style={{marginTop:14}}>
+          <div style={{fontSize:11, color:'var(--gold)', fontWeight:900, textTransform:'uppercase', letterSpacing:'.06em'}}>Melhor semana</div>
+          <div style={{fontSize:13, color:'var(--txt2)', padding:'4px 0'}}>
+            {relatorio.melhorSemana[0].week} — {relatorio.melhorSemana[0].estudosNoDia} estudos no dia certo, {relatorio.melhorSemana[0].alunos} alunos
+          </div>
+        </div>
+      )}
+
+      {relatorio.liderancaPeloExemplo[0] && (
+        <div style={{marginTop:14}}>
+          <div style={{fontSize:11, color:'var(--gold)', fontWeight:900, textTransform:'uppercase', letterSpacing:'.06em'}}>Liderança pelo exemplo</div>
+          {relatorio.liderancaPeloExemplo.slice(0, 3).map(l => (
+            <div key={l.nome} style={{fontSize:13, color:'var(--txt2)', padding:'4px 0'}}>{l.nome}: <strong>{l.dias} dias</strong></div>
+          ))}
+        </div>
+      )}
+
+      <button className="btn btn-gold" onClick={onBaixar} style={{width:'100%', marginTop:16}}>⬇️ Baixar relatório (.json)</button>
+    </div>
+  );
+};
+
 const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: any) => {
   // A turma do painel é a que ele está CONDUZINDO (Fase 6), não mais a do
   // perfil dele: um professor pode conduzir mais de uma, e pode conduzir uma
@@ -5011,7 +5074,10 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
   const [streaks, setStreaks] = useState<Record<string, any>>({});
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
-  const [aba, setAba] = useState<'alunos' | 'ranking' | 'auditoria'>('alunos');
+  const [aba, setAba] = useState<'alunos' | 'ranking' | 'auditoria' | 'relatorio'>('alunos');
+  const [relatorio, setRelatorio] = useState<ResumoTemporada | null>(null);
+  const [carregandoRelatorio, setCarregandoRelatorio] = useState(false);
+  const [erroRelatorio, setErroRelatorio] = useState('');
 
   const turmaId = conducao.turmaId;
   // Vem da lista que o hook já leu — nada de um getTurma() por turma aberta.
@@ -5026,6 +5092,7 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
     // Trocou de turma: o ranking em tela é o da anterior. Zerar aqui é o que
     // impede a aba Ranking de mostrar a turma errada com o nome da nova.
     setRanking(null);
+    setRelatorio(null);
     setAlunos([]);
     getUsersDaTurma(turmaId)
       .then(us => { if (vivo) setAlunos(us); })
@@ -5059,6 +5126,58 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
       .catch(() => setRanking([]));
   }, [aba, ranking, licao?.semana, alunos, turmaId]);
 
+  // Relatório da temporada (regras em src/relatorioTemporada.ts e no manual
+  // docs/relatorio-temporada.md). Só carrega quando a aba é aberta — é ~13x
+  // mais leitura que o ranking da semana, então nada disso roda de graça.
+  //
+  // As semanas da temporada saem do MESMO jeito que o Sorteador já usa: as
+  // lições da trilha da turma cujo `trimestre` bate com a lição atual (ver
+  // useSorteador). getSeasonProgress busca por semana, sem filtro de turma —
+  // por isso pega de brinde o progresso da liderança em OUTRAS trilhas (ex.:
+  // um admin que também estuda na trilha adulto), que a liderancaPeloExemplo
+  // usa; o recorte por turma/trilha para os alunos é feito aqui, no cliente.
+  useEffect(() => {
+    if (aba !== 'relatorio' || relatorio || carregandoRelatorio) return;
+    if (!turma?.track || !licao?.trimestre || alunos.length === 0) return;
+    let vivo = true;
+    setCarregandoRelatorio(true);
+    setErroRelatorio('');
+    (async () => {
+      try {
+        const licoes = (await loadTrackLessons(turma.track)).filter((l: any) => !l.isAdminOnly && l.trimestre === licao.trimestre);
+        if (!licoes.length) throw new Error('Não achei as lições desta temporada.');
+        const semanas = licoes.map((l: any) => l.semana);
+        const rows = await getSeasonProgress(semanas);
+        const linhasDaTurma = rows.filter((r: any) => r.turmaId === turmaId && (r.track || 'teen') === turma.track);
+        const conduzem = new Set(turma.professores || []);
+        const linhasLideranca = rows.filter((r: any) => r.isAdmin || conduzem.has(r.userId));
+        const criadoEmPorAluno: Record<string, string> = {};
+        for (const a of alunos) if (a.criadoEm) criadoEmPorAluno[a.id] = String(a.criadoEm).slice(0, 10);
+        const resumo = montarResumoTemporada({
+          linhasDaTurma, linhasLiderancaTodasTrilhas: linhasLideranca, licoes, criadoEmPorAluno,
+          turmaNome: turma.nome, trimestre: licao.trimestre,
+        });
+        if (vivo) setRelatorio(resumo);
+      } catch (e: any) {
+        if (vivo) setErroRelatorio(e?.message || 'Não foi possível montar o relatório.');
+      } finally {
+        if (vivo) setCarregandoRelatorio(false);
+      }
+    })();
+    return () => { vivo = false; };
+  }, [aba, relatorio, carregandoRelatorio, turma, licao?.trimestre, alunos, turmaId]);
+
+  const baixarRelatorio = () => {
+    if (!relatorio) return;
+    const blob = new Blob([JSON.stringify(relatorio, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `relatorio-temporada-${(turma?.nome || 'turma').replace(/\s+/g, '-').toLowerCase()}-${licao?.trimestre || ''}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (carregando || conducao.carregando) {
     return <div className="scr"><div className="hdr"><button className="btn-back" onClick={onBack}>← Voltar</button><h2>🎓 Minha Turma</h2></div><div style={{padding:20, color:'var(--mut)'}}>Carregando...</div></div>;
   }
@@ -5083,6 +5202,7 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
     { k: 'alunos', label: `Alunos (${alunos.length})` },
     { k: 'ranking', label: 'Ranking' },
     { k: 'auditoria', label: 'Auditoria' },
+    { k: 'relatorio', label: '📊 Temporada' },
   ];
 
   return (
@@ -5108,6 +5228,20 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
             </div>
           </div>
         )}
+
+        {/* Atalhos para os manuais estáticos (public/manuais/*.pdf, gerados por
+            scripts/gerar-manuais-pdf.mjs a partir de docs/*.md) — sem dado de
+            aluno, então servem para qualquer professor de qualquer turma. */}
+        <div style={{display:'flex', gap:8, marginBottom:14, fontSize:12}}>
+          <a href="/manuais/relatorio-temporada.pdf" target="_blank" rel="noopener noreferrer" download
+            style={{flex:1, textAlign:'center', padding:'8px 6px', borderRadius:10, border:'1px solid var(--input-border)', background:'var(--input-bg)', color:'var(--txt2)', textDecoration:'none', fontWeight:700}}>
+            📄 Manual de dados (PDF)
+          </a>
+          <a href="/manuais/manual-apresentacao-encerramento.pdf" target="_blank" rel="noopener noreferrer" download
+            style={{flex:1, textAlign:'center', padding:'8px 6px', borderRadius:10, border:'1px solid var(--input-border)', background:'var(--input-bg)', color:'var(--txt2)', textDecoration:'none', fontWeight:700}}>
+            🎤 Manual de apresentação (PDF)
+          </a>
+        </div>
 
         <div style={{display:'flex', gap:6, marginBottom:14}}>
           {abas.map(a => (
@@ -5173,6 +5307,15 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador }: 
             </div>
             <AuditoriaPontuacao users={alunos} somenteLeitura />
           </>
+        )}
+
+        {aba === 'relatorio' && (
+          <RelatorioTemporadaAba
+            relatorio={relatorio}
+            carregando={carregandoRelatorio}
+            erro={erroRelatorio}
+            onBaixar={baixarRelatorio}
+          />
         )}
 
         <div style={{display:'flex', gap:8, marginTop:6}}>
