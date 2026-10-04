@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
+import { getTrackLessons, loadTrackLessons, isTrackLoaded, getTrackLessonsComHistorico, loadTrackLessonsComHistorico } from './data';
 import { planejarBackfill } from './backfillTurmas';
 import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor } from './utils';
 import { montarResumoTemporada, ResumoTemporada, semanaTodaNoDia } from './relatorioTemporada';
@@ -27,7 +27,7 @@ export const MULTI_LOCATION_ENABLED = false;
 export const PROFESSOR_ESCOPO_TURMA = true;
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
-export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 1 e 2 Coríntios' };
+export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 Adultos' };
 
 export type Tema = 'auto' | 'dark' | 'light' | 'neon' | 'manga' | 'mvp' | 'mvp-light';
 export const TEMAS: { id: Tema; label: string }[] = [
@@ -400,22 +400,15 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
   // continuava aparecendo aqui embaixo, misturada com a nova, com "Semana X
   // de Y" somando as duas. Isso vale a partir da meia-noite em que a lição
   // ativa muda de temporada (getActiveLicao já é por data, não precisa de
-  // gatilho extra). Admin/professor NÃO entram nessa trava: a temporada
-  // anterior continua visível para eles de propósito — é dado que a
-  // liderança ainda usa (revisão, análises, cobrar quem ficou pra trás).
+  // gatilho extra). Temporadas ENCERRADAS não chegam aqui para ninguém: o
+  // conteúdo delas saiu do app e só o esqueleto fica em historicoTemporadas.ts
+  // (apresentação, relatório e sorteio). Esta trava só separa temporadas que
+  // coexistam no conteúdo atual — a liderança vê todas, o aluno a da vez.
   const podeVerTemporadasAnteriores = !!jogador?.isAdmin || !!jogador?.isProfessor;
-  // Liberação temporária (só 2026-09-26): pessoal pediu para fechar a campanha
-  // "Provado pelo Fogo" (semana 2026-W38) no dia seguinte ao encerramento —
-  // sem isso, o filtro de trimestre acima esconderia a trilha da campanha
-  // antiga do aluno comum a partir de hoje. Remover este bloco depois de hoje;
-  // o ranking geral continua bloqueado à parte (ver RANK_TABS/CAMPANHA_SCOPES).
-  const LIBERACAO_TEMP_TRIMESTRE = 'Provado pelo Fogo';
-  const liberacaoTempAtiva = hojeLocalISO() === '2026-09-26';
   const visiveis = useMemo(() => trackLessons.filter((l: any) =>
     (!l.isAdminOnly || podeVerTemporadasAnteriores) &&
-    (l.isAdminOnly || podeVerTemporadasAnteriores || l.trimestre === licao?.trimestre ||
-      (liberacaoTempAtiva && l.trimestre === LIBERACAO_TEMP_TRIMESTRE))
-  ), [trackLessons, podeVerTemporadasAnteriores, licao?.trimestre, liberacaoTempAtiva]);
+    (l.isAdminOnly || podeVerTemporadasAnteriores || l.trimestre === licao?.trimestre)
+  ), [trackLessons, podeVerTemporadasAnteriores, licao?.trimestre]);
 
   // Numeração "Semana N" por TEMPORADA (trimestre), não índice global de `visiveis` —
   // admin/professor veem várias temporadas juntas na trilha (linha acima), então uma
@@ -454,7 +447,10 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
 
   // Ofensiva real da temporada (🔥) — derivada do Firestore (allDone + trackLessons),
   // não do localStorage do aparelho (troca de celular não zera mais)
-  const seasonStreak = useMemo(() => computeRealStreak(allDone, trackLessons, datasEstudo), [allDone, trackLessons, datasEstudo]);
+  // A ofensiva atravessa a virada de temporada: as datas das semanas já
+  // encerradas vêm do histórico (esqueleto), senão ela zerava no 1º dia da nova.
+  const licoesComHistorico = useMemo(() => getTrackLessonsComHistorico(jogador?.track), [jogador?.track, trackLessons]);
+  const seasonStreak = useMemo(() => computeRealStreak(allDone, licoesComHistorico, datasEstudo), [allDone, licoesComHistorico, datasEstudo]);
 
   // Banner suspenso acompanha a semana visível na rolagem (e a selecionada)
   const [bannerL, setBannerL] = useState<any>(licao);
@@ -638,6 +634,51 @@ export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstu
 };
 
 /* ===== ESTUDO ===== */
+
+/* ===== TIRINHA DO SÁBADO (trilha Jovem) =====
+ * A abertura de cada lição dos Jovens é uma tirinha em 3 quadros. Ela entra
+ * como imagem (public/tirinhas/) + `descricao` em texto: a descrição é o que
+ * garante que nada se perde quando a imagem não carrega (sem internet), quando
+ * o celular é pequeno demais para ler os balões, ou para quem usa leitor de
+ * tela. As perguntas do sábado são escritas em cima dela.
+ *  - toque na imagem: abre grande, com rolagem lateral (tirinha é larga);
+ *  - se a imagem falhar, a descrição abre sozinha. */
+export const TirinhaDoDia = ({ imagem }: { imagem: { src: string; alt: string; descricao: string } }) => {
+  const [falhou, setFalhou] = useState(false);
+  const [aberta, setAberta] = useState(false);
+  const src = `${import.meta.env.BASE_URL || '/'}${String(imagem.src || '').replace(/^\/+/, '')}`;
+  return (
+    <figure style={{margin:'0 0 20px'}}>
+      {!falhou && (
+        <button type="button" onClick={() => setAberta(true)} aria-label="Ampliar a tirinha"
+          style={{display:'block', width:'100%', padding:0, border:'1.5px solid var(--panel-border)', borderRadius:14, overflow:'hidden', background:'#fff', cursor:'zoom-in'}}>
+          <img src={src} alt={imagem.alt} onError={() => setFalhou(true)} style={{display:'block', width:'100%', height:'auto'}} />
+        </button>
+      )}
+      {!falhou && <figcaption style={{fontSize:11, color:'var(--mut)', textAlign:'center', marginTop:6}}>🔍 Toque na tirinha para ampliar</figcaption>}
+      <details open={falhou} style={{marginTop:10, background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'10px 14px'}}>
+        <summary style={{cursor:'pointer', fontWeight:800, fontSize:13, color:'var(--txt2)'}}>📖 {falhou ? 'A tirinha (a imagem não carregou)' : 'Ler a descrição da tirinha'}</summary>
+        <div style={{marginTop:10, fontSize:14, lineHeight:1.65, color:'var(--txt2)'}}>
+          {String(imagem.descricao || '').split('\n\n').filter(Boolean).map((t, i) => <p key={i} style={{margin:'0 0 10px'}}>{t}</p>)}
+        </div>
+      </details>
+      {aberta && createPortal(
+        <div role="dialog" aria-label="Tirinha ampliada" onClick={() => setAberta(false)}
+          style={{position:'fixed', inset:0, zIndex:10000, background:'rgba(0,0,0,.92)', display:'flex', flexDirection:'column'}}>
+          <div style={{padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center', color:'#fff', fontSize:13, fontWeight:700}}>
+            <span>↔️ Arraste para o lado</span>
+            <button type="button" className="btn btn-ghost btn-sm" style={{width:'auto'}} onClick={() => setAberta(false)}>✕ Fechar</button>
+          </div>
+          <div style={{flex:1, overflow:'auto', display:'flex', alignItems:'center'}} onClick={e => e.stopPropagation()}>
+            <img src={src} alt={imagem.alt} style={{width:'max(900px, 100vw)', maxWidth:'none', height:'auto', background:'#fff'}} />
+          </div>
+        </div>,
+        document.body
+      )}
+    </figure>
+  );
+};
+
 export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, onDayUpdated, onQuiz, onBack, onMural }: any) => {
   const initHistory = prog.history?.[dia.id] || {};
   const [notes, setNotes] = useState(initHistory.nota || '');
@@ -848,6 +889,7 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, on
       </div>
       <div ref={ref} onScroll={onScroll} style={{flex:1,overflowY:'auto',padding:'20px 16px 120px'}}>
         <div style={{fontWeight:900,fontSize:22,marginBottom:20,lineHeight:1.2,color:'var(--txt2)'}}>{dia.titulo}</div>
+        {dia.imagem?.src && <TirinhaDoDia imagem={dia.imagem} />}
         {/* Antes do texto do dia: orar pela turma. Sai pelo resto do dia assim
             que a pessoa abre o mural ou dispensa (ver ConviteMural). */}
         {onMural && <ConviteMural jogador={jogador} onMural={() => wrapLeave(onMural)} />}
@@ -1695,16 +1737,6 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   const porDias = isPair;
   const mainTab = (type === 'week' || type === 'weekGeral') ? 'week' : isPair ? 'duplas' : 'campanha';
 
-  // Liberação temporária (só 2026-09-26): a trilha da campanha "Provado pelo
-  // Fogo" (semana 2026-W38) reabre por um dia para quem não é staff (ver
-  // Home, mais acima neste arquivo) — mas o ranking dela tem que ficar só na
-  // aba Semana. "Campanha"/"Duplas > Campanha" puxariam a foto já encerrada
-  // da temporada inteira, que é justamente o que não foi pedido. Remover
-  // este bloco junto com o de Home depois de hoje.
-  const campanhaBloqueadaHoje = licao?.trimestre === 'Provado pelo Fogo'
-    && hojeLocalISO() === '2026-09-26'
-    && !jogador?.isAdmin && !jogador?.isProfessor;
-
   const { regular, staff } = useMemo(() => {
     const all = isPair
       ? [...ranking].map((r: any) => ({
@@ -1869,13 +1901,11 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       <div style={{padding:'4px 16px 12px'}}>
         <div style={{display:'flex',background:'var(--g3)',borderRadius:12,padding:4,gap:2}}>
           {RANK_TABS.map(t => {
-            const bloqueada = campanhaBloqueadaHoje && t.k === 'campanha';
             return (
               <div
                 key={t.k}
-                onClick={() => !bloqueada && onChangeType(t.k === 'campanha' ? CAMPANHA_SCOPES[0].k : t.k === 'duplas' ? 'duplasSemana' : 'week')}
-                title={bloqueada ? 'Ranking da campanha encerrada — só a semana fica disponível hoje' : undefined}
-                style={{flex:1,textAlign:'center',padding:'8px 4px',borderRadius:8,fontWeight:800,fontSize:13,cursor:bloqueada?'default':'pointer',transition:'background .2s',background:mainTab===t.k?'rgba(247,198,0,.15)':'transparent',color:bloqueada?'var(--mut)':mainTab===t.k?'var(--gold)':'var(--mut)',opacity:bloqueada?.4:1,fontFamily:'Poppins,sans-serif'}}
+                onClick={() => onChangeType(t.k === 'campanha' ? CAMPANHA_SCOPES[0].k : t.k === 'duplas' ? 'duplasSemana' : 'week')}
+                style={{flex:1,textAlign:'center',padding:'8px 4px',borderRadius:8,fontWeight:800,fontSize:13,cursor:'pointer',transition:'background .2s',background:mainTab===t.k?'rgba(247,198,0,.15)':'transparent',color:mainTab===t.k?'var(--gold)':'var(--mut)',fontFamily:'Poppins,sans-serif'}}
               >{t.label}</div>
             );
           })}
@@ -1897,13 +1927,11 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         {mainTab !== 'week' && (mainTab === 'duplas' || CAMPANHA_SCOPES.length > 1) && (
           <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'center',flexWrap:'wrap'}}>
             {(mainTab === 'campanha' ? CAMPANHA_SCOPES : DUPLA_SCOPES).map(s => {
-              const bloqueada = campanhaBloqueadaHoje && s.k === 'duplasCampanha';
               return (
                 <div
                   key={s.k}
-                  onClick={() => !bloqueada && onChangeType(s.k)}
-                  title={bloqueada ? 'Ranking da campanha encerrada — só a semana fica disponível hoje' : undefined}
-                  style={{padding:'6px 14px',borderRadius:20,fontSize:12,fontWeight:800,cursor:bloqueada?'default':'pointer',opacity:bloqueada?.4:1,fontFamily:'Poppins,sans-serif',border:`1.5px solid ${type===s.k?'rgba(247,198,0,.5)':'var(--b2)'}`,background:type===s.k?'rgba(247,198,0,.12)':'transparent',color:type===s.k?'var(--gold)':'var(--mut)'}}
+                  onClick={() => onChangeType(s.k)}
+                  style={{padding:'6px 14px',borderRadius:20,fontSize:12,fontWeight:800,cursor:'pointer',fontFamily:'Poppins,sans-serif',border:`1.5px solid ${type===s.k?'rgba(247,198,0,.5)':'var(--b2)'}`,background:type===s.k?'rgba(247,198,0,.12)':'transparent',color:type===s.k?'var(--gold)':'var(--mut)'}}
                 >{s.label}</div>
               );
             })}
@@ -2105,21 +2133,27 @@ export const acharLicaoDaSemana = (licoes: any[], semana?: string) => {
 // "Lição 3 - Título (data)" → "Lição 3" para caber no botão de navegação.
 const rotuloCurto = (l: any) => (l?.titulo || '').split(' - ')[0] || l?.semana || '—';
 
-export const SeletorLicao = ({ track, licao, onChange, podeTrocarTrilha = false, nota, titulo = '📖 Lição' }: {
+export const SeletorLicao = ({ track, licao, onChange, podeTrocarTrilha = false, nota, titulo = '📖 Lição', incluirHistorico = false }: {
   track: string;
   licao: any;
   onChange: (licao: any, track: string) => void;
   podeTrocarTrilha?: boolean;
   nota?: string;
   titulo?: string;
+  // Telas de histórico (apresentação, sorteio) enxergam também as temporadas
+  // encerradas — só o esqueleto delas. Estudo, quiz e Ao Vivo não: sem texto
+  // nem perguntas não há o que abrir.
+  incluirHistorico?: boolean;
 }) => {
-  const [licoes, setLicoes] = useState<any[]>(() => (getTrackLessons(track) || []).filter((l: any) => !l.isAdminOnly));
+  const listar = incluirHistorico ? getTrackLessonsComHistorico : getTrackLessons;
+  const carregar = incluirHistorico ? loadTrackLessonsComHistorico : loadTrackLessons;
+  const [licoes, setLicoes] = useState<any[]>(() => (listar(track) || []).filter((l: any) => !l.isAdminOnly));
   const [carregando, setCarregando] = useState(false);
 
   useEffect(() => {
     let vivo = true;
     if (!isTrackLoaded(track)) setCarregando(true);
-    loadTrackLessons(track)
+    carregar(track)
       .then(ls => { if (vivo) setLicoes((ls || []).filter((l: any) => !l.isAdminOnly)); })
       .catch(() => {})
       .finally(() => { if (vivo) setCarregando(false); });
@@ -2130,7 +2164,7 @@ export const SeletorLicao = ({ track, licao, onChange, podeTrocarTrilha = false,
     if (t === track || carregando) return;
     setCarregando(true);
     let ls: any[] = [];
-    try { ls = await loadTrackLessons(t); } catch { /* fica vazio, cai no aviso */ }
+    try { ls = await carregar(t); } catch { /* fica vazio, cai no aviso */ }
     setCarregando(false);
     // Mesma semana na trilha nova quando ela existe; senão, a lição de hoje.
     const nova = acharLicaoDaSemana(ls, licao?.semana);
@@ -2144,7 +2178,7 @@ export const SeletorLicao = ({ track, licao, onChange, podeTrocarTrilha = false,
     if (alvo) onChange(alvo, track);
   };
 
-  const trilhas: Track[] = ['teen', 'adult'];
+  const trilhas: Track[] = ['teen', 'youngAdult', 'adult'];
 
   return (
     <div style={{background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:14, padding:'12px 14px', marginBottom:16}}>
@@ -2187,9 +2221,14 @@ export const SeletorLicao = ({ track, licao, onChange, podeTrocarTrilha = false,
           style={{flex:1, minWidth:0, padding:'10px', borderRadius:10, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13, fontWeight:700, outline:'none'}}
         >
           {idx < 0 && <option value={licao?.semana || ''}>{rotuloCurto(licao)}</option>}
-          {licoes.map((l: any) => (
-            <option key={l.semana} value={l.semana}>{rotuloCurto(l)} · {l.semana}</option>
-          ))}
+          {(() => {
+            const trimestres = Array.from(new Set(licoes.map((l: any) => l.trimestre)));
+            const opcao = (l: any) => <option key={l.semana} value={l.semana}>{rotuloCurto(l)} · {l.semana}</option>;
+            // Com mais de uma temporada na lista (histórico), agrupa por nome.
+            return trimestres.length > 1
+              ? trimestres.map((t: any) => <optgroup key={t} label={t}>{licoes.filter((l: any) => l.trimestre === t).map(opcao)}</optgroup>)
+              : licoes.map(opcao);
+          })()}
         </select>
         <button
           type="button"
@@ -2353,7 +2392,7 @@ export const useSorteador = (licao: any, turmaId: string | undefined, track: str
           .filter((u: any) => !u.isAdmin && !u.isProfessor && u.dias === 7 && semanaTodaNoDia(u, licao))
           .map((u: any) => ({ id: u.id, nome: u.nome, avatar: u.avatar, xp: u.xp || 0, dias: u.dias, bilhetes: 1, semanasCompletas: 1 })));
       } else {
-        const licoes = (await loadTrackLessons(track as Track))
+        const licoes = (await loadTrackLessonsComHistorico(track as Track))
           .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre);
         const meta = diasLiberadosPorSemana(licoes, hojeLocalISO());
         const rows = await getSeasonProgress(Object.keys(meta));
@@ -2620,7 +2659,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   const sorteadosIds = new Set(sorteados.map(u => u.id));
   const naFila = users.filter(u => !sorteadosIds.has(u.id));
 
-  const licoesDaTemporada = getTrackLessons(sel.track as Track).filter((l: any) => !l.isAdminOnly && l.trimestre === sel.licao?.trimestre);
+  const licoesDaTemporada = getTrackLessonsComHistorico(sel.track as Track).filter((l: any) => !l.isAdminOnly && l.trimestre === sel.licao?.trimestre);
   const diasLiberados = Object.values(diasLiberadosPorSemana(licoesDaTemporada, hojeLocalISO())).reduce((s, n) => s + n, 0);
 
   // Trocar a turma troca a trilha do sorteio junto: a turma É de uma trilha
@@ -2631,7 +2670,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   useEffect(() => {
     if (!trilhaDaTurma || trilhaDaTurma === sel.track) return;
     let vivo = true;
-    loadTrackLessons(trilhaDaTurma)
+    loadTrackLessonsComHistorico(trilhaDaTurma)
       .then(ls => {
         if (!vivo) return;
         const nova = acharLicaoDaSemana(ls, sel.licao?.semana);
@@ -2685,7 +2724,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
 
   const rotuloDoPeriodo = (r: RegistroSorteio) => {
     if (r.tipo === 'temporada') return `Temporada ${r.periodo}`;
-    const l = getTrackLessons(r.track as Track).find((x: any) => x.semana === r.periodo);
+    const l = getTrackLessonsComHistorico(r.track as Track).find((x: any) => x.semana === r.periodo);
     return l ? tituloDaLicao(l) : r.periodo;
   };
 
@@ -2785,6 +2824,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
         <SeletorLicao
           track={sel.track}
           licao={sel.licao}
+          incluirHistorico
           podeTrocarTrilha={podeTrocarTrilha}
           onChange={(l, t) => setSel({ licao: l, track: t })}
           nota={tipo === 'semana'
@@ -4768,7 +4808,7 @@ const InviteCodesPanel = ({ jogador, locations }: { jogador: any; locations: { i
           <select value={selTrack} onChange={e => setSelTrack(e.target.value as Track)} style={{width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13}}>
             <option value="teen">Adolescente</option>
             <option value="youngAdult">Jovem</option>
-            <option value="adult">1 e 2 Coríntios</option>
+            <option value="adult">Adultos</option>
           </select>
         </div>
       </div>
@@ -4862,7 +4902,7 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
   // Metadados da lição para dar nome e data a cada dia. Se a trilha do aluno
   // não estiver carregada neste aparelho, cai para "Dia N" em vez de sumir.
   const licaoDe = (semana: string, track?: string) => {
-    try { return (getTrackLessons((track as any) || 'teen') as any[]).find(l => l.semana === semana) || null; }
+    try { return (getTrackLessonsComHistorico((track as any) || 'teen') as any[]).find(l => l.semana === semana) || null; }
     catch { return null; }
   };
 
@@ -5268,7 +5308,7 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador, on
   useEffect(() => {
     if (!turma?.track) return;
     let vivo = true;
-    getAllUsersStreaks(getTrackLessons(turma.track)).then(s => { if (vivo) setStreaks(s || {}); }).catch(() => {});
+    getAllUsersStreaks(getTrackLessonsComHistorico(turma.track)).then(s => { if (vivo) setStreaks(s || {}); }).catch(() => {});
     return () => { vivo = false; };
   }, [turma?.track]);
 
@@ -5305,7 +5345,7 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador, on
     setErroRelatorio('');
     (async () => {
       try {
-        const licoes = (await loadTrackLessons(turma.track)).filter((l: any) => !l.isAdminOnly && l.trimestre === licao.trimestre);
+        const licoes = (await loadTrackLessonsComHistorico(turma.track)).filter((l: any) => !l.isAdminOnly && l.trimestre === licao.trimestre);
         if (!licoes.length) throw new Error('Não achei as lições desta temporada.');
         const semanas = licoes.map((l: any) => l.semana);
         const rows = await getSeasonProgress(semanas);
@@ -5583,7 +5623,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
   const [streaks, setStreaks] = useState<Record<string, { streak: number }>>({});
   useEffect(() => {
     if (!licao?.trimestre) return;
-    getAllUsersStreaks(getTrackLessons(jogador?.track)).then(setStreaks).catch(() => {});
+    getAllUsersStreaks(getTrackLessonsComHistorico(jogador?.track)).then(setStreaks).catch(() => {});
   }, [licao?.trimestre]);
 
   // Relatos manuais (botão "Reportar um problema" / tela de erro) + log
@@ -5931,7 +5971,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
   // (testar/acompanhar outras trilhas), sem precisar de outro admin.
   const [switchingTrack, setSwitchingTrack] = useState(false);
   const handleSwitchTrackClick = async (t: Track) => {
-    if (t === 'youngAdult' || t === jogador.track || switchingTrack) return;
+    if (t === jogador.track || switchingTrack) return;
     setSwitchingTrack(true);
     try {
       await onSwitchTrack?.(t);
@@ -6047,18 +6087,18 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                   <button
                     key={t}
                     type="button"
-                    disabled={t === 'youngAdult' || switchingTrack}
+                    disabled={switchingTrack}
                     onClick={() => handleSwitchTrackClick(t)}
                     style={{
                       flex: '1 1 30%', padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 800,
                       border: jogador.track === t ? '2px solid var(--gold)' : '1px solid var(--input-border)',
                       background: jogador.track === t ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
-                      color: t === 'youngAdult' ? 'var(--mut)' : 'var(--txt)',
-                      opacity: t === 'youngAdult' || switchingTrack ? 0.6 : 1,
-                      cursor: t === 'youngAdult' ? 'not-allowed' : (switchingTrack ? 'wait' : 'pointer')
+                      color: 'var(--txt)',
+                      opacity: switchingTrack ? 0.6 : 1,
+                      cursor: switchingTrack ? 'wait' : 'pointer'
                     }}
                   >
-                    {TRACK_LABELS[t]}{t === 'youngAdult' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
+                    {TRACK_LABELS[t]}
                   </button>
                 ))}
               </div>
@@ -6078,18 +6118,15 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                   <button
                     key={t}
                     type="button"
-                    disabled={t === 'youngAdult'}
                     onClick={() => setTrack(t)}
                     style={{
                       flex: '1 1 30%', padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 800,
                       border: track === t ? '2px solid var(--gold)' : '1px solid var(--input-border)',
                       background: track === t ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
-                      color: t === 'youngAdult' ? 'var(--mut)' : 'var(--txt)',
-                      opacity: t === 'youngAdult' ? 0.6 : 1,
-                      cursor: t === 'youngAdult' ? 'not-allowed' : 'pointer'
+                      color: 'var(--txt)'
                     }}
                   >
-                    {TRACK_LABELS[t]}{t === 'youngAdult' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
+                    {TRACK_LABELS[t]}
                   </button>
                 ))}
               </div>
@@ -6192,18 +6229,15 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                       <button
                         key={t}
                         type="button"
-                        disabled={t === 'youngAdult'}
-                        onClick={() => setTrack(t)}
+                            onClick={() => setTrack(t)}
                         style={{
                           flex: '1 1 30%', padding: '10px 6px', borderRadius: 10, fontSize: 12, fontWeight: 800,
                           border: track === t ? '2px solid var(--gold)' : '1px solid var(--input-border)',
                           background: track === t ? 'rgba(247,198,0,.12)' : 'var(--input-bg)',
-                          color: t === 'youngAdult' ? 'var(--mut)' : 'var(--txt)',
-                          opacity: t === 'youngAdult' ? 0.6 : 1,
-                          cursor: t === 'youngAdult' ? 'not-allowed' : 'pointer'
+                          color: 'var(--txt)'
                         }}
                       >
-                        {TRACK_LABELS[t]}{t === 'youngAdult' ? <div style={{fontSize:10, marginTop:2}}>🔒 Em breve</div> : null}
+                        {TRACK_LABELS[t]}
                       </button>
                     ))}
                   </div>

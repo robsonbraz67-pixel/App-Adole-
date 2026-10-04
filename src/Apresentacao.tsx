@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { loadTrackLessons } from './data';
+import { loadTrackLessonsComHistorico } from './data';
 import { hojeLocalISO, somLigado, tocarSorteioTambor, precarregarSorteioTambor, tocarEfeito, precarregarEfeitos, ATAQUE_S, SUSPENSE_LOOP, SomTocando } from './utils';
 import { getSeasonProgress, getUsersDaTurma, registrarSorteio } from './firebase';
 import {
@@ -113,7 +113,7 @@ const carregarDados = async (args: {
   modo: Modo; licao: any; turma: any; turmaId: string;
 }): Promise<Dados> => {
   const { modo, licao, turma, turmaId } = args;
-  const todas: any[] = ((await loadTrackLessons(turma.track)) || []).filter((l: any) => !l.isAdminOnly && l.dias?.length);
+  const todas: any[] = ((await loadTrackLessonsComHistorico(turma.track)) || []).filter((l: any) => !l.isAdminOnly && l.dias?.length);
   const licoes: Licao[] = modo === 'semana' ? [licao] : todas.filter(l => l.trimestre === licao.trimestre);
   if (!licoes.length) throw new Error('Não achei as lições desse período.');
   const [rows, alunos] = await Promise.all([getSeasonProgress(licoes.map(l => l.semana)), getUsersDaTurma(turmaId)]);
@@ -737,7 +737,7 @@ export const Apresentacao = ({ licao, jogador, onBack }: any) => {
   useEffect(() => { setDados(null); }, [modo, sel.licao?.semana, sel.licao?.trimestre, conducao.turmaId]);
   useEffect(() => {
     if (turma?.track && turma.track !== sel.track) {
-      loadTrackLessons(turma.track).then(ls => {
+      loadTrackLessonsComHistorico(turma.track).then(ls => {
         const l = (ls || []).find((x: any) => x.semana === sel.licao?.semana) || (ls || []).find((x: any) => !x.isAdminOnly);
         if (l) setSel({ licao: l, track: turma.track });
       }).catch(() => {});
@@ -797,7 +797,7 @@ export const Apresentacao = ({ licao, jogador, onBack }: any) => {
               <button className={`theme-btn${modo === 'semana' ? ' active' : ''}`} onClick={() => setModo('semana')}>📅 Semana</button>
               <button className={`theme-btn${modo === 'temporada' ? ' active' : ''}`} onClick={() => setModo('temporada')}>🏆 Temporada</button>
             </div>
-            <SeletorLicao track={sel.track} licao={sel.licao} onChange={(l, t) => setSel({ licao: l, track: t })}
+            <SeletorLicao track={sel.track} licao={sel.licao} incluirHistorico onChange={(l, t) => setSel({ licao: l, track: t })}
               nota={modo === 'semana' ? 'A apresentação fecha esta semana.' : 'Qualquer lição da temporada serve: ela diz qual temporada fechar.'} />
             <div style={{ textAlign: 'center', margin: '8px 0 16px' }}>
               <button className={`btn btn-gold${carregando ? ' btn-dis' : ''}`} onClick={montar} disabled={carregando} style={{ width: 'auto', display: 'inline-flex', padding: '12px 24px' }}>
