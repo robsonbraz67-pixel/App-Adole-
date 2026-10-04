@@ -88,6 +88,10 @@ for (const trilha of TRILHAS) {
         const im = dia.imagem;
         if (!im.src || !im.alt || !im.descricao) erros.push(`${ondeDia}: imagem precisa de src, alt e descricao`);
         else if (!existsSync(`public/${im.src}`)) erros.push(`${ondeDia}: imagem public/${im.src} não existe`);
+        for (const q of im.quadros || []) {
+          if (!q?.src || !existsSync(`public/${q.src}`)) erros.push(`${ondeDia}: quadro da tirinha public/${q?.src} não existe`);
+        }
+        if (im.quadros && im.quadros.filter(q => !q.faixa).length < 2) erros.push(`${ondeDia}: imagem.quadros precisa de 2+ quadros (fora as faixas)`);
       }
 
       (dia.perguntas || []).forEach(p => {

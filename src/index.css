@@ -1383,3 +1383,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .esp-flash-ok{background:rgba(79,184,92,.22)}
 .esp-flash-erro{background:rgba(227,28,61,.2);animation:shake .4s}
 .esp-relampago-item{cursor:default}
+
+/* Tirinha quadro a quadro: sem barra de rolagem visível no trilho */
+.tirinha-trilho::-webkit-scrollbar{display:none}

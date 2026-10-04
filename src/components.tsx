@@ -636,26 +636,126 @@ export const BottomNav = ({ active, jogador, diaAtual, onHome, onRanking, onEstu
 /* ===== ESTUDO ===== */
 
 /* ===== TIRINHA DO SÁBADO (trilha Jovem) =====
- * A abertura de cada lição dos Jovens é uma tirinha em 3 quadros. Ela entra
- * como imagem (public/tirinhas/) + `descricao` em texto: a descrição é o que
- * garante que nada se perde quando a imagem não carrega (sem internet), quando
- * o celular é pequeno demais para ler os balões, ou para quem usa leitor de
- * tela. As perguntas do sábado são escritas em cima dela.
- *  - toque na imagem: abre grande, com rolagem lateral (tirinha é larga);
- *  - se a imagem falhar, a descrição abre sozinha. */
-export const TirinhaDoDia = ({ imagem }: { imagem: { src: string; alt: string; descricao: string } }) => {
+ * A abertura de cada lição dos Jovens é uma tirinha de 3–4 quadros. Inteira,
+ * ela é larga demais para o celular: com ~340 px de largura os balões ficam
+ * ilegíveis. Por isso ela chega em DOIS formatos:
+ *  - quadro a quadro (padrão): um quadro por vez, grande, deslizando para o
+ *    lado — como se lê uma HQ no celular. As faixas de legenda (`faixa: true`)
+ *    ficam fixas acima/abaixo dos quadros, na posição em que aparecem;
+ *  - a tirinha inteira, a um toque ("Ver inteira"), com zoom e rolagem lateral.
+ * A `descricao` em texto garante que nada se perde quando a imagem não carrega
+ * (sem internet) ou para quem usa leitor de tela; cada quadro usa o trecho
+ * "Nº quadro: ..." dela como texto alternativo. As perguntas do sábado são
+ * escritas em cima da tirinha.
+ *  - se uma imagem falhar, a descrição abre sozinha. */
+type QuadroTirinha = { src: string; faixa?: boolean };
+const urlPublica = (src: string) => `${import.meta.env.BASE_URL || '/'}${String(src || '').replace(/^\/+/, '')}`;
+// "1º quadro: ... 2º quadro: ..." → { 1: '...', 2: '...' }
+const descricaoPorQuadro = (descricao: string) => {
+  const mapa: Record<number, string> = {};
+  const re = /(\d+)º quadro:\s*([\s\S]*?)(?=\s*\d+º quadro:|\s*Ideia central:|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(descricao || ''))) mapa[Number(m[1])] = m[2].trim();
+  return mapa;
+};
+
+export const TirinhaDoDia = ({ imagem }: { imagem: { src: string; alt: string; descricao: string; quadros?: QuadroTirinha[] } }) => {
   const [falhou, setFalhou] = useState(false);
-  const [aberta, setAberta] = useState(false);
-  const src = `${import.meta.env.BASE_URL || '/'}${String(imagem.src || '').replace(/^\/+/, '')}`;
+  const [zoom, setZoom] = useState<{ src: string; alt: string; larga: boolean } | null>(null);
+  const quadros = (imagem.quadros || []).filter(q => q?.src);
+  const temQuadros = quadros.filter(q => !q.faixa).length > 1;
+  const [inteira, setInteira] = useState(!temQuadros);
+  const [atual, setAtual] = useState(0);
+  const trilhoRef = useRef<HTMLDivElement>(null);
+
+  // Faixas de legenda antes do 1º quadro ficam em cima; as demais, embaixo.
+  const iPrimeiro = quadros.findIndex(q => !q.faixa);
+  const faixasTopo = quadros.filter((q, i) => q.faixa && i < iPrimeiro);
+  const faixasBase = quadros.filter((q, i) => q.faixa && i > iPrimeiro);
+  const paineis = quadros.filter(q => !q.faixa);
+  const textos = useMemo(() => descricaoPorQuadro(imagem.descricao), [imagem.descricao]);
+
+  const irPara = (i: number) => {
+    const el = trilhoRef.current;
+    if (!el) return;
+    const alvo = Math.max(0, Math.min(paineis.length - 1, i));
+    el.scrollTo({ left: alvo * el.clientWidth, behavior: 'smooth' });
+  };
+  const aoRolar = () => {
+    const el = trilhoRef.current;
+    if (el && el.clientWidth) setAtual(Math.round(el.scrollLeft / el.clientWidth));
+  };
+
+  // Faixa de legenda larga (uma linha de texto) fica miúda no celular: tocar amplia.
+  const imgFaixa = (q: QuadroTirinha, k: string) => (
+    <button key={k} type="button" onClick={() => setZoom({ src: q.src, alt: '', larga: true })} aria-label="Ampliar a legenda da tirinha"
+      style={{display:'block', width:'100%', padding:0, border:'none', background:'#fff', cursor:'zoom-in'}}>
+      <img src={urlPublica(q.src)} alt="" onError={() => setFalhou(true)}
+        style={{display:'block', maxWidth:'100%', height:'auto', margin:'0 auto'}} />
+    </button>
+  );
+  const botaoSeta = (dir: -1 | 1) => {
+    const desab = dir < 0 ? atual <= 0 : atual >= paineis.length - 1;
+    return (
+      <button type="button" onClick={() => irPara(atual + dir)} disabled={desab} aria-label={dir < 0 ? 'Quadro anterior' : 'Próximo quadro'}
+        style={{position:'absolute', top:'50%', [dir < 0 ? 'left' : 'right']:6, transform:'translateY(-50%)', width:34, height:34, borderRadius:'50%',
+          border:'none', background:'rgba(10,18,48,.55)', color:'#fff', fontSize:18, fontWeight:900, cursor: desab ? 'default' : 'pointer',
+          opacity: desab ? 0 : 1, transition:'opacity .2s', pointerEvents: desab ? 'none' : 'auto'} as any}>{dir < 0 ? '‹' : '›'}</button>
+    );
+  };
+
   return (
     <figure style={{margin:'0 0 20px'}}>
       {!falhou && (
-        <button type="button" onClick={() => setAberta(true)} aria-label="Ampliar a tirinha"
-          style={{display:'block', width:'100%', padding:0, border:'1.5px solid var(--panel-border)', borderRadius:14, overflow:'hidden', background:'#fff', cursor:'zoom-in'}}>
-          <img src={src} alt={imagem.alt} onError={() => setFalhou(true)} style={{display:'block', width:'100%', height:'auto'}} />
-        </button>
+        <div style={{border:'1.5px solid var(--panel-border)', borderRadius:14, overflow:'hidden', background:'#fff'}}>
+          {!inteira && faixasTopo.length > 0 && <div style={{padding:'8px 8px 0'}}>{faixasTopo.map((q, i) => imgFaixa(q, `t${i}`))}</div>}
+          {inteira ? (
+            <button type="button" onClick={() => setZoom({ src: imagem.src, alt: imagem.alt, larga: true })} aria-label="Ampliar a tirinha"
+              style={{display:'block', width:'100%', padding:0, border:'none', background:'#fff', cursor:'zoom-in'}}>
+              <img src={urlPublica(imagem.src)} alt={imagem.alt} onError={() => setFalhou(true)} style={{display:'block', width:'100%', height:'auto'}} />
+            </button>
+          ) : (
+            <div style={{position:'relative'}}>
+              <div ref={trilhoRef} onScroll={aoRolar} className="tirinha-trilho"
+                style={{display:'flex', overflowX:'auto', scrollSnapType:'x mandatory', scrollbarWidth:'none'} as any}>
+                {paineis.map((q, i) => (
+                  <button key={q.src} type="button" aria-label={`Ampliar o quadro ${i + 1}`}
+                    onClick={() => setZoom({ src: q.src, alt: textos[i + 1] || `Quadro ${i + 1} da tirinha`, larga: false })}
+                    style={{flex:'0 0 100%', scrollSnapAlign:'center', padding:'8px', border:'none', background:'#fff', cursor:'zoom-in', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                    <img src={urlPublica(q.src)} alt={textos[i + 1] || `Quadro ${i + 1} da tirinha`} loading={i === 0 ? 'eager' : 'lazy'}
+                      onError={() => setFalhou(true)} style={{display:'block', maxWidth:'100%', maxHeight:'58vh', width:'auto', height:'auto'}} />
+                  </button>
+                ))}
+              </div>
+              {botaoSeta(-1)}
+              {botaoSeta(1)}
+            </div>
+          )}
+          {!inteira && faixasBase.length > 0 && <div style={{padding:'0 8px 8px'}}>{faixasBase.map((q, i) => imgFaixa(q, `b${i}`))}</div>}
+        </div>
       )}
-      {!falhou && <figcaption style={{fontSize:11, color:'var(--mut)', textAlign:'center', marginTop:6}}>🔍 Toque na tirinha para ampliar</figcaption>}
+      {!falhou && (
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginTop:8}}>
+          {!inteira ? (
+            <div style={{display:'flex', alignItems:'center', gap:6}} aria-label={`Quadro ${atual + 1} de ${paineis.length}`}>
+              {paineis.map((_, i) => (
+                <button key={i} type="button" onClick={() => irPara(i)} aria-label={`Ir ao quadro ${i + 1}`}
+                  style={{width: i === atual ? 20 : 8, height:8, borderRadius:4, border:'none', padding:0, cursor:'pointer',
+                    background: i === atual ? 'var(--gold)' : 'var(--mut)', opacity: i === atual ? 1 : .45, transition:'width .2s'}} />
+              ))}
+              <span style={{fontSize:11, color:'var(--mut)', marginLeft:4}}>{atual + 1}/{paineis.length} · deslize ↔</span>
+            </div>
+          ) : (
+            <span style={{fontSize:11, color:'var(--mut)'}}>🔍 Toque na tirinha para ampliar</span>
+          )}
+          {temQuadros && (
+            <button type="button" className="btn btn-ghost btn-sm" style={{width:'auto', fontSize:12, padding:'4px 10px', minHeight:0}}
+              onClick={() => { setInteira(v => !v); setAtual(0); }}>
+              {inteira ? '🖼️ Quadro a quadro' : '🧩 Ver inteira'}
+            </button>
+          )}
+        </div>
+      )}
       <details open={falhou} style={{marginTop:10, background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'10px 14px'}}>
         <summary style={{cursor:'pointer', fontWeight:800, fontSize:13, color:'var(--txt2)'}}>📖 {falhou ? 'A tirinha (a imagem não carregou)' : 'Ler a descrição da tirinha'}</summary>
         <div style={{marginTop:10, fontSize:14, lineHeight:1.65, color:'var(--txt2)'}}>
@@ -663,15 +763,16 @@ export const TirinhaDoDia = ({ imagem }: { imagem: { src: string; alt: string; d
           {String(imagem.descricao || '').replace(/\s+(?=(?:\d+º quadro|Ideia central)\b)/g, '\n\n').split('\n\n').filter(Boolean).map((t, i) => <p key={i} style={{margin:'0 0 10px'}}>{t}</p>)}
         </div>
       </details>
-      {aberta && createPortal(
-        <div role="dialog" aria-label="Tirinha ampliada" onClick={() => setAberta(false)}
+      {zoom && createPortal(
+        <div role="dialog" aria-label="Tirinha ampliada" onClick={() => setZoom(null)}
           style={{position:'fixed', inset:0, zIndex:10000, background:'rgba(0,0,0,.92)', display:'flex', flexDirection:'column'}}>
           <div style={{padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center', color:'#fff', fontSize:13, fontWeight:700}}>
-            <span>↔️ Arraste para o lado</span>
-            <button type="button" className="btn btn-ghost btn-sm" style={{width:'auto'}} onClick={() => setAberta(false)}>✕ Fechar</button>
+            <span>{zoom.larga ? '↔️ Arraste para o lado' : '🤏 Use dois dedos para aproximar'}</span>
+            <button type="button" className="btn btn-ghost btn-sm" style={{width:'auto'}} onClick={() => setZoom(null)}>✕ Fechar</button>
           </div>
-          <div style={{flex:1, overflow:'auto', display:'flex', alignItems:'center'}} onClick={e => e.stopPropagation()}>
-            <img src={src} alt={imagem.alt} style={{width:'max(900px, 100vw)', maxWidth:'none', height:'auto', background:'#fff'}} />
+          <div style={{flex:1, overflow:'auto', display:'flex', alignItems:'center', justifyContent: zoom.larga ? 'flex-start' : 'center'}} onClick={e => e.stopPropagation()}>
+            <img src={urlPublica(zoom.src)} alt={zoom.alt}
+              style={zoom.larga ? {width:'max(900px, 100vw)', maxWidth:'none', height:'auto', background:'#fff'} : {maxWidth:'100vw', maxHeight:'88vh', height:'auto', background:'#fff'}} />
           </div>
         </div>,
         document.body
