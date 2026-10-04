@@ -659,7 +659,8 @@ export const TirinhaDoDia = ({ imagem }: { imagem: { src: string; alt: string; d
       <details open={falhou} style={{marginTop:10, background:'var(--panel-bg)', border:'1px solid var(--panel-border)', borderRadius:12, padding:'10px 14px'}}>
         <summary style={{cursor:'pointer', fontWeight:800, fontSize:13, color:'var(--txt2)'}}>📖 {falhou ? 'A tirinha (a imagem não carregou)' : 'Ler a descrição da tirinha'}</summary>
         <div style={{marginTop:10, fontSize:14, lineHeight:1.65, color:'var(--txt2)'}}>
-          {String(imagem.descricao || '').split('\n\n').filter(Boolean).map((t, i) => <p key={i} style={{margin:'0 0 10px'}}>{t}</p>)}
+          {/* Um parágrafo por quadro: a descrição vem corrida e fica ilegível num bloco só. */}
+          {String(imagem.descricao || '').replace(/\s+(?=(?:\d+º quadro|Ideia central)\b)/g, '\n\n').split('\n\n').filter(Boolean).map((t, i) => <p key={i} style={{margin:'0 0 10px'}}>{t}</p>)}
         </div>
       </details>
       {aberta && createPortal(
