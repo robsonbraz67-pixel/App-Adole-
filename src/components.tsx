@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded } from './data';
 import { planejarBackfill } from './backfillTurmas';
-import { gs, ss, uid, embaralhar, xpSpeed, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor } from './utils';
+import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor } from './utils';
 import { montarResumoTemporada, ResumoTemporada, semanaTodaNoDia } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
+import { ehEspecial, prepararEspecial, PerguntaEspecial, duracaoPergunta, ROTULO_TIPO, resumoGabarito } from './perguntasEspeciais';
 
 // Desativado em 2026-07-25: a escola opera com UMA trilha e UM local. As duas
 // ferramentas continuam inteiras por baixo (modelo de dados, regras, convites
@@ -911,7 +912,9 @@ const EditDayModal = ({ dia, semana, track, onClose, onSaved }: any) => {
   const [conteudo, setConteudo] = useState(dia.conteudo || '');
   const [vTexto, setVTexto] = useState(dia.versiculoChave?.texto || '');
   const [vRef, setVRef] = useState(dia.versiculoChave?.referencia || '');
-  const [pergs, setPergs] = useState<any[]>(() => (dia.perguntas || []).map((p: any) => ({ ...p, opcoes: [...(p.opcoes || ['', '', '', ''])] })));
+  // Perguntas especiais (ordenar, pares...) passam intactas: o editor só sabe
+  // editar alternativas, e preencher `opcoes` nelas corromperia o formato.
+  const [pergs, setPergs] = useState<any[]>(() => (dia.perguntas || []).map((p: any) => ehEspecial(p) ? { ...p } : ({ ...p, opcoes: [...(p.opcoes || ['', '', '', ''])] })));
   const [saving, setSaving] = useState(false);
 
   const updatePerg = (i: number, field: string, value: any) => {
@@ -950,7 +953,16 @@ const EditDayModal = ({ dia, semana, track, onClose, onSaved }: any) => {
         <input type="text" value={vRef} onChange={e => setVRef(e.target.value)} style={{width:'100%', padding:'10px', borderRadius:8, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:14, marginBottom:16}} />
 
         <div className="sec-title" style={{marginBottom:8}}>Perguntas do Quiz</div>
-        {pergs.map((p: any, i: number) => (
+        {pergs.map((p: any, i: number) => ehEspecial(p) ? (
+          <div key={p.id || i} style={{background:'var(--row-bg)', borderRadius:10, padding:12, marginBottom:12}}>
+            <div style={{fontSize:12, color:'var(--mut)', fontWeight:800, marginBottom:6}}>Pergunta {i + 1} · {ROTULO_TIPO[p.tipo as keyof typeof ROTULO_TIPO]}</div>
+            <input type="text" value={p.pergunta} onChange={e => updatePerg(i, 'pergunta', e.target.value)} style={{width:'100%', padding:'8px', borderRadius:6, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:13, marginBottom:8}} />
+            <div style={{fontSize:12, color:'var(--txt2)', whiteSpace:'pre-line', lineHeight:1.5, marginBottom:6}}>{resumoGabarito(p)}</div>
+            <div style={{fontSize:11, color:'var(--mut)', marginBottom:6}}>O gabarito deste formato não é editável aqui — só o enunciado e a explicação.</div>
+            <div style={{fontSize:12, color:'var(--mut)', fontWeight:800, marginTop:4, marginBottom:6}}>Explicação:</div>
+            <input type="text" value={p.explicacao || ''} onChange={e => updatePerg(i, 'explicacao', e.target.value)} style={{width:'100%', padding:'8px', borderRadius:6, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:13}} />
+          </div>
+        ) : (
           <div key={p.id || i} style={{background:'var(--row-bg)', borderRadius:10, padding:12, marginBottom:12}}>
             <div style={{fontSize:12, color:'var(--mut)', fontWeight:800, marginBottom:6}}>Pergunta {i + 1}:</div>
             <input type="text" value={p.pergunta} onChange={e => updatePerg(i, 'pergunta', e.target.value)} style={{width:'100%', padding:'8px', borderRadius:6, background:'var(--input-bg)', border:'1px solid var(--input-border)', color:'var(--txt2)', fontSize:13, marginBottom:8}} />
@@ -978,6 +990,10 @@ const EditDayModal = ({ dia, semana, track, onClose, onSaved }: any) => {
 export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
   const [qi, setQi] = useState(0);
   const [ans, setAns] = useState<number | null>(null);
+  // Acertou a pergunta corrente? null = ainda respondendo. Separado de `ans`
+  // porque as perguntas especiais (perguntasEspeciais.tsx) não têm um índice
+  // de alternativa para comparar com `correta`.
+  const [acertou, setAcertou] = useState<boolean | null>(null);
   const [resps, setResps] = useState<any[]>([]);
   const [tempo, setTempo] = useState(40);
   const [elapsed, setElapsed] = useState(0);
@@ -1024,6 +1040,8 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
   //    quinto índice era `undefined.cls`). Agora sobra corte em 4.
   const [shuffledPergs] = useState(() =>
     (dia.perguntas || []).flatMap((q: any) => {
+      // Ordenar, ligar pares, digitar, relâmpago...: saneamento próprio.
+      if (ehEspecial(q)) { const p = prepararEspecial(q); return p ? [p] : []; }
       const brutas = Array.isArray(q?.opcoes) ? q.opcoes : [];
       const validas = brutas.filter((o: any) => typeof o === 'string' && o.trim().length > 0);
       if (validas.length < 2) return [];
@@ -1047,17 +1065,23 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
   );
   const pergs = shuffledPergs;
   const q = pergs[qi];
+  const especial = ehEspecial(q);
+  // A relâmpago tem relógio próprio (5 s por afirmação): o cronômetro do quiz
+  // fica parado nela. Os outros tipos especiais só ganham mais tempo.
+  const relampago = q?.tipo === 'relampago';
+  const DUR = duracaoPergunta(q);
   const BTNS = [{cls:'qA',sym:'🔺'},{cls:'qB',sym:'🔷'},{cls:'qC',sym:'🔶'},{cls:'qD',sym:'🟢'}];
 
   const startTimer = useCallback(() => {
     clearInterval(timerRef.current);
-    setTempo(40);
+    setTempo(DUR);
     setElapsed(0);
     startRef.current = Date.now();
     batidaRef.current = 0;
+    if (relampago) return;
     timerRef.current = setInterval(() => {
       const e = (Date.now() - startRef.current) / 1000;
-      const r = Math.max(0, 40 - e);
+      const r = Math.max(0, DUR - e);
       setTempo(r);
       setElapsed(e);
       // Uma batida de coração por segundo nos 3 últimos. Ao zerar, quem avisa
@@ -1069,7 +1093,8 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
       }
       if (r <= 0) {
         clearInterval(timerRef.current);
-        respond(-1, e);
+        if (ehEspecial(pergs[qi])) registrar(false, e);
+        else respond(-1, e);
       }
     }, 80);
   }, [qi]);
@@ -1079,44 +1104,76 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
     return () => clearInterval(timerRef.current);
   }, [qi, startTimer]);
 
-  const respond = (idx: number, elT?: number) => {
-    if (ans !== null) return;
-    clearInterval(timerRef.current);
-    const t = elT !== undefined ? elT : elapsed;
-    const ok = idx === q.correta;
-    const xp = xpSpeed(t, ok, dia.data, !!liberado);
-    setAns(idx);
-    
-    if (ok) {
-      let seq = 1;
-      for (let i = resps.length - 1; i >= 0 && resps[i].ans === resps[i].correta; i--) seq++;
-      playSound('correct', { seq });
+  const avancarRef = useRef<any>(null);
+  const avancar = (nr: any[]) => {
+    clearTimeout(avancarRef.current);
+    avancarRef.current = null;
+    if (qi + 1 < pergs.length) {
+      setQi(qi + 1);
+      setAns(null);
+      setAcertou(null);
     } else {
-      playSound('wrong');
+      const ac = nr.filter(r => r.ans === r.correta).length;
+      const xpT = nr.reduce((s, r) => s + r.xp, 0);
+      const tM = nr.reduce((s, r) => s + r.t, 0) / nr.length;
+      onDone({ acertos: ac, total: pergs.length, xpTotal: xpT, tempoMedio: tM, reiniciado });
     }
-    
-    if (xp > 0) {
-      setXpMsg(`+${xp} XP ⭐`);
-      setTimeout(() => setXpMsg(null), 1200);
-    }
-    
-    const nr = [...resps, { qId: q.id, ans: idx, correta: q.correta, xp, t }];
-    setResps(nr);
-    
-    setTimeout(() => {
-      if (qi + 1 < pergs.length) {
-        setQi(qi + 1);
-        setAns(null);
-      } else {
-        const ac = nr.filter(r => r.ans === r.correta).length;
-        const xpT = nr.reduce((s, r) => s + r.xp, 0);
-        const tM = nr.reduce((s, r) => s + r.t, 0) / nr.length;
-        onDone({ acertos: ac, total: pergs.length, xpTotal: xpT, tempoMedio: tM, reiniciado });
-      }
-    }, 2500);
   };
 
-  const tPct = tempo / 40 * 100;
+  // Registro comum a todos os tipos. `ansIdx` só existe na clássica (para
+  // pintar os botões); nas especiais o histórico guarda ans/correta = 1/0 —
+  // assim `ans === correta` continua sendo "acertou" para a sequência de sons
+  // e para a contagem de acertos, sem mudar o formato salvo.
+  const registrar = (ok: boolean, elT?: number, ansIdx?: number, extra?: any) => {
+    if (acertou !== null || ans !== null) return;
+    clearInterval(timerRef.current);
+    const t = elT !== undefined ? elT : (Date.now() - startRef.current) / 1000;
+    let xp: number;
+    if (q?.tipo === 'relampago') {
+      // Relâmpago: 4 de 5 vale o piso (75), 5 de 5 vale o teto (100) — mesma
+      // faixa da pergunta clássica, só que decidida pela perfeição, não pelo relógio.
+      const mult = dia.data ? getRecencyMult(dia.data, !!liberado) : 1;
+      xp = ok ? Math.round((extra?.perfeito ? 100 : 75) * mult) : 0;
+    } else {
+      // Tipos com mais tempo: a velocidade é proporcional ao tempo da pergunta.
+      xp = xpSpeed(t * 40 / DUR, ok, dia.data, !!liberado);
+    }
+    setAns(ansIdx !== undefined ? ansIdx : (ok ? 1 : 0));
+    setAcertou(ok);
+
+    if (q?.tipo !== 'relampago') {
+      if (ok) {
+        let seq = 1;
+        for (let i = resps.length - 1; i >= 0 && resps[i].ans === resps[i].correta; i--) seq++;
+        playSound('correct', { seq });
+      } else {
+        playSound('wrong');
+      }
+    }
+
+    if (xp > 0) {
+      setXpMsg(`+${xp} XP ⭐${extra?.perfeito ? ' ⚡ Perfeito!' : ''}`);
+      setTimeout(() => setXpMsg(null), 1400);
+    }
+
+    const registro = ansIdx !== undefined
+      ? { qId: q.id, ans: ansIdx, correta: q.correta, xp, t }
+      : { qId: q.id, ans: ok ? 1 : 0, correta: 1, xp, t };
+    const nr = [...resps, registro];
+    setResps(nr);
+
+    // Especiais têm mais para ler (a solução inteira): botão "Continuar" e
+    // avanço automático mais longo; a clássica segue nos 2,5 s de sempre.
+    avancarRef.current = setTimeout(() => avancar(nr), ehEspecial(q) ? 9000 : 2500);
+  };
+  useEffect(() => () => clearTimeout(avancarRef.current), []);
+
+  const respond = (idx: number, elT?: number) => {
+    if (ans !== null) return;
+    registrar(idx === q.correta, elT !== undefined ? elT : elapsed, idx);
+  };
+
+  const tPct = tempo / DUR * 100;
   const tColor = tPct > 50 ? '#2ECC71' : tPct > 25 ? '#F5C842' : '#E31C3D';
   const xpSoFar = resps.reduce((s, r) => s + r.xp, 0);
 
@@ -1149,18 +1206,25 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
       <div style={{padding:'14px 20px',background:'var(--hdr-bg)'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <span>⏱️</span>
-            <span style={{fontWeight:900,fontSize:22,color:tColor}}>{Math.ceil(tempo)}s</span>
+            {/* Na relâmpago o relógio é o de cada afirmação, dentro da pergunta. */}
+            <span>{relampago ? '⚡' : '⏱️'}</span>
+            <span style={{fontWeight:900,fontSize:22,color:relampago ? 'var(--gold)' : tColor}}>{relampago ? 'Relâmpago' : `${Math.ceil(tempo)}s`}</span>
           </div>
           <div style={{fontWeight:800,color:'var(--mut)',fontSize:15}}>{qi + 1}/{pergs.length}</div>
           <div className="xp-badge">⭐ {xpSoFar} XP</div>
         </div>
-        <div className="timer-wrap"><div className="timer-bar" style={{width:tPct+'%',background:tColor}}/></div>
+        {!relampago && <div className="timer-wrap"><div className="timer-bar" style={{width:tPct+'%',background:tColor}}/></div>}
       </div>
       <div style={{padding:'18px 16px 0',flex:'none'}}>
-        <div style={{background:'var(--g5)',borderRadius:18,padding:'20px 18px',textAlign:'center',fontWeight:800,fontSize:17,lineHeight:1.4,border:'1.5px solid rgba(247,198,0,.2)',minHeight:100,display:'flex',alignItems:'center',justifyContent:'center',color:'var(--txt)',fontFamily:'Poppins,sans-serif'}}>{q.pergunta}</div>
+        <div style={{background:'var(--g5)',borderRadius:18,padding:'20px 18px',textAlign:'center',fontWeight:800,fontSize:17,lineHeight:1.4,border:'1.5px solid rgba(247,198,0,.2)',minHeight:100,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,color:'var(--txt)',fontFamily:'Poppins,sans-serif'}}>
+          {especial && <span className="esp-rotulo">{ROTULO_TIPO[q.tipo as keyof typeof ROTULO_TIPO]}</span>}
+          {q.pergunta}
+        </div>
       </div>
       <div style={{padding:'14px 16px',flex:1}}>
+        {especial ? (
+          <PerguntaEspecial key={qi} q={q} revelado={acertou !== null} onResponder={(ok, extra) => registrar(ok, undefined, undefined, extra)} />
+        ) : (
         <div className="quiz-grid">
           {q.opcoes.map((op: string, i: number) => {
             let ex = '';
@@ -1177,10 +1241,16 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
             );
           })}
         </div>
-        {ans !== null && (
-          <div style={{marginTop:14,padding:'12px 16px',borderRadius:14,background:ans === q.correta?'rgba(79,184,92,.15)':'rgba(227,28,61,.15)',border:`1.5px solid ${ans === q.correta?'var(--success)':'#E31C3D'}`,animation:'popIn .3s ease'}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:4,color:ans === q.correta?'var(--success)':'#E31C3D'}}>{ans === q.correta ? '✅ Correto!' : '❌ Incorreto!'}</div>
+        )}
+        {acertou !== null && (
+          <div style={{marginTop:14,padding:'12px 16px',borderRadius:14,background:acertou?'rgba(79,184,92,.15)':'rgba(227,28,61,.15)',border:`1.5px solid ${acertou?'var(--success)':'#E31C3D'}`,animation:'popIn .3s ease'}}>
+            <div style={{fontWeight:800,fontSize:14,marginBottom:4,color:acertou?'var(--success)':'#E31C3D'}}>{acertou ? '✅ Correto!' : '❌ Incorreto!'}</div>
             <div style={{fontSize:13,color:'var(--txt2)',lineHeight:1.5}}>{q.explicacao}</div>
+            {especial && (
+              <button className="btn btn-ghost btn-sm" style={{marginTop:10,width:'auto'}} onClick={() => avancar(resps)}>
+                {qi + 1 < pergs.length ? 'Continuar ▶' : 'Ver resultado ▶'}
+              </button>
+            )}
           </div>
         )}
       </div>

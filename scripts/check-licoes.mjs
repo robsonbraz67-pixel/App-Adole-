@@ -77,6 +77,30 @@ for (const trilha of TRILHAS) {
         totalPerguntas++;
         const ondeP = `${ondeDia} pergunta ${p.id || '(sem id)'}`;
         if (!p.pergunta) erros.push(`${ondeP}: sem enunciado`);
+        if (p.tipo) {
+          // Formatos especiais (src/perguntasEspeciais.tsx) — mesmas regras do
+          // prepararEspecial: o que não passar aqui some do quiz do aluno.
+          const txt = s => typeof s === 'string' && s.trim().length > 0;
+          const ruim = m => erros.push(`${ondeP} (${p.tipo}): ${m}`);
+          if (p.tipo === 'multipla') {
+            const ops = p.opcoes || [], c = p.corretas || [];
+            if (ops.length < 3 || ops.length > 4 || !ops.every(txt)) ruim(`${ops.length} opção(ões) / opção vazia`);
+            if (!c.length || !c.every(i => Number.isInteger(i) && i >= 0 && i < ops.length)) ruim(`corretas ${JSON.stringify(c)} inválidas`);
+          } else if (p.tipo === 'ordenar') {
+            const it = p.itens || [];
+            if (it.length < 3 || it.length > 5 || !it.every(txt) || new Set(it).size !== it.length) ruim(`itens inválidos (${it.length})`);
+          } else if (p.tipo === 'pares') {
+            const pr = p.pares || [];
+            if (pr.length < 3 || pr.length > 4 || !pr.every(x => Array.isArray(x) && x.length === 2 && txt(x[0]) && txt(x[1]))) ruim(`pares inválidos (${pr.length})`);
+            else if (new Set(pr.map(x => x[1])).size !== pr.length) ruim('lado direito repetido');
+          } else if (p.tipo === 'digitar') {
+            if (!txt(p.resposta)) ruim('sem resposta');
+          } else if (p.tipo === 'relampago') {
+            const it = p.itens || [];
+            if (it.length < 3 || it.length > 6 || !it.every(x => x && txt(x.texto) && typeof x.verdadeiro === 'boolean')) ruim(`itens inválidos (${it.length})`);
+          } else ruim('tipo desconhecido');
+          return;
+        }
         const ops = p.opcoes || [];
         // 2 opções = pergunta Verdadeiro/Falso (o quiz e o modo Ao Vivo já
         // suportam esse tamanho nativamente, ver src/components.tsx).

@@ -2,6 +2,7 @@ import { doc, setDoc, getDoc, getDocs, deleteDoc, collection, query, where, serv
 import { db } from '../firebase';
 import { gerarCodigoSala, pontosAoVivo, bonusSequencia, embaralhar } from '../utils';
 import { calibrarRelogio } from './relogio';
+import { ehEspecial } from '../perguntasEspeciais';
 
 // Tipos de pergunta suportados no Modo Ao Vivo:
 // 'quiz'    — múltipla escolha (2 a 4 opções)
@@ -24,6 +25,11 @@ const ehVerdadeiroFalso = (opcoes: string[]) => {
 export const selecionarPerguntasSala = (licao: any, totalQuestions: number, embaralharOpcoes = true) => {
   const pool = (licao?.dias || []).flatMap((d: any) =>
     (d.perguntas || []).flatMap((q: any) => {
+      // Ordenar, ligar pares, digitar, relâmpago (perguntasEspeciais.tsx): a
+      // sala só sabe desenhar alternativas, então ficam de fora do Ao Vivo.
+      // Sem este corte, a "mais de uma correta" entraria como alternativa
+      // única com o gabarito errado.
+      if (ehEspecial(q)) return [];
       // Mesmo saneamento do quiz diário: opção vazia não vale (o botão sairia
       // em branco) e a grade só desenha 4. Ver o comentário longo no Quiz,
       // em components.tsx, para o porquê de cada regra.

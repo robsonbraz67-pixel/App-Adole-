@@ -1346,3 +1346,40 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 [data-theme^="mvp"] .theme-toggle{border:2px solid var(--pop-ink);border-radius:8px}
 [data-theme^="mvp"] .theme-btn{border-radius:7px}
 [data-theme^="mvp"] .theme-btn.active{background:var(--pop-y);color:var(--pop-on);box-shadow:none}
+
+/* ===== PERGUNTAS ESPECIAIS (perguntasEspeciais.tsx) ===== */
+.esp-rotulo{font-size:11px;font-weight:900;letter-spacing:1px;text-transform:uppercase;color:var(--gold);background:rgba(247,198,0,.12);border:1px solid rgba(247,198,0,.35);border-radius:999px;padding:3px 10px}
+.esp-dica{font-size:13px;color:var(--mut);text-align:center;margin:0 0 12px;line-height:1.4}
+.esp-dica b{color:var(--txt2)}
+.esp-confirmar{margin-top:14px;width:100%;padding:14px;font-size:15px}
+.qbtn.esp-marcada{outline:4px solid var(--txt);outline-offset:-4px;transform:scale(.97)}
+.qbtn.esp-faltou{outline:4px dashed var(--success);outline-offset:-4px;opacity:.85;pointer-events:none}
+.esp-lista{display:flex;flex-direction:column;gap:8px}
+.esp-slot{display:flex;align-items:flex-start;gap:10px;text-align:left;width:100%;padding:12px 14px;border-radius:14px;background:var(--row-bg);border:1.5px dashed var(--panel-border);color:var(--mut);font-family:'Poppins',sans-serif;font-weight:700;font-size:14px;line-height:1.35;cursor:default}
+.esp-slot.esp-cheio{border-style:solid;border-color:var(--gold);color:var(--txt);cursor:pointer}
+.esp-num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--g5);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:var(--txt)}
+.esp-txt{flex:1;display:flex;flex-direction:column;gap:4px}
+.esp-certo{display:block;font-size:12px;font-weight:800;color:var(--success)}
+.esp-ok{border:1.5px solid var(--success)!important;background:rgba(79,184,92,.14)!important;color:var(--txt)!important}
+.esp-erro{border:1.5px solid #E31C3D!important;background:rgba(227,28,61,.12)!important;color:var(--txt)!important}
+.esp-banco{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;justify-content:center}
+.esp-chip{padding:10px 14px;border-radius:14px;border:none;cursor:pointer;background:linear-gradient(150deg,#A99BFF,#8E7BFF);box-shadow:0 4px 0 #6A55E0;color:#0A1230;font-family:'Poppins',sans-serif;font-weight:800;font-size:13px;line-height:1.3;text-align:center}
+.esp-chip:active{transform:translateY(2px);box-shadow:0 2px 0 #6A55E0}
+.esp-pares{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.esp-col{display:flex;flex-direction:column;gap:8px}
+.esp-par{flex:1;min-height:58px;padding:10px;border-radius:14px;background:var(--row-bg);border:2px solid var(--panel-border);color:var(--txt);font-family:'Poppins',sans-serif;font-weight:700;font-size:13px;line-height:1.3;cursor:pointer;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:transform .1s}
+.esp-par:active{transform:scale(.97)}
+.esp-par.esp-sel{border-color:var(--gold);background:rgba(247,198,0,.15);animation:goldGlow 1.8s infinite}
+.esp-par.locked{opacity:.7;cursor:default}
+.esp-input{width:100%;padding:16px;border-radius:14px;background:var(--input-bg);border:2px solid var(--input-border);color:var(--txt);font-family:'Poppins',sans-serif;font-weight:800;font-size:18px;text-align:center}
+.esp-input:focus{outline:none;border-color:var(--gold)}
+.esp-gabarito{margin-top:10px;text-align:center;font-size:14px;color:var(--txt2)}
+.esp-relampago-largada{text-align:center;padding:10px 4px}
+.esp-relampago-titulo{font-family:'Poppins',sans-serif;font-weight:900;font-size:24px;color:var(--gold);margin:8px 0}
+.esp-relampago-regra{font-size:14px;color:var(--txt2);line-height:1.6}
+.esp-relampago{transition:background .2s;border-radius:18px;padding:4px}
+.esp-relampago-topo{display:flex;justify-content:space-between;font-weight:900;font-size:18px;margin-bottom:8px;color:var(--txt)}
+.esp-relampago-afirmacao{background:var(--g5);border-radius:16px;padding:18px;text-align:center;font-weight:800;font-size:16px;line-height:1.4;color:var(--txt);margin-bottom:14px;min-height:96px;display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif}
+.esp-flash-ok{background:rgba(79,184,92,.22)}
+.esp-flash-erro{background:rgba(227,28,61,.2);animation:shake .4s}
+.esp-relampago-item{cursor:default}
