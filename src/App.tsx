@@ -54,6 +54,18 @@ const getActiveLicao = (track?: string | null) => {
   return active || visible[0];
 };
 
+// Lição com que o app abre: a salva no aparelho se for desta semana em diante,
+// senão a ativa. Sempre devolve o conteúdo VIVO — a cópia gravada no
+// aparelho fica velha quando uma lição é corrigida/ampliada no meio da semana
+// (perguntas novas, tirinha) e o aluno seguia vendo a versão antiga. Lição que
+// não existe mais (temporada retirada do app) volta para a ativa.
+const licaoDoAparelho = (track?: string | null) => {
+  const ativa = getActiveLicao(track);
+  const salva = gs(licaoKey(track), null);
+  if (!salva || !(salva.semana >= ativa.semana)) return ativa;
+  return (getTrackLessons(track) as any[]).find((x: any) => x.semana === salva.semana) || ativa;
+};
+
 export default function App() {
   const [tela, setTela] = useState('splash');
   const [jogador, setJogador] = useState<any>(null);
@@ -389,10 +401,8 @@ export default function App() {
       // getActiveLicao veria uma lista vazia e cairia no placeholder "Em breve".
       await loadTrackLessons(j?.track);
       if (unmounted) return;
-      const activeLicao = getActiveLicao(j?.track);
-      const savedLicao = gs(licaoKey(j?.track), null);
       // Auto-switch to current week's lesson; keep saved only if it's the same week or a future week
-      let l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
+      let l = licaoDoAparelho(j?.track);
       ss(licaoKey(j?.track), l);
       setLicao(l);
 
@@ -443,7 +453,7 @@ export default function App() {
             // nada ao clicar de novo na mesma trilha.
             if (track !== initialTrack) {
               await loadTrackLessons(track);
-              l = gs(licaoKey(track), null) || getActiveLicao(track);
+              l = licaoDoAparelho(track);
               ss(licaoKey(track), l);
               if (!unmounted) setLicao(l);
             }
@@ -504,9 +514,7 @@ export default function App() {
 
   const handleLogin = async (j: any) => {
     await loadTrackLessons(j?.track);
-    const activeLicao = getActiveLicao(j?.track);
-    const savedLicao = gs(licaoKey(j?.track), null);
-    const l = (savedLicao && savedLicao.semana >= activeLicao.semana) ? savedLicao : activeLicao;
+    const l = licaoDoAparelho(j?.track);
     ss(licaoKey(j?.track), l);
     setLicao(l);
 

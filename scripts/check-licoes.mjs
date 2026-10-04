@@ -7,11 +7,12 @@
 //
 // Roda no `npm run lint:licoes` e no CI.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const TRILHAS = [
   { id: 'teen', entrada: 'src/lessonsTeen.ts' },
   { id: 'adult', entrada: 'src/lessonsAdult.ts' },
+  { id: 'youngAdult', entrada: 'src/lessonsYoung.ts' },
 ];
 
 const erros = [];
@@ -40,6 +41,12 @@ for (const trilha of TRILHAS) {
   }
 
   const semanasVistas = new Set();
+  // Data repetida entre lições da MESMA trilha: duas lições cobrindo o mesmo
+  // dia fazem a lição "ativa" ficar ambígua (o app pega a primeira que
+  // casa) e o aluno nunca vê a outra. Acontece fácil ao importar um PDF cuja
+  // semana começa no sábado: a sexta de uma lição e o sábado da seguinte
+  // ficam a um dia de distância, e um deslize de OCR numa data os iguala.
+  const datasVistas = new Map();
 
   licoes.forEach((licao, i) => {
     const onde = `${trilha.id}[${i}] "${licao?.titulo || 'sem título'}"`;
@@ -65,12 +72,26 @@ for (const trilha of TRILHAS) {
       if (!dia.conteudo) avisos.push(`${ondeDia}: sem conteúdo`);
 
       if (dia.data) {
+        if (datasVistas.has(dia.data)) {
+          erros.push(`${ondeDia}: data ${dia.data} repetida — já é de ${datasVistas.get(dia.data)}`);
+        }
+        datasVistas.set(dia.data, ondeDia);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(dia.data)) {
           erros.push(`${ondeDia}: data "${dia.data}" fora do formato AAAA-MM-DD`);
         } else if (dataAnterior && dia.data <= dataAnterior) {
           erros.push(`${ondeDia}: data ${dia.data} não avança em relação a ${dataAnterior}`);
         }
         dataAnterior = dia.data;
+      }
+
+      if (dia.imagem) {
+        const im = dia.imagem;
+        if (!im.src || !im.alt || !im.descricao) erros.push(`${ondeDia}: imagem precisa de src, alt e descricao`);
+        else if (!existsSync(`public/${im.src}`)) erros.push(`${ondeDia}: imagem public/${im.src} não existe`);
+        for (const q of im.quadros || []) {
+          if (!q?.src || !existsSync(`public/${q.src}`)) erros.push(`${ondeDia}: quadro da tirinha public/${q?.src} não existe`);
+        }
+        if (im.quadros && im.quadros.filter(q => !q.faixa).length < 2) erros.push(`${ondeDia}: imagem.quadros precisa de 2+ quadros (fora as faixas)`);
       }
 
       (dia.perguntas || []).forEach(p => {

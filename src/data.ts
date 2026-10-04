@@ -8,17 +8,18 @@
 // disso no primeiro render; quem garante que o cache está quente é o
 // loadTrackLessons() no arranque do App, antes de sair da splash.
 
+import { HISTORICO_TEMPORADAS, LicaoHistorica } from './historicoTemporadas';
+
 export type TrackId = 'teen' | 'youngAdult' | 'adult';
 
-const cache: Partial<Record<TrackId, any[]>> = {
-  // youngAdult ainda não tem conteúdo: lista vazia (a UI já trata com "Em breve")
-  youngAdult: [],
-};
+// Cache vazio de propósito: uma lista vazia aqui (`[]`) é truthy e curto-circuita
+// o loadTrackLessons, então nenhuma trilha pode nascer pré-preenchida.
+const cache: Partial<Record<TrackId, any[]>> = {};
 
 const carregadores: Record<TrackId, () => Promise<any[]>> = {
   teen: () => import('./lessonsTeen').then(m => m.default),
   adult: () => import('./lessonsAdult').then(m => m.default),
-  youngAdult: async () => [],
+  youngAdult: () => import('./lessonsYoung').then(m => m.default),
 };
 
 const normalize = (track?: string | null): TrackId =>
@@ -42,3 +43,22 @@ export const loadTrackLessons = async (track?: string | null): Promise<any[]> =>
 export const getTrackLessons = (track?: string | null): any[] => cache[normalize(track)] || [];
 
 export const isTrackLoaded = (track?: string | null) => !!cache[normalize(track)];
+
+// ===== Histórico de temporadas encerradas =====
+// Só o esqueleto (semana, trimestre, datas) — ver historicoTemporadas.ts. NÃO
+// entra em getTrackLessons: estudo, quiz, trilha do aluno e Ao Vivo só enxergam
+// a temporada em curso. Quem precisa olhar para trás (apresentação de
+// encerramento, relatório da temporada, sorteio de uma semana que passou)
+// pede explicitamente `getTrackHistory`/`getTrackLessonsComHistorico`.
+export const getTrackHistory = (track?: string | null): LicaoHistorica[] =>
+  (HISTORICO_TEMPORADAS as Record<string, LicaoHistorica[]>)[normalize(track)] || [];
+
+// Histórico + temporada atual, em ordem cronológica. Os itens históricos trazem
+// `historico: true` para quem precisar distinguir (sem texto nem perguntas).
+export const getTrackLessonsComHistorico = (track?: string | null): any[] =>
+  [...getTrackHistory(track), ...getTrackLessons(track)];
+
+export const loadTrackLessonsComHistorico = async (track?: string | null): Promise<any[]> => {
+  const atuais = await loadTrackLessons(track);
+  return [...getTrackHistory(track), ...(atuais || [])];
+};
