@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded, getTrackLessonsComHistorico, loadTrackLessonsComHistorico } from './data';
-import { planejarBackfill } from './backfillTurmas';
-import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor } from './utils';
+import { planejarBackfill, planejarMovimentacao } from './backfillTurmas';
+import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, dataCurta, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor } from './utils';
 import { montarResumoTemporada, ResumoTemporada, semanaTodaNoDia } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 import { ehEspecial, prepararEspecial, PerguntaEspecial, duracaoPergunta, ROTULO_TIPO, resumoGabarito } from './perguntasEspeciais';
@@ -105,7 +105,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, adminMesclarContas, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio, getSeasonProgress, registrarSorteio, getSorteiosDaTurma, apagarSorteio, RegistroSorteio } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, adminMesclarContas, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, adminMoverParaTurma, adminRealinharProgresso, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio, getSeasonProgress, registrarSorteio, getSorteiosDaTurma, apagarSorteio, RegistroSorteio } from './firebase';
 import { participantesDaTemporada, ordemPonderada, diasLiberadosPorSemana, REGRA_TEXTO, RegraSorteio, Participante } from './sorteio';
 import { reportarProblema } from './errorLog';
 
@@ -524,6 +524,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
                     {!bannerL?.isAdminOnly && bannerL?.trimestre && <span className="unit-campanha"> · {bannerL.trimestre}</span>}
                   </div>
                   <div className="unit-title">{tituloCurto(bannerL?.titulo)}</div>
+                  {periodoDaLicao(bannerL) && <div style={{fontSize:12,fontWeight:700,opacity:.75,marginTop:2}}>{periodoDaLicao(bannerL)}</div>}
                 </div>
                 <button
                   className="unit-ic-btn"
@@ -546,7 +547,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
                     >
                       <div className="wl"/>
                       <span>
-                        {l.isAdminOnly ? '🧪 Teste' : `Semana ${semanaInfoPorTrimestre.get(l.semana)?.indice ?? (wi + 1)}`}{emCurso ? ' ⭐' : ''}{!acessivel ? ' 🔒' : ''} — {tituloCurto(l.titulo)}
+                        {l.isAdminOnly ? '🧪 Teste' : `Semana ${semanaInfoPorTrimestre.get(l.semana)?.indice ?? (wi + 1)}`}{emCurso ? ' ⭐' : ''}{!acessivel ? ' 🔒' : ''} — {tituloCurto(l.titulo)}{periodoDaLicao(l) ? ` · ${periodoDaLicao(l)}` : ''}
                       </span>
                       <div className="wl"/>
                     </div>
@@ -575,7 +576,7 @@ export const Home = ({ jogador, licao, prog, onEstudo, onRanking, onRankingSeman
                               {isToday && <div className="path-ring"/>}
                               {st === 'done' ? '⭐' : st === 'locked' ? '🔒' : '📖'}
                             </button>
-                            <div className={`path-label ${isToday ? 'hoje' : ''}`}>{formatDiaSemana(dia.diaSemana)}</div>
+                            <div className={`path-label ${isToday ? 'hoje' : ''}`}>{formatDiaSemana(dia.diaSemana)}{dataCurta(dia.data) ? ` ${dataCurta(dia.data)}` : ''}</div>
                           </div>
                         );
                       })}
@@ -964,7 +965,7 @@ export const Estudo = ({ dia, prog, jogador, semana, activePair, onSaveStudy, on
       )}
       <div className="hdr">
         <button className="btn btn-ghost btn-sm" onClick={() => wrapLeave(onBack)} style={{width:'auto'}}>← Voltar</button>
-        <div style={{fontWeight:800,fontSize:14}}>Dia {dia.id} — {formatDiaSemana(dia.diaSemana)}</div>
+        <div style={{fontWeight:800,fontSize:14}}>Dia {dia.id} — {formatDiaSemana(dia.diaSemana)}{dataCurta(dia.data) ? ` · ${dataCurta(dia.data)}` : ''}</div>
         <div style={{display:'flex', alignItems:'center', gap:8}}>
           {(jogador?.isAdmin || jogador?.isProfessor) && (
             <button className="btn btn-ghost btn-sm" onClick={() => setEditOpen(true)} style={{width:'auto', padding:'4px 8px', margin:0, minHeight:0}} title="Editar conteúdo">✏️</button>
@@ -1453,7 +1454,7 @@ export const Resultado = ({ res, dia, prog, onRanking, onHome, onMural }: any) =
       <Confetti show={true}/>
       <div style={{animation:'popIn .5s ease .2s both',fontSize:80,marginTop:20,display:'block',marginBottom:10}}>{ic}</div>
       <div style={{animation:'popIn .5s ease .4s both',fontWeight:900,fontSize:24,marginBottom:4}}>{mg}</div>
-      <div style={{animation:'fadeIn .5s ease .6s both',color:'var(--mut)',fontSize:14,marginBottom:22}}>{formatDiaSemana(dia.diaSemana)} — {dia.titulo}</div>
+      <div style={{animation:'fadeIn .5s ease .6s both',color:'var(--mut)',fontSize:14,marginBottom:22}}>{formatDiaSemana(dia.diaSemana)}{dataCurta(dia.data) ? ` ${dataCurta(dia.data)}` : ''} — {dia.titulo}</div>
       {/* O lembrete de oração vem ANTES do placar: o estudo termina em oração,
           não na pontuação. */}
       <CardOracao dia={dia} />
@@ -2233,6 +2234,7 @@ export const acharLicaoDaSemana = (licoes: any[], semana?: string) => {
 };
 
 // "Lição 3 - Título (data)" → "Lição 3" para caber no botão de navegação.
+const periodoDaLicao = (l: any) => /\(([^)]*)\)\s*$/.exec(l?.titulo || '')?.[1] || '';
 const rotuloCurto = (l: any) => (l?.titulo || '').split(' - ')[0] || l?.semana || '—';
 
 export const SeletorLicao = ({ track, licao, onChange, podeTrocarTrilha = false, nota, titulo = '📖 Lição', incluirHistorico = false }: {
@@ -2325,7 +2327,7 @@ export const SeletorLicao = ({ track, licao, onChange, podeTrocarTrilha = false,
           {idx < 0 && <option value={licao?.semana || ''}>{rotuloCurto(licao)}</option>}
           {(() => {
             const trimestres = Array.from(new Set(licoes.map((l: any) => l.trimestre)));
-            const opcao = (l: any) => <option key={l.semana} value={l.semana}>{rotuloCurto(l)} · {l.semana}</option>;
+            const opcao = (l: any) => <option key={l.semana} value={l.semana}>{rotuloCurto(l)}{periodoDaLicao(l) ? ` · ${periodoDaLicao(l)}` : ` · ${l.semana}`}</option>;
             // Com mais de uma temporada na lista (histórico), agrupa por nome.
             return trimestres.length > 1
               ? trimestres.map((t: any) => <optgroup key={t} label={t}>{licoes.filter((l: any) => l.trimestre === t).map(opcao)}</optgroup>)
@@ -4221,13 +4223,14 @@ export const Dupla = ({ jogador, licao, prog, weekRows, activePair, pendingInvit
 // Custo: uma leitura da coleção `turmas` (pequena por natureza) ao abrir. A
 // contagem de alunos e os nomes dos professores saem da lista de usuários que
 // o Admin já carregou — nenhuma consulta a mais.
-const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosCarimbados, onIgrejaPreenchida }: {
+const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosCarimbados, onIgrejaPreenchida, onUsuarioMovido }: {
   jogador: any;
   locations: { id: string; name: string }[];
   users: any[];
   onLocationCreated: (loc: { id: string; name: string }) => void;
   onUsuariosCarimbados: (ids: string[], turmaId: string) => void;
   onIgrejaPreenchida: (ids: string[], locationId: string) => void;
+  onUsuarioMovido: (id: string, patch: { turmaId: string; locationId?: string; track?: string }) => void;
 }) => {
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -4255,6 +4258,8 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
   const [incluirSemIgreja, setIncluirSemIgreja] = useState(false);
   const [andamento, setAndamento] = useState('');
   const [resultado, setResultado] = useState<{ turmaId: string; texto: string } | null>(null);
+  // Inserir/mover UM aluno: a turma de destino é a que está aberta.
+  const [moverPara, setMoverPara] = useState<string | null>(null);
 
   const TRACKS = Object.keys(TRACK_LABELS) as Track[];
   const locName = (id: string) => locations.find(l => l.id === id)?.name || '—';
@@ -4494,6 +4499,31 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
     setOcupado(false);
   };
 
+  const handleRealinhar = async (t: Turma) => {
+    if (!ensaio || ensaio.turmaId !== t.id) return;
+    const lista = ensaio.plano.progDesalinhados || [];
+    if (!lista.length) return;
+    if (!window.confirm(
+      `Trazer ${lista.length} documento(s) de progresso para "${t.nome}"?\n\n` +
+      'São semanas de alunos que JÁ são desta turma, mas que ficaram gravadas na turma anterior. ' +
+      'Elas saem do ranking da turma antiga e passam a contar aqui.'
+    )) return;
+    setOcupado(true);
+    try {
+      const r = await adminRealinharProgresso(t.id, lista.map((p: any) => p.id),
+        (f, tot) => setAndamento(`Progresso: ${f}/${tot}`));
+      const ok = new Set(lista.map((p: any) => p.id).filter((id: string) => !r.falhas.some(f => f.id === id)));
+      setProgressos(prev => (prev || []).map(p => ok.has(p.id) ? { ...p, turmaId: t.id } : p));
+      setResultado({ turmaId: t.id, texto: `Realinhados ${r.feitos} documento(s) de progresso.` + (r.falhas.length ? ` ${r.falhas.length} recusado(s) — ver o console.` : '') });
+      if (r.falhas.length) console.warn('Realinhar progresso — recusados:', r.falhas);
+      setEnsaio(null);
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao realinhar.');
+    }
+    setAndamento('');
+    setOcupado(false);
+  };
+
   const ensaioOuCarimboDe = (id: string) => ensaio?.turmaId === id || resultado?.turmaId === id || aberta === id;
 
   const copiar = (texto: string, msg = 'Código copiado!') =>
@@ -4623,6 +4653,7 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                         <button onClick={() => setEditando(t.id)} style={btnMini('var(--teal)', 'rgba(30,158,134,.2)')}>✏️ Editar</button>
                         <button onClick={() => handleGerarConvite(t)} disabled={ocupado} style={btnMini('#F7C600', 'rgba(247,198,0,.15)')}>🎟️ Gerar convite de aluno</button>
                         <button onClick={() => handleGerarConviteProf(t)} disabled={ocupado} style={btnMini('var(--admin)', 'rgba(124,79,224,.2)')}>🎓 Convite de professor</button>
+                        <button onClick={() => setMoverPara(moverPara === t.id ? null : t.id)} disabled={ocupado} style={btnMini('var(--success)', 'rgba(79,184,92,.2)')}>👤 Inserir ou mover aluno</button>
                         <button onClick={() => handleEnsaio(t)} disabled={ocupado} style={btnMini('var(--admin)', 'rgba(124,79,224,.2)')}>🧪 Ensaio do carimbo</button>
                         <button onClick={() => handleArquivar(t)} disabled={ocupado} style={btnMini(t.active ? 'var(--danger)' : 'var(--success)', t.active ? 'rgba(227,28,61,.15)' : 'rgba(79,184,92,.2)')}>
                           {t.active ? '📦 Arquivar' : '↩️ Reativar'}
@@ -4640,6 +4671,21 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                       <div style={{fontSize:12, color:'var(--success)', background:'rgba(79,184,92,.12)', padding:'8px 10px', borderRadius:8, marginBottom:10, lineHeight:1.5}}>
                         ✅ {resultado.texto}
                       </div>
+                    )}
+                    {moverPara === t.id && editando !== t.id && (
+                      <MoverAluno
+                        turma={t}
+                        turmas={turmas}
+                        users={users}
+                        locName={locName}
+                        onFechar={() => setMoverPara(null)}
+                        onMovido={(id, patch, progIds) => {
+                          onUsuarioMovido(id, patch);
+                          const movidos = new Set(progIds);
+                          setProgressos(prev => prev && prev.map(p => movidos.has(p.id) ? { ...p, turmaId: patch.turmaId } : p));
+                          setEnsaio(null);
+                        }}
+                      />
                     )}
                     {ensaio?.turmaId === t.id && (
                       <div style={{background:'var(--row-bg-strong)', padding:10, borderRadius:8, marginBottom:10}}>
@@ -4673,6 +4719,17 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                         {ensaio.plano.elegiveis.length > 0 && (
                           <div style={{fontSize:11, color:'var(--mut)', marginTop:8}}>
                             Ex.: {ensaio.plano.elegiveis.slice(0, 6).map((e: any) => e.nome).join(', ')}{ensaio.plano.elegiveis.length > 6 ? '…' : ''}
+                          </div>
+                        )}
+                        {ensaio.plano.donosDoProgresso?.length > 0 && (
+                          <div style={{fontSize:11, color:'var(--mut)', marginTop:6, lineHeight:1.5}}>
+                            Progresso a acertar de: {ensaio.plano.donosDoProgresso.slice(0, 12).join(', ')}{ensaio.plano.donosDoProgresso.length > 12 ? '…' : ''}
+                          </div>
+                        )}
+                        {ensaio.plano.progDesalinhados?.length > 0 && (
+                          <div style={{fontSize:11, color:'var(--txt2)', marginTop:8, lineHeight:1.6, background:'rgba(247,198,0,.1)', padding:'6px 8px', borderRadius:6}}>
+                            🔁 <strong>{ensaio.plano.progDesalinhados.length}</strong> semana(s) de alunos desta turma ainda estão gravadas na turma anterior — por isso não aparecem no ranking daqui.
+                            <button onClick={() => handleRealinhar(t)} disabled={ocupado} style={{...btnMini('#F7C600', 'rgba(247,198,0,.18)'), display:'block', marginTop:6}}>🔁 Trazer para esta turma</button>
                           </div>
                         )}
                         <div style={{display:'flex', gap:6, marginTop:10}}>
@@ -4761,6 +4818,128 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+};
+
+// Inserir ou mover UM aluno para a turma aberta. Busca por nome/e-mail na
+// lista que o Admin já tem, lê só o progresso daquela pessoa e mostra o que
+// vai mudar ANTES de escrever: turma de origem, igreja, trilha e quantas
+// semanas acompanham.
+const MoverAluno = ({ turma, turmas, users, locName, onFechar, onMovido }: {
+  turma: Turma;
+  turmas: Turma[];
+  users: any[];
+  locName: (id: string) => string;
+  onFechar: () => void;
+  onMovido: (id: string, patch: { turmaId: string; locationId?: string; track?: string }, progIds: string[]) => void;
+}) => {
+  const [busca, setBusca] = useState('');
+  const [alvo, setAlvo] = useState<any>(null);
+  const [plano, setPlano] = useState<ReturnType<typeof planejarMovimentacao> | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [feito, setFeito] = useState('');
+
+  const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const nomeTurma = (id?: string | null) => (id && turmas.find(x => x.id === id)?.nome) || (id ? 'turma desconhecida' : 'sem turma');
+  const trilha = (tr?: string) => TRACK_LABELS[((tr || 'teen') as Track)] || tr;
+
+  const resultados = useMemo(() => {
+    const q = norm(busca.trim());
+    if (q.length < 2) return [];
+    return users
+      .filter(u => !u.isGuest && (norm(u.nome).includes(q) || norm(u.email).includes(q)))
+      .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'))
+      .slice(0, 8);
+  }, [busca, users]);
+
+  const escolher = async (u: any) => {
+    setAlvo(u); setPlano(null); setFeito(''); setOcupado(true);
+    try {
+      const progs = await getProgressoDoUsuario(u.id);
+      setPlano(planejarMovimentacao({
+        usuario: { id: u.id, nome: u.nome, turmaId: u.turmaId, track: u.track, locationId: u.locationId },
+        progressos: progs.map((p: any) => ({ id: p.id, userId: p.userId, turmaId: p.turmaId, track: p.track })),
+        turma: { id: turma.id, nome: turma.nome, locationId: turma.locationId, track: turma.track },
+      }));
+    } catch (e: any) {
+      alert(e?.message || 'Não foi possível ler o progresso desse aluno.');
+      setAlvo(null);
+    }
+    setOcupado(false);
+  };
+
+  const confirmar = async () => {
+    if (!alvo || !plano) return;
+    setOcupado(true);
+    try {
+      const r = await adminMoverParaTurma(alvo.id, plano.perfil, plano.progresso);
+      const ok = plano.progresso.filter(id => !r.progresso.falhas.some(f => f.id === id));
+      onMovido(alvo.id, plano.perfil, ok);
+      setFeito(`${alvo.nome} agora é de "${turma.nome}". ${r.progresso.feitos} semana(s) de progresso vieram junto.`
+        + (r.progresso.falhas.length ? ` ${r.progresso.falhas.length} recusada(s) — ver o console.` : '')
+        + ' Se o app dele estiver aberto, o próximo quiz já grava na turma nova.');
+      if (r.progresso.falhas.length) console.warn('Mover aluno — progresso recusado:', r.progresso.falhas);
+      setAlvo(null); setPlano(null); setBusca('');
+    } catch (e: any) {
+      alert(e?.message || 'Erro ao mover o aluno. Nada foi alterado no progresso.');
+    }
+    setOcupado(false);
+  };
+
+  const caixa: React.CSSProperties = { background:'var(--row-bg-strong)', padding:10, borderRadius:8, marginBottom:10 };
+  const inputSt: React.CSSProperties = { width:'100%', padding:'8px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13, boxSizing:'border-box' };
+
+  return (
+    <div style={caixa}>
+      <div style={{fontSize:12, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>👤 Inserir ou mover aluno para "{turma.nome}"</div>
+      {feito && <div style={{fontSize:12, color:'var(--success)', background:'rgba(79,184,92,.12)', padding:'8px 10px', borderRadius:8, marginBottom:8, lineHeight:1.5}}>✅ {feito}</div>}
+
+      {!alvo && (
+        <>
+          <input autoFocus value={busca} onChange={e => setBusca(e.target.value)} placeholder="Nome ou e-mail do aluno" style={inputSt} />
+          {busca.trim().length >= 2 && resultados.length === 0 && (
+            <div style={{fontSize:12, color:'var(--mut)', marginTop:6}}>Ninguém encontrado.</div>
+          )}
+          <div style={{display:'flex', flexDirection:'column', gap:4, marginTop:6}}>
+            {resultados.map(u => (
+              <button key={u.id} onClick={() => escolher(u)} disabled={ocupado}
+                style={{textAlign:'left', background:'var(--row-bg)', border:'1px solid var(--input-border)', borderRadius:8, padding:'6px 8px', cursor:'pointer', color:'var(--txt)'}}>
+                <div style={{fontSize:13, fontWeight:800}}>{u.avatar} {u.nome || u.email}</div>
+                <div style={{fontSize:11, color:'var(--mut)'}}>
+                  {u.turmaId === turma.id ? '✔ já é desta turma' : `🏫 ${nomeTurma(u.turmaId)}`} · {trilha(u.track)}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {alvo && !plano && <div style={{fontSize:12, color:'var(--mut)'}}>Lendo o progresso de {alvo.nome}...</div>}
+
+      {alvo && plano && (
+        <div style={{fontSize:12, color:'var(--txt2)', lineHeight:1.6}}>
+          <div style={{fontWeight:800, marginBottom:4}}>{alvo.avatar} {alvo.nome}</div>
+          <div>🏫 {plano.jaEstava ? <>já é de <strong>{turma.nome}</strong></> : <>{nomeTurma(plano.deTurma)} → <strong style={{color:'var(--gold)'}}>{turma.nome}</strong></>}</div>
+          {plano.mudaIgreja && <div>🏛️ Igreja: {locName(alvo.locationId) } → <strong>{locName(turma.locationId)}</strong></div>}
+          {plano.mudaTrilha && <div>📚 Trilha: {trilha(alvo.track)} → <strong>{trilha(turma.track)}</strong> <span style={{color:'var(--mut)'}}>(a lição dele passa a ser a da turma)</span></div>}
+          <div>📈 {plano.progresso.length} semana(s) de progresso vêm para esta turma{plano.outraTrilha ? ` · ${plano.outraTrilha} de outra trilha ficam onde estão` : ''}</div>
+          {plano.nadaAFazer && <div style={{color:'var(--mut)', marginTop:4}}>Está tudo certo com esse aluno: nada a mudar.</div>}
+          <div style={{display:'flex', gap:6, marginTop:10}}>
+            {!plano.nadaAFazer && (
+              <button onClick={confirmar} disabled={ocupado} className={`btn btn-gold ${ocupado ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px'}}>
+                {ocupado ? 'Gravando...' : plano.jaEstava ? '✅ Acertar progresso' : plano.deTurma ? '✅ Mover para esta turma' : '✅ Inserir nesta turma'}
+              </button>
+            )}
+            <button onClick={() => { setAlvo(null); setPlano(null); }} disabled={ocupado}
+              style={{background:'var(--row-bg)', color:'var(--mut)', border:'none', borderRadius:6, padding:'8px 14px', fontSize:13, fontWeight:800, cursor:'pointer'}}>Voltar</button>
+          </div>
+        </div>
+      )}
+
+      {!alvo && (
+        <button onClick={onFechar} style={{background:'transparent', color:'var(--mut)', border:'none', fontSize:11, fontWeight:800, cursor:'pointer', marginTop:8, padding:0}}>fechar</button>
       )}
     </div>
   );
@@ -5894,6 +6073,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
                 onLocationCreated={loc => setLocations(prev => [...prev, loc].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')))}
                 onUsuariosCarimbados={(ids, turmaId) => setUsers(prev => prev.map(u => ids.includes(u.id) ? { ...u, turmaId } : u))}
                 onIgrejaPreenchida={(ids, locationId) => setUsers(prev => prev.map(u => ids.includes(u.id) ? { ...u, locationId } : u))}
+                onUsuarioMovido={(id, patch) => setUsers(prev => prev.map(u => u.id === id ? { ...u, ...patch } : u))}
               />
             )}
           </>

@@ -1,5 +1,6 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { dbAdmin } from './lib/firebaseAdmin';
+import { planejarReparoDeTurma } from '../src/backfillTurmas';
 
 // ===== Backfill dos dados que alimentam os rankings ao vivo =====
 //
@@ -12,6 +13,8 @@ import { dbAdmin } from './lib/firebaseAdmin';
 // 1) Carimbar locationId/track nos docs de progresso antigos.
 // 2) Espelhar as duplas antigas em pairsPublic/.
 // 3) Continuar limpando nota/destaque vazados no history (segurança, Etapa 8).
+// 4) Preencher turmaId no progresso que nasceu sem ele, com a turma atual do
+//    dono (ver planejarReparoDeTurma) — sem isso a semana some do ranking da turma.
 //
 // Tudo é idempotente: depois da primeira passada não há mais o que reparar.
 
@@ -31,7 +34,14 @@ export const run = async () => {
   // ---- 1 e 3: progresso (locationId + scrub de notas legadas) ----
   const progSnap = await db.collection('progress').get();
   const progWrites: Promise<any>[] = [];
-  let carimbados = 0, limpos = 0;
+  let carimbados = 0, limpos = 0, turmasReparadas = 0;
+
+  const turmasSnap = await db.collection('turmas').get();
+  const reparoDeTurma = new Map(planejarReparoDeTurma({
+    usuarios: Object.entries(users).map(([id, u]) => ({ id, ...u })),
+    progressos: progSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) })),
+    turmas: turmasSnap.docs.map(t => ({ id: t.id, ...(t.data() as any) })),
+  }).map(r => [r.id, r.turmaId]));
 
   progSnap.forEach(d => {
     const p = d.data();
@@ -62,6 +72,8 @@ export const run = async () => {
     // Antes das trilhas todo progresso era teen; sem o campo, o recorte por
     // trilha teria de adivinhar a cada leitura.
     if (!p.track && u?.track) patch.track = u.track;
+    const turmaFaltando = reparoDeTurma.get(d.id);
+    if (turmaFaltando) { patch.turmaId = turmaFaltando; turmasReparadas++; }
 
     if (Object.keys(patch).length) progWrites.push(d.ref.update(patch));
   });
@@ -123,7 +135,7 @@ export const run = async () => {
   });
   await Promise.all(pairWrites);
 
-  const resumo = { carimbados, limpos, espelhados, sincronizados };
+  const resumo = { carimbados, limpos, turmasReparadas, espelhados, sincronizados };
   console.log('Backfill concluído:', JSON.stringify(resumo));
   return resumo;
 };

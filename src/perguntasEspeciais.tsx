@@ -283,6 +283,9 @@ const Digitar = ({ q, revelado, onResponder }: Props) => {
 // Relâmpago: tela de largada (o relógio só começa quando o aluno toca), depois
 // 5 afirmações em sequência, 5 s cada. Acertar 4 vale a pergunta (75 XP base);
 // acertar as 5 vale o máximo (100 XP base) — o bônus de perfeição.
+// Segundos restantes em que toca cada tique do fim (o intervalo vai encurtando).
+const TIQUES_FINAIS = [2, 1.6, 1.25, 0.95, 0.7, 0.5, 0.33, 0.2, 0.1];
+
 const Relampago = ({ q, revelado, onResponder }: Props) => {
   const [fase, setFase] = useState<'largada' | 'jogo' | 'fim'>('largada');
   const [i, setI] = useState(0);
@@ -300,14 +303,15 @@ const Relampago = ({ q, revelado, onResponder }: Props) => {
     const nr = [...respostas, v];
     setRespostas(nr);
     setFlash(certo ? 'ok' : 'erro');
-    if (certo) playSound('correct', { seq: nr.filter((r, k) => r === q.itens[k].verdadeiro).length });
-    else playSound('wrong');
+    if (certo) playSound('relampagoCerta', { seq: nr.filter((r, k) => r === q.itens[k].verdadeiro).length });
+    else playSound('relampagoErro');
     setTimeout(() => {
       setFlash(null);
       if (i + 1 < total) { setI(i + 1); travaRef.current = false; }
       else {
         setFase('fim');
         const acertos = nr.filter((r, k) => r === q.itens[k].verdadeiro).length;
+        if (acertos === total) playSound('relampagoPerfeito', { t: 0.15 });
         onResponder(acertos >= Math.min(RELAMPAGO_MIN_ACERTOS, total), { acertos, total, perfeito: acertos === total });
       }
     }, 550);
@@ -317,9 +321,12 @@ const Relampago = ({ q, revelado, onResponder }: Props) => {
     if (fase !== 'jogo') return;
     inicioRef.current = Date.now();
     setResta(RELAMPAGO_SEG_POR_ITEM);
+    let tique = 0;
     const t = setInterval(() => {
       const r = Math.max(0, RELAMPAGO_SEG_POR_ITEM - (Date.now() - inicioRef.current) / 1000);
       setResta(r);
+      // Tiques cada vez mais juntos nos 2 últimos segundos da afirmação.
+      if (!travaRef.current && tique < TIQUES_FINAIS.length && r <= TIQUES_FINAIS[tique]) playSound('relampagoTique', { seq: tique++ });
       if (r <= 0) { clearInterval(t); responder(null); }
     }, 60);
     return () => clearInterval(t);
@@ -336,7 +343,7 @@ const Relampago = ({ q, revelado, onResponder }: Props) => {
           Acerte {Math.min(RELAMPAGO_MIN_ACERTOS, total)} para valer a pergunta.<br />
           Acerte <b>todas</b> e ganhe o XP máximo! 🔥
         </div>
-        <BotaoConfirmar habilitado onClick={() => setFase('jogo')} rotulo="Valendo! ⚡" />
+        <BotaoConfirmar habilitado onClick={() => { playSound('relampagoLargada'); setFase('jogo'); }} rotulo="Valendo! ⚡" />
       </div>
     );
   }

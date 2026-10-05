@@ -373,6 +373,37 @@ export const adminCarimbarTurma = async (
   };
 };
 
+// Realinha progresso que ficou apontando para a turma antiga de quem já é
+// desta turma (ver progDesalinhados em planejarBackfill). Só o admin chega
+// aqui: a regra aceita turmaId diferente do dono apenas com isUserAdmin().
+export const adminRealinharProgresso = async (
+  turmaId: string,
+  progressos: string[],
+  aoAvancar?: (feitos: number, total: number) => void,
+) => carimbarEmLotes(
+  progressos.map(id => ({ id, colecao: 'progress', patch: { turmaId, updatedAt: serverTimestamp() } })),
+  aoAvancar,
+);
+
+// Move (ou insere) UM aluno numa turma. Mesma ordem do carimbo, pelo mesmo
+// motivo: PERFIL PRIMEIRO. Se o perfil falhar, nada de progresso é tocado —
+// progresso apontando para uma turma que o dono não tem travaria os saves.
+//
+// O aparelho do aluno pode estar com o perfil antigo em memória; o save dele
+// relê a turma do perfil quando o carimbo é recusado (ver saveProgress), então
+// ele não perde quiz por ter sido movido com o app aberto.
+export const adminMoverParaTurma = async (
+  userId: string,
+  perfil: { turmaId: string; locationId?: string; track?: string },
+  progressos: string[],
+) => {
+  await updateDoc(doc(db, 'users', userId), perfil);
+  const r = await carimbarEmLotes(
+    progressos.map(id => ({ id, colecao: 'progress', patch: { turmaId: perfil.turmaId, updatedAt: serverTimestamp() } })),
+  );
+  return { progresso: r };
+};
+
 // ===== Códigos de convite por local + trilha (Etapa 3) =====
 // Doc id == o próprio código, para resgate por leitura direta (sem precisar de
 // permissão de list para quem resgata). Alfabeto sem caracteres ambíguos (0/O/1/I).
@@ -809,6 +840,16 @@ export const saveProgress = async (prog: any, week: string, userId: string, nome
     // conhece o campo faz hasOnly() recusar tudo. A liberação se perde até as
     // regras subirem; o progresso, não.
     const { turmaId: carimboTurma, liberados: diasLiberados, ...essencial } = corpo;
+    // Antes de abrir mão do carimbo, tenta a turma ATUAL do perfil. Gravar sem
+    // turmaId não falha, mas a semana nova nasceria sem turma e sumiria do
+    // ranking da turma — o "esta semana eu não apareço" do aluno recém-movido.
+    try {
+      const atual = (await getDoc(doc(db, 'users', userId))).data()?.turmaId;
+      if (atual && atual !== carimboTurma) {
+        await setDoc(progRef, { ...corpo, turmaId: atual }, { merge: true });
+        return;
+      }
+    } catch { /* segue para os fallbacks de sempre */ }
     try {
       await setDoc(progRef, { ...essencial, ...(diasLiberados ? { liberados: diasLiberados } : {}) }, { merge: true });
     } catch {

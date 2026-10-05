@@ -412,7 +412,8 @@ export const getAudioCtx = (): AudioContext => {
 // Todos sintetizados na hora (Web Audio): nenhum arquivo de áudio, zero bytes a
 // mais no app. Os valores vêm da página de teste de sons aprovada em 2026-09-26.
 export type Som = 'correct' | 'wrong' | 'ranking' | 'tempo' | 'perfeito' | 'aba' | 'praticar' | 'voltar'
-  | 'subiu' | 'caiu' | 'ouro' | 'prata' | 'bronze' | 'promocao';
+  | 'subiu' | 'caiu' | 'ouro' | 'prata' | 'bronze' | 'promocao'
+  | 'relampagoLargada' | 'relampagoCerta' | 'relampagoErro' | 'relampagoTique' | 'relampagoPerfeito';
 
 export const somLigado = (): boolean => {
   try { return localStorage.getItem('som') !== 'off'; } catch { return true; }
@@ -581,7 +582,7 @@ const tom = (c: AudioContext, o: Tom) => {
 
 const ruido = (c: AudioContext, o: Ruido) => {
   if (!_ruido || _ruido.sampleRate !== c.sampleRate) {
-    _ruido = c.createBuffer(1, c.sampleRate, c.sampleRate);
+    _ruido = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
     const d = _ruido.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
@@ -644,6 +645,41 @@ const errada = (c: AudioContext) => {
   }
 };
 
+// ===== Rodada relâmpago: sons próprios, todos com tema de raio =====
+// Estalo do raio: rajada de cliques agudos + chiado descendo.
+const estalo = (c: AudioContext, t = 0, v = 1) => {
+  for (let i = 0; i < 6; i++) ruido(c, { type: 'highpass', f: 2500 + Math.random() * 3000, dur: 0.025, vol: 0.35 * v, t: t + i * 0.018 + Math.random() * 0.01 });
+  ruido(c, { f: 6000, f2: 900, q: 0.7, dur: 0.25, vol: 0.3 * v, t });
+};
+// Trovão: grave rolando com o filtro fechando.
+const trovao = (c: AudioContext, t = 0, v = 1) => {
+  ruido(c, { type: 'lowpass', f: 1400, f2: 90, dur: 1.6, vol: 0.6 * v, a: 0.02, t: t + 0.05 });
+  ruido(c, { type: 'lowpass', f: 500, f2: 60, dur: 1.9, vol: 0.45 * v, a: 0.25, t: t + 0.25 });
+  tom(c, { f: 70, f2: 32, dur: 1.2, vol: 0.35 * v, t: t + 0.04 });
+};
+// Zap: faísca brilhante, mais aguda a cada acerto seguido (k = 0..5).
+const zap = (c: AudioContext, k: number) => {
+  tom(c, { f: semitom(880, k), f2: semitom(3520, k), glide: 0.05, type: 'square', dur: 0.08, vol: 0.06, a: 0.002 });
+  tom(c, { f: semitom(1760, k), type: 'triangle', dur: 0.28, vol: 0.12, t: 0.05 });
+  ruido(c, { type: 'highpass', f: 5000, dur: 0.05, vol: 0.18 });
+};
+// Curto-circuito: zumbido picotado, faíscas e a queda no fim.
+const curto = (c: AudioContext) => {
+  for (let i = 0; i < 9; i++) tom(c, { f: 110 + (i % 2) * 6, type: 'sawtooth', dur: 0.035, vol: 0.11, a: 0.002, lp: 900, t: i * 0.04 });
+  for (let i = 0; i < 5; i++) ruido(c, { type: 'highpass', f: 3000 + Math.random() * 2500, dur: 0.02, vol: 0.2, t: 0.03 + i * 0.06 + Math.random() * 0.02 });
+  tom(c, { f: 180, f2: 55, type: 'sawtooth', dur: 0.32, vol: 0.08, lp: 700, t: 0.36 });
+};
+// Tempestade perfeita (5 de 5): raio, trovão, acorde de guitarra abrindo e chuva de brilhos.
+const tempestade = (c: AudioContext, t: number) => {
+  estalo(c, t);
+  trovao(c, t + 0.02, 0.8);
+  [164.81, 246.94, 329.63, 82.41].forEach((f, i) => [-9, 9].forEach(d =>
+    tom(c, { f, type: 'sawtooth', detune: d, dur: 1.5, vol: i === 3 ? 0.05 : 0.045, a: 0.02, lp: 500, lp2: 5000, t: t + 0.35 })));
+  [659.25, 830.61, 987.77, 1318.51].forEach((f, i) => tom(c, { f, type: 'square', dur: 0.12, vol: 0.045, lp: 4000, t: t + 0.55 + i * 0.08 }));
+  tom(c, { f: 1318.51, type: 'triangle', dur: 0.9, vol: 0.14, t: t + 0.88 });
+  for (let i = 0; i < 10; i++) sino(c, [2093, 2349.32, 2637.02, 3135.96, 3520][i % 5] * (i > 5 ? 1.5 : 1), t + 1.0 + i * 0.07, 0.5, 0.035);
+};
+
 // Navegação toca bem mais baixo que o quiz: som em toda troca de tela cansa.
 export const playSound = (type: Som, opts: { seq?: number; t?: number } = {}) => {
   if (!somLigado()) return;
@@ -679,12 +715,28 @@ export const playSound = (type: Som, opts: { seq?: number; t?: number } = {}) =>
       case 'ouro': sino(c, 1318.51, t, 1.3, 0.22); sino(c, 1975.53, t + 0.08, 1.1, 0.08); break;
       case 'prata': sino(c, 1046.5, t, 1.0, 0.2); break;
       case 'bronze': sino(c, 783.99, t, 0.9, 0.2); break;
+      case 'relampagoLargada':
+        estalo(c, t);
+        trovao(c, t + 0.02);
+        tom(c, { f: 1760, f2: 3520, glide: 0.08, type: 'square', dur: 0.1, vol: 0.05, t });
+        break;
+      case 'relampagoCerta': zap(c, DEGRAUS[Math.min(Math.max((opts.seq || 1) - 1, 0), DEGRAUS.length - 1)]); break;
+      case 'relampagoErro': curto(c); break;
+      // seq = qual tique dos últimos 2 s (0, 1, 2...): alterna o tom e cresce.
+      case 'relampagoTique': tom(c, { f: (opts.seq || 0) % 2 ? 1500 : 1900, type: 'square', dur: 0.03, vol: 0.05 + (opts.seq || 0) * 0.004, a: 0.001, t }); break;
+      case 'relampagoPerfeito': tempestade(c, t); break;
       case 'promocao':
         [261.63, 392, 523.25, 659.25].forEach((f, i) => tom(c, { f, type: 'triangle', t: t + i * 0.03, dur: 0.9, vol: 0.11, a: 0.01 }));
         tom(c, { f: 783.99, type: 'triangle', t: t + 0.25, dur: 0.7, vol: 0.12 });
         break;
     }
   } catch {}
+};
+
+// "2026-12-05" -> "05/12" (vazio se a data não vier no formato esperado).
+export const dataCurta = (iso?: string): string => {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(iso || '');
+  return m ? `${m[2]}/${m[1]}` : '';
 };
 
 export const formatDiaSemana = (dia: string): string => {
