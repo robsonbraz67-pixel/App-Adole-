@@ -1996,7 +1996,30 @@ const SEMANA_SCOPES = [
   { k: 'weekGeral', label: 'Toda a escola' },
 ];
 
-export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao, rankingLoading, onRefresh, onSorteador }: any) => {
+export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeType, onBack, licao: licaoAtual, rankingLoading: carregandoAtual, onRefresh, onSorteador }: any) => {
+  // Seletor de semana (o mesmo do sorteio) nas abas da SEMANA individual. A
+  // semana atual continua vindo da assinatura ao vivo do App; uma semana
+  // passada é uma foto lida uma vez (getWeeklyRankingDaTurma / getWeeklyRanking
+  // — as mesmas consultas do Sorteador). Daqui para baixo, `licao` e
+  // `ranking` são os da semana ESCOLHIDA: zona do sorteio, auditoria rápida e
+  // compartilhamento passam a falar dela.
+  const comSeletorSemana = type === 'week' || type === 'weekGeral';
+  const [licaoSel, setLicaoSel] = useState<any>(null);
+  const [linhasPassadas, setLinhasPassadas] = useState<any[] | null>(null);
+  const semanaPassada = comSeletorSemana && !!licaoSel && licaoSel.semana !== licaoAtual?.semana;
+  useEffect(() => {
+    if (!semanaPassada) { setLinhasPassadas(null); return; }
+    let vivo = true;
+    setLinhasPassadas(null);
+    (type === 'week' && jogador?.turmaId ? getWeeklyRankingDaTurma(licaoSel.semana, jogador.turmaId) : getWeeklyRanking(licaoSel.semana))
+      .then(rows => { if (vivo) setLinhasPassadas(rows || []); })
+      .catch(() => { if (vivo) setLinhasPassadas([]); });
+    return () => { vivo = false; };
+  }, [semanaPassada, licaoSel?.semana, type, jogador?.turmaId]);
+  const licao = semanaPassada ? licaoSel : licaoAtual;
+  const ranking = semanaPassada ? (linhasPassadas || []) : rankingAtual;
+  const rankingLoading = semanaPassada ? linhasPassadas === null : carregandoAtual;
+
   // Rankings por local (trilha/geral) vêm pré-calculados e são ordenados por
   // DIAS no período (métrica justa entre trilhas); a semana continua por XP.
   // O de duplas segue a mesma lógica de dias, mas com a métrica da dupla
@@ -2028,7 +2051,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           const isMe = r.id === jogador.id;
           const nome = isMe ? jogador.nome : r.nome;
           const avatar = isMe ? jogador.avatar : r.avatar;
-          const ehSemanaAtual = type === 'week' || type === 'weekGeral';
+          const ehSemanaAtual = (type === 'week' || type === 'weekGeral') && !semanaPassada;
           const dias = isMe && ehSemanaAtual ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
           const xp = isMe && ehSemanaAtual ? (prog.xp || 0) : (r.xp || 0);
           // A situação no sorteio sai do history: o meu vem do aparelho (mais
@@ -2050,7 +2073,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       regular: todos.slice(0, 10),
       staff: all.filter((r: any) => r.isAdmin || r.isProfessor).sort(bySort),
     };
-  }, [ranking, jogador, type, prog, porDias, isPair]);
+  }, [ranking, jogador, type, prog, porDias, isPair, semanaPassada]);
 
   const myIsStaff = !!jogador.isAdmin || !!jogador.isProfessor;
   const myIdx = myIsStaff
@@ -2111,7 +2134,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   // comparar com a última vez que ESTA pessoa viu, sem leitura a mais.
   const somPosRef = useRef<string | null>(null);
   useEffect(() => {
-    if (myIsStaff || rankingLoading || !ranking?.length) return;
+    if (myIsStaff || semanaPassada || rankingLoading || !ranking?.length) return;
     const chave = `rankPos_${type}_${isSemanal ? licao?.semana : licao?.trimestre}`;
     if (somPosRef.current === chave) return;
     somPosRef.current = chave;
@@ -2261,10 +2284,23 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         )}
       </div>
 
+      {comSeletorSemana && (
+        <div style={{padding:'0 16px'}}>
+          <SeletorLicao
+            track={jogador?.track || 'teen'}
+            licao={licao}
+            incluirHistorico
+            titulo="📅 Semana do ranking"
+            onChange={(l) => setLicaoSel(l?.semana === licaoAtual?.semana ? null : l)}
+            nota={semanaPassada ? 'Semana encerrada: a zona mostra quem entrou no sorteio dela.' : undefined}
+          />
+        </div>
+      )}
+
       {myIsStaff && (
         <div style={{display:'flex', gap:8, padding:'0 16px 12px'}}>
           {onSorteador && (
-            <button className="btn btn-ghost btn-sm" onClick={onSorteador} style={{flex:1, margin:0}}>🎰 Ir para o sorteio</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => onSorteador(comSeletorSemana ? licao : licaoAtual)} style={{flex:1, margin:0}}>🎰 Ir para o sorteio</button>
           )}
           <button className="btn btn-ghost btn-sm" onClick={() => setAuditoriaAberta(a => !a)} style={{flex:1, margin:0}}>
             {auditoriaAberta ? '✕ Fechar auditoria' : '🔎 Não apareço / não entrei'}
@@ -2416,7 +2452,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
       </div>
       <div className="sec">
         <div style={{textAlign:'center', fontSize:11, color:'var(--mut)', marginBottom:10, fontFamily:'Poppins,sans-serif', fontWeight:700}}>
-          {isSemanal ? '🟢 ao vivo — atualiza sozinho enquanto a tela estiver aberta' : '🔄 somado agora, com a semana atual ao vivo'}
+          {semanaPassada ? '📅 semana encerrada — resultado final' : isSemanal ? '🟢 ao vivo — atualiza sozinho enquanto a tela estiver aberta' : '🔄 somado agora, com a semana atual ao vivo'}
         </div>
         <div className="purple-card" style={{textAlign:'center'}}>
           <div style={{fontSize:13,color:'var(--mut)',marginBottom:4}}>{isPair ? 'Sua dupla' : 'Sua posição'}</div>

@@ -70,6 +70,8 @@ export default function App() {
   const [tela, setTela] = useState('splash');
   // O sorteio abre do painel ou do atalho do ranking; "Voltar" devolve à origem.
   const [voltarDoSorteio, setVoltarDoSorteio] = useState<'home' | 'ranking'>('home');
+  // Semana escolhida no seletor do ranking: o atalho abre o sorteio nela.
+  const [licaoDoSorteio, setLicaoDoSorteio] = useState<any>(null);
   const [jogador, setJogador] = useState<any>(null);
   const [licao, setLicao] = useState<any>(null);
   const [prog, setProg] = useState<any>(PROG0);
@@ -921,15 +923,15 @@ export default function App() {
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} onMural={() => abrirMural('estudo')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} liberado={(prog.liberados || []).includes(diaAtual.id)} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} onMural={() => abrirMural('resultado')} />}
-      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading || weekGeralLoading} onRefresh={() => loadSeason(licao.trimestre, true)} onSorteador={(jogador?.isAdmin || jogador?.isProfessor) ? () => { setVoltarDoSorteio('ranking'); setTela('sorteador'); } : undefined} />}
-      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onModoAoVivo={() => setTela('liveHost')} onSorteador={() => { setVoltarDoSorteio('home'); setTela('sorteador'); }} onApresentacao={() => setTela('apresentacao')} />}
+      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading || weekGeralLoading} onRefresh={() => loadSeason(licao.trimestre, true)} onSorteador={(jogador?.isAdmin || jogador?.isProfessor) ? (l: any) => { setLicaoDoSorteio(l || null); setVoltarDoSorteio('ranking'); setTela('sorteador'); } : undefined} />}
+      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onModoAoVivo={() => setTela('liveHost')} onSorteador={() => { setLicaoDoSorteio(null); setVoltarDoSorteio('home'); setTela('sorteador'); }} onApresentacao={() => setTela('apresentacao')} />}
       {tela === 'liveHost' && (
         <React.Suspense fallback={<CarregandoAoVivo />}>
           <LiveHost licao={licao} jogador={jogador} onBack={() => setTela('admin')} onActiveChange={setLiveGameActive} />
         </React.Suspense>
       )}
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onSwitchTrack={handleSwitchTrack} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
-      {tela === 'sorteador' && <Sorteador licao={licao} jogador={jogador} onBack={() => { setTela(voltarDoSorteio); setVoltarDoSorteio('home'); }} />}
+      {tela === 'sorteador' && <Sorteador licao={licaoDoSorteio || licao} jogador={jogador} onBack={() => { setTela(voltarDoSorteio); setVoltarDoSorteio('home'); }} />}
       {tela === 'apresentacao' && <Apresentacao licao={licao} jogador={jogador} onBack={() => setTela('admin')} />}
       {tela === 'oracoes' && <MuralOracoes jogador={jogador} onBack={() => setTela(voltarDoMural)} />}
       {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} prog={prog} weekRows={weekRows} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onRankingDuplas={() => loadLatestRanking('duplasSemana')} />}
