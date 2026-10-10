@@ -27,6 +27,10 @@ export type HistoryEntry = {
   emISO?: string;
   emHora?: string;
   reiniciado?: boolean;
+  // Feito depois que o admin liberou o dia ("Refazer/Liberar 100%"): o atraso
+  // foi perdoado, então conta como feito no dia certo (desde 10/10/2026 —
+  // antes disso a liberação era consumida sem deixar rastro no histórico).
+  liberado?: boolean;
 };
 
 // Mesma forma que ProgressRow (firebase.ts) devolve — `history` viaja junto
@@ -114,6 +118,7 @@ export const diaFoiEstudadoNoCerto = (
   velocidade: number | null,
 ): boolean => {
   if (!entry || !dataLicao) return false;
+  if (entry.liberado) return true;
   if (entry.emISO) return entry.emISO === dataLicao;
   const c = classificarPorXP(entry.xp, entry.acertos);
   if (c === 'no-dia') return true;
@@ -498,4 +503,111 @@ export const pistasDoPodio = (perfis: PerfilAluno[], posicao: number, licoes: Li
   if (rankOfensiva <= 3 && p.ofensiva.dias >= 3) pistas.push(`Tem a ${rankOfensiva}ª maior sequência no dia certo: **${p.ofensiva.dias} dias**`);
   pistas.push(`Fechou com **${fmtNum(p.xp)} XP**${abaixo ? ` — ${fmtNum(p.xp - abaixo.xp)} à frente do ${posicao + 2}º lugar` : ''}`);
   return pistas;
+};
+
+// ===== Ferramenta "Dias em atraso" (painel do admin e do professor) =====
+//
+// Lista, por aluno, cada dia FEITO que não foi feito na data da lição. Usa a
+// mesma régua do resto do arquivo, mas diz de onde veio cada veredito — quem
+// for cobrar ou corrigir precisa saber se é prova ou estimativa:
+//   'data'      → history[dia].emISO (data real do estudo, desde 13/09/2026);
+//   'xp'        → sem carimbo, o XP só fecha com o desconto de atraso (ou o
+//                 desempate pela velocidade do aluno apontou atraso);
+//   'sem-dados' → sem carimbo e sem acertos para estimar — não dá para provar
+//                 nem um lado nem o outro, então aparece separado.
+// Dia liberado pelo admin (`liberados`) fica de fora: refazer vale 100% e o
+// atraso já foi perdoado de propósito.
+export type ProvaAtraso = 'data' | 'xp' | 'sem-dados';
+
+export type DiaAtrasado = {
+  week: string; dia: number; data: string;
+  estudadoEm?: string; atrasoDias?: number; prova: ProvaAtraso;
+};
+
+export type AlunoComAtraso = {
+  userId: string; nome: string; avatar: string; turmaId?: string;
+  feitos: number; noDia: number; atrasados: DiaAtrasado[];
+};
+
+const diasEntre = (de: string, ate: string) =>
+  Math.round((new Date(ate + 'T00:00:00').getTime() - new Date(de + 'T00:00:00').getTime()) / 86400000);
+
+export const diasEmAtraso = (linhas: (LinhaProgresso & { liberados?: number[] })[], licoes: Licao[]): AlunoComAtraso[] => {
+  const porUsuario: Record<string, typeof linhas> = {};
+  for (const r of collapseByUserWeek(somenteAlunos(linhas))) (porUsuario[r.userId] ??= []).push(r);
+
+  const out: AlunoComAtraso[] = [];
+  for (const [userId, rows] of Object.entries(porUsuario)) {
+    const vel = velocidadeDoAluno(rows, licoes);
+    // Nome e avatar da semana mais recente, como no sorteio.
+    const recente = [...rows].sort((a, b) => b.week.localeCompare(a.week))[0];
+    const a: AlunoComAtraso = { userId, nome: recente.nome, avatar: recente.avatar, turmaId: recente.turmaId, feitos: 0, noDia: 0, atrasados: [] };
+    for (const r of rows) {
+      const liberados = new Set(r.liberados || []);
+      for (const dia of r.done) {
+        const data = dataDaLicao(licoes, r.week, dia);
+        if (!data) continue;
+        a.feitos++;
+        const e = r.history?.[String(dia)];
+        if (liberados.has(dia) || e?.liberado) { a.noDia++; continue; }
+        if (e?.emISO) {
+          // Antes da data é impossível pelo app (dia bloqueado); se aparecer,
+          // não é atraso.
+          if (e.emISO <= data) { a.noDia++; continue; }
+          a.atrasados.push({ week: r.week, dia, data, estudadoEm: e.emISO, atrasoDias: diasEntre(data, e.emISO), prova: 'data' });
+          continue;
+        }
+        if (diaFoiEstudadoNoCerto(e, data, vel)) { a.noDia++; continue; }
+        const semDados = classificarPorXP(e?.xp, e?.acertos) === 'sem-dados';
+        a.atrasados.push({ week: r.week, dia, data, prova: semDados ? 'sem-dados' : 'xp' });
+      }
+    }
+    a.atrasados.sort((x, y) => x.data.localeCompare(y.data));
+    if (a.feitos) out.push(a);
+  }
+  // Quem mais atrasou (com prova) primeiro; "sem dados" só desempata.
+  const comProva = (x: AlunoComAtraso) => x.atrasados.filter(d => d.prova !== 'sem-dados').length;
+  return out.sort((x, y) => comProva(y) - comProva(x) || y.atrasados.length - x.atrasados.length || x.nome.localeCompare(y.nome));
+};
+
+// ===== Situação no sorteio SEMANAL até agora (ranking e auditoria rápida) =====
+//
+// Mesma régua de semanaTodaNoDia, mas olhando só os dias JÁ liberados — é o
+// que deixa o ranking mostrar a zona de promoção real no meio da semana:
+//   'dentro'     → todo dia liberado feito no dia certo;
+//   'falta-hoje' → tudo certo até ontem, só falta o dia de hoje (ou um dia que
+//                  o admin liberou e ainda não foi refeito) — ainda dá tempo;
+//   'fora'       → algum dia já passou sem ser feito, ou foi feito atrasado:
+//                  este sorteio semanal está perdido (a semana ainda conta na
+//                  temporada).
+// No fim da semana, 'dentro' é exatamente semanaTodaNoDia.
+export type SituacaoDiaSorteio = 'no-dia' | 'atrasado' | 'faltou' | 'hoje' | 'liberado' | 'futuro';
+
+export type SituacaoSorteioSemanal = {
+  status: 'dentro' | 'falta-hoje' | 'fora';
+  dias: { id: number; data?: string; situacao: SituacaoDiaSorteio; estudadoEm?: string }[];
+};
+
+export const situacaoSorteioSemanal = (
+  linha: { done?: number[]; history?: Record<string, HistoryEntry>; liberados?: number[]; week?: string } | null | undefined,
+  licao: Licao,
+  hojeISO: string = hojeLocalISO(),
+): SituacaoSorteioSemanal => {
+  const done = linha?.done || [];
+  const liberados = new Set(linha?.liberados || []);
+  const vel = linha ? velocidadeDoAluno([{ ...(linha as any), week: licao.semana, done }], [licao]) : null;
+  const dias = (licao?.dias || []).map(d => {
+    const e = linha?.history?.[String(d.id)];
+    if (!d.data || d.data > hojeISO) return { id: d.id, data: d.data, situacao: 'futuro' as const };
+    if (!done.includes(d.id)) {
+      if (liberados.has(d.id)) return { id: d.id, data: d.data, situacao: 'liberado' as const };
+      return { id: d.id, data: d.data, situacao: d.data === hojeISO ? 'hoje' as const : 'faltou' as const };
+    }
+    const certo = diaFoiEstudadoNoCerto(e, d.data, vel);
+    return { id: d.id, data: d.data, situacao: certo ? 'no-dia' as const : 'atrasado' as const, estudadoEm: e?.emISO };
+  });
+  const status = dias.some(d => d.situacao === 'faltou' || d.situacao === 'atrasado') ? 'fora'
+    : dias.some(d => d.situacao === 'hoje' || d.situacao === 'liberado') ? 'falta-hoje'
+    : 'dentro';
+  return { status, dias };
 };

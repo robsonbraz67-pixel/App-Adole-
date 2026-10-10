@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded, getTrackLessonsComHistorico, loadTrackLessonsComHistorico } from './data';
 import { planejarBackfill, planejarMovimentacao } from './backfillTurmas';
-import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, dataCurta, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor } from './utils';
-import { montarResumoTemporada, ResumoTemporada, semanaTodaNoDia } from './relatorioTemporada';
+import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, dataCurta, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor, isRankingHidden } from './utils';
+import { montarResumoTemporada, ResumoTemporada, semanaTodaNoDia, diasEmAtraso, AlunoComAtraso, DiaAtrasado, situacaoSorteioSemanal, SituacaoSorteioSemanal } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 import { ehEspecial, prepararEspecial, PerguntaEspecial, duracaoPergunta, ROTULO_TIPO, resumoGabarito } from './perguntasEspeciais';
 
@@ -1792,6 +1792,181 @@ const PairAvatars = ({ a, b }: any) => (
   </div>
 );
 
+/* ===== AUDITORIA RÁPIDA (atalho do ranking, só equipe) ===== */
+// "Não apareço no ranking" / "não entrei no sorteio": em vez de abrir o painel
+// e garimpar documento por documento, busca a pessoa e lista, em ordem, cada
+// motivo possível — conta, turma, progresso da semana, posição e o sorteio
+// semanal dia a dia (mesma régua do Sorteador: situacaoSorteioSemanal). Só
+// leitura; as correções continuam no painel (Auditoria de pontuação e
+// "Inserir ou mover aluno").
+type ItemDiag = { nivel: 'ok' | 'aviso' | 'erro' | 'info'; texto: string };
+const ICONE_DIAG: Record<ItemDiag['nivel'], string> = { ok: '✅', aviso: '⚠️', erro: '❌', info: 'ℹ️' };
+const ROTULO_DIA_SORTEIO: Record<string, string> = {
+  'no-dia': '✅ no dia', atrasado: '❌ fora do dia', faltou: '❌ faltou', hoje: '⏳ hoje', liberado: '🔓 liberado, falta refazer', futuro: '· ainda não abriu',
+};
+
+const AuditoriaRapida = ({ jogador, licao, ranking, isSemanaTurma }: { jogador: any; licao: any; ranking: any[]; isSemanaTurma: boolean }) => {
+  const [users, setUsers] = useState<any[]>([]);
+  const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [busca, setBusca] = useState('');
+  const [alvo, setAlvo] = useState<any>(null);
+  const [docs, setDocs] = useState<any[] | null>(null);
+  const [erro, setErro] = useState('');
+
+  // Admin enxerga todo mundo; professor, as turmas que conduz.
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const ts = jogador?.isAdmin ? await getTurmas() : await getTurmasQueConduzo(jogador);
+        if (!vivo) return;
+        setTurmas(ts);
+        const us = jogador?.isAdmin
+          ? await getAllUsers()
+          : (await Promise.all(ts.map(t => getUsersDaTurma(t.id)))).flat();
+        if (vivo) setUsers(us);
+      } catch (e: any) {
+        if (vivo) setErro(e?.message || 'Não foi possível carregar a lista de pessoas.');
+      }
+    })();
+    return () => { vivo = false; };
+  }, [jogador?.id, jogador?.isAdmin]);
+
+  const encontrados = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    if (t.length < 2) return [];
+    // Quem está no ranking mas não na lista (ex.: professor sem a turma da
+    // pessoa) ainda dá para auditar pelo id do progresso.
+    const vistos = new Set(users.map(u => u.id));
+    const extras = (ranking || []).filter((r: any) => r.id && !vistos.has(r.id)).map((r: any) => ({ id: r.id, nome: r.nome, avatar: r.avatar, turmaId: r.turmaId, track: r.track }));
+    return [...users, ...extras]
+      .filter(u => (u.nome || '').toLowerCase().includes(t) || (u.email || '').toLowerCase().includes(t))
+      .slice(0, 8);
+  }, [busca, users, ranking]);
+
+  const escolher = async (u: any) => {
+    setAlvo(u); setBusca(''); setDocs(null); setErro('');
+    try { setDocs(await getProgressoDoUsuario(u.id)); }
+    catch { setErro('Não foi possível ler o progresso desta pessoa.'); setDocs([]); }
+  };
+
+  const nomeTurma = (id?: string) => (id && turmas.find(t => t.id === id)?.nome) || (id ? 'outra turma' : '');
+
+  const diag = useMemo(() => {
+    if (!alvo || !docs) return null;
+    const itens: ItemDiag[] = [];
+    const track = alvo.track || 'teen';
+    const licaoDaTrilha = (() => {
+      try { return (getTrackLessonsComHistorico(track as Track) as any[]).find(l => l.semana === licao?.semana) || licao; }
+      catch { return licao; }
+    })();
+
+    // 1) Conta
+    if (alvo.bloqueado) itens.push({ nivel: 'erro', texto: 'Conta bloqueada (às vezes é a conta duplicada que foi mesclada — confira se a pessoa não usa outro e-mail).' });
+    if (alvo.isGuest) itens.push({ nivel: 'erro', texto: 'Está como convidado: convidado não aparece no ranking nem entra no sorteio.' });
+    if (isRankingHidden(alvo.nome || '')) itens.push({ nivel: 'erro', texto: `O nome "${alvo.nome}" está na lista de nomes ocultos do ranking.` });
+    if (alvo.isAdmin || alvo.isProfessor) itens.push({ nivel: 'info', texto: 'É da equipe (admin/professor): aparece em EQUIPE e não concorre ao sorteio.' });
+    if (!alvo.turmaId) itens.push({ nivel: 'erro', texto: 'Sem turma no perfil: não aparece em "Minha turma" e não entra no sorteio de nenhuma turma. Use "Inserir ou mover aluno" no painel.' });
+    else itens.push({ nivel: 'ok', texto: `Turma do perfil: ${nomeTurma(alvo.turmaId)}.` });
+
+    // 2) Progresso desta semana no servidor
+    const daSemana = docs.filter(d => d.week === licao?.semana);
+    const daTrilha = daSemana.filter(d => (d.track || 'teen') === track);
+    const doc = [...(daTrilha.length ? daTrilha : daSemana)].sort((a, b) => (b.done?.length || 0) - (a.done?.length || 0) || (b.xp || 0) - (a.xp || 0))[0];
+    if (!doc) {
+      itens.push({ nivel: 'erro', texto: 'Nenhum dia desta semana chegou ao servidor. Ou não estudou, ou estudou sem internet — peça para abrir o app com internet para sincronizar.' });
+    } else {
+      itens.push({ nivel: 'ok', texto: `Progresso da semana no servidor: ${doc.done?.length || 0} dia(s), ${doc.xp || 0} XP${(doc.track || 'teen') !== (jogador?.track || 'teen') ? ` (trilha ${doc.track})` : ''}.` });
+      if (daTrilha.length > 1) itens.push({ nivel: 'aviso', texto: `Há ${daTrilha.length} registros desta semana na mesma trilha — o ranking fica com o maior.` });
+      if (!doc.turmaId) itens.push({ nivel: 'erro', texto: 'O progresso da semana está SEM turma: fica fora do ranking da turma e do sorteio. O backfill de hora em hora costuma corrigir; para resolver já, use "Inserir ou mover aluno".' });
+      else if (alvo.turmaId && doc.turmaId !== alvo.turmaId) itens.push({ nivel: 'erro', texto: `O progresso da semana está carimbado em "${nomeTurma(doc.turmaId)}", não na turma do perfil — conta no ranking e no sorteio da outra turma. Use "Inserir ou mover aluno" para realinhar.` });
+    }
+
+    // 3) Posição na aba aberta do ranking
+    const lista = (ranking || []).filter((r: any) => !r.isAdmin && !r.isProfessor).sort((a: any, b: any) => (b.xp || 0) - (a.xp || 0));
+    const pos = lista.findIndex((r: any) => r.id === alvo.id);
+    if (pos >= 0) {
+      itens.push(pos < 10
+        ? { nivel: 'ok', texto: `Aparece no ranking desta aba em ${pos + 1}º de ${lista.length}.` }
+        : { nivel: 'aviso', texto: `Está em ${pos + 1}º de ${lista.length}: a lista mostra só os 10 primeiros (fora da zona do sorteio, não aparece na tela).` });
+    } else if (doc && !alvo.isAdmin && !alvo.isProfessor) {
+      itens.push({ nivel: 'aviso', texto: isSemanaTurma && doc.turmaId !== jogador?.turmaId
+        ? 'Não está nesta aba porque ela mostra só a SUA turma — veja em "Toda a escola".'
+        : 'Não está na lista desta aba (confira os itens acima).' });
+    }
+
+    // 4) Sorteio semanal, dia a dia
+    const sit = licaoDaTrilha?.dias?.length ? situacaoSorteioSemanal(doc, licaoDaTrilha) : null;
+    if (sit && !alvo.isAdmin && !alvo.isProfessor) {
+      itens.push(sit.status === 'dentro'
+        ? { nivel: 'ok', texto: 'Sorteio da semana: DENTRO — todos os dias liberados feitos no dia certo.' }
+        : sit.status === 'falta-hoje'
+          ? { nivel: 'aviso', texto: 'Sorteio da semana: ainda dá — tudo certo até agora, falta fazer o dia de hoje (ou refazer o dia liberado).' }
+          : { nivel: 'erro', texto: 'Sorteio da semana: FORA — algum dia passou sem ser feito ou foi feito fora da data. Se foi erro do app, doença etc., use "Refazer/Liberar 100%" na Auditoria de pontuação: refeito, o dia volta a contar.' });
+    }
+    return { itens, sit, doc };
+  }, [alvo, docs, licao, ranking, isSemanaTurma, jogador?.turmaId, jogador?.track, turmas]);
+
+  return (
+    <div style={{ background: 'var(--panel-bg)', padding: 12, borderRadius: 12 }}>
+      {!alvo ? (
+        <>
+          <div style={{ fontSize: 12, color: 'var(--mut)', marginBottom: 8, lineHeight: 1.5 }}>
+            Alguém reclamou que não aparece no ranking ou não entrou no sorteio? Busque a pessoa — semana: <strong>{licao?.titulo || licao?.semana}</strong>.
+          </div>
+          <input className="inp" style={{ fontSize: 14, padding: 11 }} placeholder="Nome ou e-mail" value={busca} onChange={e => setBusca(e.target.value)} autoFocus />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+            {encontrados.map(u => (
+              <div key={u.id} onClick={() => escolher(u)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', background: 'var(--row-bg)', borderRadius: 10, cursor: 'pointer' }}>
+                <span style={{ fontSize: 20 }}>{(u.avatar || '').length > 10 ? '🙂' : (u.avatar || '🙂')}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--txt2)' }}>{u.nome}</div>
+                  <div style={{ fontSize: 11, color: 'var(--mut)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email || nomeTurma(u.turmaId)}</div>
+                </div>
+              </div>
+            ))}
+            {busca.trim().length >= 2 && encontrados.length === 0 && (
+              <div style={{ fontSize: 12.5, color: 'var(--mut)', padding: '6px 2px' }}>{users.length ? 'Ninguém com esse nome.' : 'Carregando a lista...'}</div>
+            )}
+          </div>
+          {erro && <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>{erro}</div>}
+        </>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--txt)' }}>{alvo.nome}</div>
+              <div style={{ fontSize: 11, color: 'var(--mut)' }}>{alvo.email || ''}</div>
+            </div>
+            <button onClick={() => { setAlvo(null); setDocs(null); }} style={{ background: 'none', border: '1.5px solid var(--b3)', color: 'var(--mut)', borderRadius: 8, padding: '6px 10px', fontSize: 11.5, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>← Outra pessoa</button>
+          </div>
+          {!diag ? <div style={{ fontSize: 13, color: 'var(--mut)' }}>Conferindo...</div> : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {diag.itens.map((it, k) => (
+                  <div key={k} style={{ fontSize: 12.5, lineHeight: 1.45, color: it.nivel === 'erro' ? 'var(--danger)' : it.nivel === 'aviso' ? 'var(--gold)' : 'var(--txt2)' }}>
+                    {ICONE_DIAG[it.nivel]} {it.texto}
+                  </div>
+                ))}
+              </div>
+              {diag.sit && !alvo.isAdmin && !alvo.isProfessor && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {diag.sit.dias.map(d => (
+                    <div key={d.id} className="num" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11.5, padding: '5px 8px', background: 'var(--row-bg)', borderRadius: 6, color: d.situacao === 'atrasado' || d.situacao === 'faltou' ? 'var(--danger)' : 'var(--txt2)' }}>
+                      <span>Dia {d.id}{d.data ? ` · ${dataCurta(d.data)}` : ''}</span>
+                      <span>{ROTULO_DIA_SORTEIO[d.situacao]}{d.situacao === 'atrasado' && d.estudadoEm ? ` (feito ${dataCurta(d.estudadoEm)})` : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
 /* ===== RANKING ===== */
 // Abas: [Semana] [Campanha] [Duplas]. Campanha e Duplas têm um segundo nível de
 // escopo (a campanha por trilha/local/geral; as duplas por semana/campanha).
@@ -1821,7 +1996,7 @@ const SEMANA_SCOPES = [
   { k: 'weekGeral', label: 'Toda a escola' },
 ];
 
-export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao, rankingLoading, onRefresh }: any) => {
+export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, licao, rankingLoading, onRefresh, onSorteador }: any) => {
   // Rankings por local (trilha/geral) vêm pré-calculados e são ordenados por
   // DIAS no período (métrica justa entre trilhas); a semana continua por XP.
   // O de duplas segue a mesma lógica de dias, mas com a métrica da dupla
@@ -1840,7 +2015,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   const porDias = isPair;
   const mainTab = (type === 'week' || type === 'weekGeral') ? 'week' : isPair ? 'duplas' : 'campanha';
 
-  const { regular, staff } = useMemo(() => {
+  const { todosRegular, regular, staff } = useMemo(() => {
     const all = isPair
       ? [...ranking].map((r: any) => ({
           ...r,
@@ -1856,15 +2031,23 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           const ehSemanaAtual = type === 'week' || type === 'weekGeral';
           const dias = isMe && ehSemanaAtual ? (prog.done?.length || 0) : (r.dias ?? (r.done?.length || 0));
           const xp = isMe && ehSemanaAtual ? (prog.xp || 0) : (r.xp || 0);
+          // A situação no sorteio sai do history: o meu vem do aparelho (mais
+          // novo que a assinatura logo depois do quiz), igual a dias e XP.
+          const meuHist = isMe && ehSemanaAtual ? { done: prog.done || [], history: prog.history || {}, liberados: prog.liberados || [] } : {};
           const isAdmin = r.isAdmin || (isMe && !!jogador.isAdmin);
           const isProfessor = !isAdmin && (r.isProfessor || (isMe && !!jogador.isProfessor));
-          return { ...r, nome, avatar, dias, xp, isAdmin, isProfessor, eu: isMe };
+          return { ...r, ...meuHist, nome, avatar, dias, xp, isAdmin, isProfessor, eu: isMe };
         });
     const bySort = porDias
       ? (a: any, b: any) => (b.dias - a.dias) || (b.xp - a.xp)
       : (a: any, b: any) => b.xp - a.xp;
+    const todos = all.filter((r: any) => !r.isAdmin && !r.isProfessor).sort(bySort);
     return {
-      regular: all.filter((r: any) => !r.isAdmin && !r.isProfessor).sort(bySort).slice(0, 10),
+      // `todosRegular`: a lista inteira, para a zona do sorteio semanal (todo
+      // mundo que está concorrendo aparece, não só o top 10) e para a minha
+      // posição real quando eu fico abaixo do 10º.
+      todosRegular: todos,
+      regular: todos.slice(0, 10),
       staff: all.filter((r: any) => r.isAdmin || r.isProfessor).sort(bySort),
     };
   }, [ranking, jogador, type, prog, porDias, isPair]);
@@ -1872,7 +2055,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   const myIsStaff = !!jogador.isAdmin || !!jogador.isProfessor;
   const myIdx = myIsStaff
     ? staff.findIndex((r: any) => r.eu)
-    : regular.findIndex((r: any) => r.eu);
+    : todosRegular.findIndex((r: any) => r.eu);
   const meds = ['🥇','🥈','🥉'];
 
   // Nº de semanas da campanha ATUAL — não fixo em 13: no primeiro dia de uma
@@ -1883,7 +2066,21 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
   , [jogador?.track, licao?.trimestre]);
 
   // Zonas estilo divisão: em dia com os dias liberados → zona do sorteio;
-  // 1+ dia liberado sem fazer → zona de rebaixamento
+  // 1+ dia liberado sem fazer → zona de rebaixamento.
+  //
+  // Na SEMANA individual a zona é a do sorteio de verdade (situacaoSorteioSemanal,
+  // a mesma régua do Sorteador): cada dia liberado feito NO DIA dele. Antes era
+  // só "tem dias suficientes", e quem atrasou um dia aparecia na zona do
+  // sorteio sem estar no sorteio — era a origem do "eu estava na zona e não
+  // entrei". A zona lista TODOS os que estão concorrendo (não só o top 10).
+  const sorteioSemanal = isSemanal && !isPair;
+  const situacaoPorId = useMemo(() => {
+    const m = new Map<string, SituacaoSorteioSemanal>();
+    if (!sorteioSemanal || !licao?.dias?.length) return m;
+    for (const r of todosRegular) m.set(r.id, situacaoSorteioSemanal(r, licao));
+    return m;
+  }, [sorteioSemanal, todosRegular, licao]);
+
   const { zoneOn, metaDias, emDia, atrasados } = useMemo(() => {
     const h = new Date();
     const hojeISO = new Date(h.getTime() - h.getTimezoneOffset() * 60000).toISOString().split('T')[0];
@@ -1896,13 +2093,18 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
         .reduce((acc: number, l: any) => acc + l.dias.filter((d: any) => d.data && d.data <= hojeISO).length, 0);
     }
     const on = meta > 0;
+    if (on && sorteioSemanal) {
+      const dentro = todosRegular.filter((r: any) => situacaoPorId.get(r.id)?.status === 'dentro');
+      const resto = todosRegular.filter((r: any) => situacaoPorId.get(r.id)?.status !== 'dentro');
+      return { zoneOn: true, metaDias: meta, emDia: dentro, atrasados: resto.slice(0, Math.max(0, 10 - dentro.length)) };
+    }
     return {
       zoneOn: on,
       metaDias: meta,
       emDia: on ? regular.filter((r: any) => (r.dias || 0) >= meta) : regular,
       atrasados: on ? regular.filter((r: any) => (r.dias || 0) < meta) : [],
     };
-  }, [regular, type, licao, isSemanal]);
+  }, [regular, todosRegular, type, licao, isSemanal, sorteioSemanal, situacaoPorId]);
 
   // Som da posição: toca uma vez por ranking aberto, depois do "revelar" do
   // rufar (App.loadLatestRanking). A posição anterior fica no aparelho —
@@ -1923,6 +2125,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
     if (promo && antes && !antes.promo) playSound('promocao', { t: t + 1.2 });
   }, [ranking, rankingLoading, type, myIdx, zoneOn, emDia, myIsStaff, isSemanal, licao?.semana, licao?.trimestre]);
 
+  const [auditoriaAberta, setAuditoriaAberta] = useState(false);
   const [sharing, setSharing] = useState(false);
   const handleExport = async () => {
     if (sharing) return;
@@ -1956,8 +2159,11 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
 
   const renderRow = (r: any, zone: 'promo' | 'down' | '') => {
     const eu = !!r.eu;
-    const i = regular.indexOf(r);
+    const i = todosRegular.indexOf(r);
     const atraso = metaDias - (r.dias || 0);
+    const sit = situacaoPorId.get(r.id);
+    const nAtrasados = sit ? sit.dias.filter(d => d.situacao === 'atrasado').length : 0;
+    const nFaltou = sit ? sit.dias.filter(d => d.situacao === 'faltou').length : 0;
     const bg = eu ? 'linear-gradient(135deg,rgba(247,198,0,.1),rgba(247,198,0,.04))'
       : zone === 'promo' ? 'linear-gradient(135deg,rgba(30,158,134,.1),rgba(30,158,134,.03))'
       : zone === 'down' ? 'linear-gradient(135deg,rgba(229,0,109,.08),rgba(229,0,109,.02))'
@@ -1980,6 +2186,10 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
               ? <>📅 {fmtDias(r.dias || 0)} de {metaDias || (licao?.dias?.length || 0)} · 🤝 {r.juntos || 0} junto{r.juntos!==1?'s':''} · ½ {pairSolo(r.diasA || 0, r.diasB || 0, r.juntos || 0)} sozinho{pairSolo(r.diasA || 0, r.diasB || 0, r.juntos || 0)!==1?'s':''}</>
               : zone === 'promo'
                 ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · {isSemanal ? '🎰 no sorteio' : '✅ em dia'}</>
+                : zone === 'down' && sit
+                  ? (sit.status === 'falta-hoje'
+                    ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · ⏳ estude hoje para seguir no sorteio</>
+                    : <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · ❌ fora do sorteio{nAtrasados ? ` · ${nAtrasados} feito${nAtrasados!==1?'s':''} fora do dia` : ''}{nFaltou ? ` · ${nFaltou} faltando` : ''}</>)
                 : zone === 'down'
                   ? <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} · ⚠️ {atraso} dia{atraso!==1?'s':''} atrasado{atraso!==1?'s':''}</>
                   : <>📅 {r.dias || 0} dia{r.dias!==1?'s':''} estudado{r.dias!==1?'s':''}</>}
@@ -2050,6 +2260,22 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           </div>
         )}
       </div>
+
+      {myIsStaff && (
+        <div style={{display:'flex', gap:8, padding:'0 16px 12px'}}>
+          {onSorteador && (
+            <button className="btn btn-ghost btn-sm" onClick={onSorteador} style={{flex:1, margin:0}}>🎰 Ir para o sorteio</button>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={() => setAuditoriaAberta(a => !a)} style={{flex:1, margin:0}}>
+            {auditoriaAberta ? '✕ Fechar auditoria' : '🔎 Não apareço / não entrei'}
+          </button>
+        </div>
+      )}
+      {myIsStaff && auditoriaAberta && (
+        <div style={{padding:'0 16px 12px'}}>
+          <AuditoriaRapida jogador={jogador} licao={licao} ranking={ranking} isSemanaTurma={type === 'week'} />
+        </div>
+      )}
 
       {rankingLoading && (
         <div style={{margin:'0 16px 12px', padding:'14px 16px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)', fontSize:13, color:'var(--txt2)', lineHeight:1.5}}>
@@ -2125,7 +2351,9 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           <div className="zone-hint">
             {isPair
               ? <>🤝 A dupla precisa somar {metaDias} dia{metaDias!==1?'s':''} para ficar em dia — e o dia só conta cheio quando os DOIS estudam</>
-              : <>🎰 Fique em dia com os {metaDias} dia{metaDias!==1?'s':''} já liberado{metaDias!==1?'s':''} para participar do sorteio</>}
+              : sorteioSemanal
+                ? <>🎰 Sorteio da semana: cada dia feito <strong>no dia dele</strong>. Um dia atrasado ou faltando tira do sorteio desta semana (mas a semana ainda conta na campanha)</>
+                : <>🎰 Fique em dia com os {metaDias} dia{metaDias!==1?'s':''} já liberado{metaDias!==1?'s':''} para participar do sorteio</>}
           </div>
         )}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
@@ -2133,7 +2361,7 @@ export const Ranking = ({ jogador, ranking, prog, type, onChangeType, onBack, li
           {zoneOn && emDia.length > 0 && (
             <div className="zone-divider promo">
               <div className="zl"/>
-              <div className="zt">⬆ ZONA DE PROMOÇÃO — {isPair ? 'DUPLA EM DIA 🤝' : type === 'week' ? 'SORTEIO 🎰' : 'EM DIA 📖'} ⬆</div>
+              <div className="zt">⬆ ZONA DE PROMOÇÃO — {isPair ? 'DUPLA EM DIA 🤝' : sorteioSemanal ? `SORTEIO 🎰 ${emDia.length} concorrendo` : 'EM DIA 📖'} ⬆</div>
               <div className="zl"/>
             </div>
           )}
@@ -5473,6 +5701,164 @@ const AuditoriaPontuacao = ({ users, somenteLeitura = false }: { users: any[]; s
   );
 };
 
+/* ===== DIAS EM ATRASO ===== */
+// Quem fez lição fora da data, dia a dia, na temporada da lição atual. A regra
+// é a de diasEmAtraso (relatorioTemporada.ts): data real quando existe,
+// estimativa pelo XP quando não, e "sem dados" separado. Só leitura — para
+// perdoar um dia, use "Refazer 100%" na Auditoria de pontuação.
+//
+// Carrega só no botão: é a mesma leitura da temporada inteira que o relatório
+// e o sorteio fazem (~13 semanas de progresso).
+const ROTULO_PROVA: Record<DiaAtrasado['prova'], string> = {
+  data: 'data real', xp: 'estimado pelo XP', 'sem-dados': 'sem dados para provar',
+};
+const diaSemanaCurto = (iso: string) => ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][new Date(iso + 'T00:00:00').getDay()] || '';
+
+const DiasEmAtrasoPainel = ({ trimestre, trackFixo, turmaFixa }: { trimestre?: string; trackFixo?: Track; turmaFixa?: Turma }) => {
+  const [track, setTrack] = useState<Track>(trackFixo || (turmaFixa?.track as Track) || 'teen');
+  const [turmas, setTurmas] = useState<Turma[]>([]);
+  const [turmaId, setTurmaId] = useState<string>(turmaFixa?.id || '');
+  const [resultado, setResultado] = useState<{ alunos: AlunoComAtraso[]; licoes: any[] } | null>(null);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [aberto, setAberto] = useState<string | null>(null);
+  const [incluirSemDados, setIncluirSemDados] = useState(false);
+
+  useEffect(() => {
+    if (turmaFixa) return;
+    getTurmas().then(setTurmas).catch(() => {});
+  }, [turmaFixa]);
+
+  // Resultado é de outro recorte: zera para não mostrar a turma errada.
+  useEffect(() => { setResultado(null); setAberto(null); }, [track, turmaId, trimestre]);
+
+  const buscar = async () => {
+    if (!trimestre) { setErro('Sem lição atual para saber qual é a temporada.'); return; }
+    setCarregando(true); setErro('');
+    try {
+      const licoes = (await loadTrackLessonsComHistorico(track))
+        .filter((l: any) => !l.isAdminOnly && l.trimestre === trimestre);
+      if (!licoes.length) throw new Error('Não achei as lições desta temporada nesta trilha.');
+      const rows = await getSeasonProgress(licoes.map((l: any) => l.semana));
+      const daTrilha = rows.filter((r: any) => (r.track || 'teen') === track && (!turmaId || r.turmaId === turmaId));
+      setResultado({ alunos: diasEmAtraso(daTrilha as any, licoes), licoes });
+    } catch (e: any) {
+      setErro(e?.message || 'Não foi possível buscar os dias em atraso.');
+    }
+    setCarregando(false);
+  };
+
+  const filtrar = (a: AlunoComAtraso) => incluirSemDados ? a.atrasados : a.atrasados.filter(d => d.prova !== 'sem-dados');
+  const lista = (resultado?.alunos || []).filter(a => filtrar(a).length > 0);
+  const totalDias = lista.reduce((s, a) => s + filtrar(a).length, 0);
+  const tituloDe = (week: string) => resultado?.licoes.find((l: any) => l.semana === week)?.titulo || week;
+
+  const baixarCsv = () => {
+    if (!resultado) return;
+    const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const linhas = [['aluno', 'turma', 'semana', 'licao', 'dia', 'data_da_licao', 'estudado_em', 'dias_de_atraso', 'prova'].join(',')];
+    for (const a of lista) for (const d of filtrar(a)) {
+      const turmaNome = turmaFixa?.nome || turmas.find(t => t.id === a.turmaId)?.nome || '';
+      linhas.push([a.nome, turmaNome, d.week, tituloDe(d.week), d.dia, d.data, d.estudadoEm || '', d.atrasoDias ?? '', ROTULO_PROVA[d.prova]].map(esc).join(','));
+    }
+    const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const el = document.createElement('a');
+    el.href = url;
+    el.download = `dias-em-atraso-${track}-${trimestre || ''}.csv`;
+    el.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const sel: React.CSSProperties = { flex: 1, minWidth: 0, padding: 9, borderRadius: 8, fontSize: 13, background: 'var(--input-bg)', color: 'var(--txt)', border: '1px solid var(--input-border)' };
+
+  return (
+    <div style={{ background: 'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24 }}>
+      <div style={{ fontSize: 12, color: 'var(--mut)', marginBottom: 10, lineHeight: 1.5 }}>
+        Dias feitos <strong>depois</strong> da data da lição, na temporada atual{trimestre ? ` (${trimestre})` : ''}. Dias liberados pelo admin não entram.
+      </div>
+
+      {!turmaFixa && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <select value={track} onChange={e => { setTrack(e.target.value as Track); setTurmaId(''); }} style={sel} disabled={!!trackFixo}>
+            {(Object.keys(TRACK_LABELS) as Track[]).map(t => <option key={t} value={t}>{TRACK_LABELS[t]}</option>)}
+          </select>
+          <select value={turmaId} onChange={e => setTurmaId(e.target.value)} style={sel}>
+            <option value="">Todas as turmas</option>
+            {turmas.filter(t => (t.track || 'teen') === track).map(t => <option key={t.id} value={t.id}>{t.nome}{t.active === false ? ' (arquivada)' : ''}</option>)}
+          </select>
+        </div>
+      )}
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--txt2)', marginBottom: 10, cursor: 'pointer' }}>
+        <input type="checkbox" checked={incluirSemDados} onChange={e => setIncluirSemDados(e.target.checked)} />
+        Incluir dias sem dados para provar (antes de 13/09/2026, sem acertos)
+      </label>
+
+      <button className={`btn btn-gold ${carregando ? 'btn-dis' : ''}`} disabled={carregando} onClick={buscar} style={{ width: '100%', marginBottom: 10 }}>
+        {carregando ? 'Buscando...' : resultado ? '🔄 Buscar de novo' : '⏰ Buscar dias em atraso'}
+      </button>
+
+      {erro && <div style={{ fontSize: 12.5, color: 'var(--danger)', marginBottom: 8 }}>{erro}</div>}
+
+      {resultado && (
+        lista.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--mut)', textAlign: 'center', padding: '8px 0' }}>
+            Ninguém com dia em atraso neste recorte. 🎉 ({resultado.alunos.length} aluno(s) com estudo na temporada)
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+              <div className="num" style={{ fontSize: 12, color: 'var(--txt2)' }}>
+                <strong>{lista.length}</strong> de {resultado.alunos.length} aluno(s) · <strong>{totalDias}</strong> dia(s) em atraso
+              </div>
+              <button onClick={baixarCsv} style={{ background: 'none', border: '1.5px solid var(--b3)', color: 'var(--mut)', borderRadius: 8, padding: '5px 9px', fontSize: 11, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>⬇️ CSV</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {lista.map(a => {
+                const dias = filtrar(a);
+                const ab = aberto === a.userId;
+                return (
+                  <div key={a.userId} style={{ background: 'var(--row-bg)', borderRadius: 10, overflow: 'hidden' }}>
+                    <div onClick={() => setAberto(ab ? null : a.userId)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', cursor: 'pointer' }}>
+                      <span style={{ fontSize: 18 }}>{(a.avatar || '').length > 10 ? '🙂' : (a.avatar || '🙂')}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--txt2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.nome}</div>
+                        <div className="num" style={{ fontSize: 11, color: 'var(--mut)' }}>
+                          {a.feitos} feito(s) · {a.noDia} no dia{!turmaFixa && !turmaId && a.turmaId ? ` · ${turmas.find(t => t.id === a.turmaId)?.nome || 'turma ?'}` : ''}
+                        </div>
+                      </div>
+                      <span className="num" style={{ fontSize: 14, fontWeight: 900, color: 'var(--flame)' }}>{dias.length}</span>
+                      <span style={{ fontSize: 11, color: 'var(--mut)' }}>{ab ? '▲' : '▼'}</span>
+                    </div>
+                    {ab && (
+                      <div style={{ padding: '0 10px 10px' }}>
+                        {dias.map(d => (
+                          <div key={`${d.week}-${d.dia}`} style={{ padding: '6px 0', borderTop: '1px solid var(--b1)' }}>
+                            <div style={{ fontSize: 12, color: 'var(--txt2)', lineHeight: 1.35 }}>
+                              {tituloDe(d.week)} · Dia {d.dia} <span style={{ color: 'var(--mut)' }}>({diaSemanaCurto(d.data)} {dataCurta(d.data)})</span>
+                            </div>
+                            <div className="num" style={{ fontSize: 10.5, color: 'var(--mut)', marginTop: 1 }}>
+                              {d.estudadoEm
+                                ? `feito em ${dataCurta(d.estudadoEm)} · +${d.atrasoDias} dia${d.atrasoDias !== 1 ? 's' : ''}`
+                                : ROTULO_PROVA[d.prova]}
+                              {d.estudadoEm ? ` · ${ROTULO_PROVA[d.prova]}` : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )
+      )}
+    </div>
+  );
+};
+
 /* ===== PAINEL DO PROFESSOR (Fase 3b) ===== */
 // O professor com escopo de turma: vê a própria turma inteira e nada além
 // dela. É o que permite a regra estreitar depois — hoje `isProfessor` enxerga
@@ -5556,7 +5942,7 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador, on
   const [streaks, setStreaks] = useState<Record<string, any>>({});
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
-  const [aba, setAba] = useState<'alunos' | 'ranking' | 'auditoria' | 'relatorio'>('alunos');
+  const [aba, setAba] = useState<'alunos' | 'ranking' | 'auditoria' | 'atraso' | 'relatorio'>('alunos');
   const [relatorio, setRelatorio] = useState<ResumoTemporada | null>(null);
   const [carregandoRelatorio, setCarregandoRelatorio] = useState(false);
   const [erroRelatorio, setErroRelatorio] = useState('');
@@ -5684,6 +6070,7 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador, on
     { k: 'alunos', label: `Alunos (${alunos.length})` },
     { k: 'ranking', label: 'Ranking' },
     { k: 'auditoria', label: 'Auditoria' },
+    { k: 'atraso', label: '⏰ Atrasos' },
     { k: 'relatorio', label: '📊 Temporada' },
   ];
 
@@ -5789,6 +6176,10 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador, on
             </div>
             <AuditoriaPontuacao users={alunos} somenteLeitura />
           </>
+        )}
+
+        {aba === 'atraso' && (
+          <DiasEmAtrasoPainel key={turmaId} trimestre={licao?.trimestre} turmaFixa={turma} />
         )}
 
         {aba === 'relatorio' && (
@@ -5899,6 +6290,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
   };
 
   const [showAudit, setShowAudit] = useState(false);
+  const [showAtraso, setShowAtraso] = useState(false);
 
   // Ofensiva real de todos (Firestore, independente de aparelho)
   const [streaks, setStreaks] = useState<Record<string, { streak: number }>>({});
@@ -6131,6 +6523,12 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
           <span style={{fontSize:12, color:'var(--mut)'}}>{showAudit ? '▲ ocultar' : '▼ ver'}</span>
         </div>
         {showAudit && <AuditoriaPontuacao users={users} />}
+
+        <div className="sec-title" style={{marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer'}} onClick={() => setShowAtraso(s => !s)}>
+          <span>⏰ Dias estudados em atraso</span>
+          <span style={{fontSize:12, color:'var(--mut)'}}>{showAtraso ? '▲ ocultar' : '▼ ver'}</span>
+        </div>
+        {showAtraso && <DiasEmAtrasoPainel trimestre={licao?.trimestre} />}
 
         <div className="sec-title" style={{marginBottom:8, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer'}} onClick={() => setShowLogs(s => !s)}>
           <span>🛠️ Logs técnicos de erro {errorLogs.length > 0 && `(${errorLogs.length})`}</span>
