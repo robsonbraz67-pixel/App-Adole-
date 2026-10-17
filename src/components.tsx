@@ -1318,6 +1318,24 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
     registrar(idx === q.correta, elT !== undefined ? elT : elapsed, idx);
   };
 
+  // A tela do quiz rola: em celular pequeno, o "Confirmar" das especiais, a
+  // lista de ordenar e o placar da relâmpago passavam do fim da tela, que era
+  // overflow:hidden. O aluno achava que o quiz tinha travado, recarregava e a
+  // trava anti-fraude zerava o XP do dia. Pergunta nova volta ao topo; depois
+  // de responder, a explicação (e o "Continuar") é trazida para a vista.
+  const telaRef = useRef<HTMLDivElement>(null);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { telaRef.current?.scrollTo?.({ top: 0 }); }, [qi]);
+  useEffect(() => {
+    if (acertou === null) return;
+    // Depois do popIn da explicação (.3s), para medir a altura já final.
+    const t = setTimeout(() => {
+      const tela = telaRef.current;
+      if (tela && feedbackRef.current) tela.scrollTo?.({ top: tela.scrollHeight, behavior: 'smooth' });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [acertou]);
+
   const tPct = tempo / DUR * 100;
   const tColor = tPct > 50 ? '#2ECC71' : tPct > 25 ? '#F5C842' : '#E31C3D';
   const xpSoFar = resps.reduce((s, r) => s + r.xp, 0);
@@ -1346,7 +1364,7 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
   }
 
   return (
-    <div className="scr-full">
+    <div className="scr-full quiz-scr" ref={telaRef}>
       {xpMsg && <div className="xp-float">{xpMsg}</div>}
       <div style={{padding:'14px 20px',background:'var(--hdr-bg)'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
@@ -1388,7 +1406,7 @@ export const Quiz = ({ dia, onDone, onBack, liberado }: any) => {
         </div>
         )}
         {acertou !== null && (
-          <div style={{marginTop:14,padding:'12px 16px',borderRadius:14,background:acertou?'rgba(79,184,92,.15)':'rgba(227,28,61,.15)',border:`1.5px solid ${acertou?'var(--success)':'#E31C3D'}`,animation:'popIn .3s ease'}}>
+          <div ref={feedbackRef} style={{marginTop:14,padding:'12px 16px',borderRadius:14,background:acertou?'rgba(79,184,92,.15)':'rgba(227,28,61,.15)',border:`1.5px solid ${acertou?'var(--success)':'#E31C3D'}`,animation:'popIn .3s ease'}}>
             <div style={{fontWeight:800,fontSize:14,marginBottom:4,color:acertou?'var(--success)':'#E31C3D'}}>{acertou ? '✅ Correto!' : '❌ Incorreto!'}</div>
             <div style={{fontSize:13,color:'var(--txt2)',lineHeight:1.5}}>{q.explicacao}</div>
             {especial && (

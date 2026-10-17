@@ -453,6 +453,10 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 /* ===== LAYOUT ===== */
 .scr{animation:fadeIn .35s ease;padding-bottom:116px;min-height:100dvh}
 .scr-full{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+/* Quiz: rola quando o conteúdo passa da tela (celular pequeno) — ver Quiz. */
+.quiz-scr{overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.quiz-scr>*{flex-shrink:0}
+.quiz-scr>div:last-child{padding-bottom:calc(24px + env(safe-area-inset-bottom))!important}
 
 /* ===== HEADER & NAV ===== */
 .hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--hdr-bg);backdrop-filter:blur(12px);border-bottom:1px solid var(--hdr-border);position:sticky;top:0;z-index:100;transition:background .3s,border-color .3s}
