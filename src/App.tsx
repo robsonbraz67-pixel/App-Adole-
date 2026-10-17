@@ -780,11 +780,15 @@ export default function App() {
       const user = await waitForAuthInit();
       if (user) {
         const dbProg = await getProgress(jogador.id, newLicao.semana, track);
-        const merged = mergeProgress(p, dbProg);
-        if (merged) {
-          p = { xp: merged.xp, streak: merged.streak, done: merged.done || [], history: merged.history || {} };
+        // Mesma conciliação do boot. Antes era um mergeProgress puro: o dia
+        // que o admin zerou e liberou numa semana anterior voltava do cache
+        // do aparelho como concluído (e era reenviado ao servidor, desfazendo
+        // a correção), e `liberados` ficava de fora, sem os 100% no refazer.
+        const { base, corrigido } = conciliarProgresso(p, dbProg, newLicao, track);
+        if (base) {
+          p = base;
           ss(semKey(newLicao, track), p);
-          if (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0)) {
+          if (!corrigido && (p.done.length > (dbProg?.done?.length || 0) || p.xp > (dbProg?.xp || 0))) {
             saveProgress(p, newLicao.semana, jogador.id, jogador.nome, jogador.avatar, newLicao.trimestre, track, !!jogador.isAdmin, !!jogador.isGuest, !!jogador.isProfessor, jogador.locationId, jogador.turmaId).catch(console.error);
           }
         }
