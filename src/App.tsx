@@ -586,7 +586,10 @@ export default function App() {
     // zera o XP daquele dia ao concluir — ver Quiz em components.tsx. A 1ª
     // reabertura é perdoada (bateria, ligação, aba fechada sem querer), e a
     // punição não vale para dia já concluído (isRepeat): ali não há XP novo.
-    const punido = !isRepeat && !!res.reiniciado;
+    // Nem para dia liberado pelo admin: o contador de tentativas é local e
+    // por data, então quem já tinha aberto o quiz daquele dia chegava ao
+    // "refazer 100%" já contado como reinício e terminava com 0 XP.
+    const punido = !isRepeat && !liberado && !!res.reiniciado;
     if (punido) {
       res.xpTotal = 0;
     } else if (!isRepeat) {
