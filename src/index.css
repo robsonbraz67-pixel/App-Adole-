@@ -1483,3 +1483,6 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .tv-revelar{position:absolute;left:50%;bottom:1cqh;transform:translateX(-50%);width:auto;font-size:2.6cqh;padding:1.4cqh 4cqh;border-radius:99px;z-index:3}
 .tv-refazer{position:absolute;right:0;bottom:1cqh;width:5cqh;height:5cqh;border-radius:50%;border:.2cqh solid var(--b3);background:var(--g3);color:var(--mut);font-size:2.6cqh;cursor:pointer;z-index:3}
 @media (prefers-reduced-motion: reduce){.tv-cena,.tv-linha,.tv-nav-luz{transition:none}.tv-raios,.tv-holofote,.tv-coroa{animation:none}}
+/* Alternador da regra do sorteio da semana dentro do telão */
+.tv-regra{margin:.6cqh auto 0;font-size:1.9cqh}
+.tv-regra .theme-btn{font-size:1.9cqh;padding:.8cqh 2cqh}

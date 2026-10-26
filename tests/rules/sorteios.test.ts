@@ -101,6 +101,16 @@ describe('registrar ganhador', () => {
     }));
   });
 
+  it('sorteio da semana por dias estudados: só com tipo semana', async () => {
+    await cenario();
+    await assertSucceeds(comoUsuario('prof1').collection('sorteios').add({
+      ...SORTEIO, regra: 'semana-por-dias', bilhetes: 30, criadoEm: serverTimestamp(),
+    }));
+    await assertFails(comoUsuario('prof1').collection('sorteios').add({
+      ...SORTEIO, tipo: 'temporada', periodo: 'Livro Aberto', regra: 'semana-por-dias', bilhetes: 30, criadoEm: serverTimestamp(),
+    }));
+  });
+
   it('menos bilhetes que participantes não fecha a conta', async () => {
     await cenario();
     await assertFails(comoUsuario('prof1').collection('sorteios').add({

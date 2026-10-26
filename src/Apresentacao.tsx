@@ -7,7 +7,7 @@ import {
   montarResumoTemporada, perfisDosAlunos, conquistasDosAlunos, pistasDoPodio, tituloCurtoDaLicao, totalDeDias,
   ResumoTemporada, PerfilAluno, Licao,
 } from './relatorioTemporada';
-import { REGRA_TEXTO, RegraSorteio, Participante } from './sorteio';
+import { REGRA_TEXTO, RegraSorteio, RegraSemana, Participante } from './sorteio';
 import {
   Confetti, SeletorLicao, SeletorTurmaAtiva, useTurmaAtiva, useSorteador, AvatarSorteio, detalheDoGanhador,
   BotaoRegistrar, EstadoRegistro,
@@ -273,14 +273,17 @@ const SlideRevelacao = ({ perfil, candidatos, pos }: { perfil: PerfilAluno; cand
 };
 
 // ===== Slide: sorteio ao vivo (o Sorteador de verdade) =====
-export const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, registrarTecla }: {
+// `regraSemana`: o Telão escolhe a regra da semana (alternador); a
+// Apresentação usa a de sempre. Trocar a regra recarrega os participantes.
+export const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, registrarTecla, regraSemana = 'semana-completa', topo }: {
   modo: Modo; licao: any; turmaId: string; track: string; turmaNome: string; jogador: any;
   registrarTecla: (fn: ((e: KeyboardEvent) => boolean) | null) => void;
+  regraSemana?: RegraSemana; topo?: React.ReactNode;
 }) => {
-  const regra: RegraSorteio = modo === 'semana' ? 'semana-completa' : 'temporada-tudo';
+  const regra: RegraSorteio = modo === 'semana' ? regraSemana : 'temporada-tudo';
   const { users, ganhador, idx, animando, loading, carregar, iniciar, sorteados } = useSorteador(licao, turmaId, track, regra);
   const [registro, setRegistro] = useState<EstadoRegistro>('livre');
-  useEffect(() => { carregar(); }, []);
+  useEffect(() => { carregar(); }, [regra]);
   useEffect(() => { setRegistro('livre'); }, [ganhador]);
 
   const sorteadosIds = new Set(sorteados.map(u => u.id));
@@ -325,7 +328,8 @@ export const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, 
       {ganhador && !animando && <Confetti show={true} />}
       <div className="ap-sorteio-topo">
         <div className="ap-eyebrow">Sorteio ao vivo · {turmaNome}</div>
-        <div className="ap-det">{REGRA_TEXTO[regra]}{users.length ? ` · ${naFila.length} concorrendo` : ''}</div>
+        <div className="ap-det">{REGRA_TEXTO[regra]}{users.length ? ` · ${naFila.length} concorrendo` : ''}{regra === 'semana-por-dias' && users.length ? ` · ${users.reduce((s, u) => s + u.bilhetes, 0)} bilhetes` : ''}</div>
+        {topo}
       </div>
       <div className="st-centro">
         {loading ? (
@@ -356,7 +360,7 @@ export const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, 
           {naFila.map(u => (
             <span key={u.id} className={`st-chip${animando && u.id === atual?.id ? ' on' : ''}`}>
               <AvatarSorteio u={u} className="st-chip-av" />
-              {primeiroNome(u.nome)}
+              {primeiroNome(u.nome)}{regra === 'semana-por-dias' ? ` ×${u.bilhetes}` : ''}
             </span>
           ))}
         </div>

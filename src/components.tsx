@@ -132,7 +132,7 @@ export const Splash = () => {
 
 /* ===== LOGIN ===== */
 import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, adminMesclarContas, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, adminMoverParaTurma, adminRealinharProgresso, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio, getSeasonProgress, registrarSorteio, getSorteiosDaTurma, apagarSorteio, RegistroSorteio } from './firebase';
-import { participantesDaTemporada, ordemPonderada, diasLiberadosPorSemana, REGRA_TEXTO, RegraSorteio, Participante } from './sorteio';
+import { participantesDaTemporada, participantesDaSemanaPorDias, ordemPonderada, diasLiberadosPorSemana, REGRA_TEXTO, RegraSorteio, RegraSemana, RegraTemporada, Participante } from './sorteio';
 import { reportarProblema } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
@@ -2829,6 +2829,8 @@ export const useSorteador = (licao: any, turmaId: string | undefined, track: str
           // deste sorteio (mas a semana ainda conta no da temporada).
           .filter((u: any) => !u.isAdmin && !u.isProfessor && u.dias === 7 && semanaTodaNoDia(u, licao))
           .map((u: any) => ({ id: u.id, nome: u.nome, avatar: u.avatar, xp: u.xp || 0, dias: u.dias, bilhetes: 1, semanasCompletas: 1 })));
+      } else if (regra === 'semana-por-dias') {
+        setUsers(participantesDaSemanaPorDias(await getWeeklyRankingDaTurma(licao.semana, turmaId)));
       } else {
         const licoes = (await loadTrackLessonsComHistorico(track as Track))
           .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre);
@@ -2961,13 +2963,33 @@ const tituloDaLicao = (l: any) => (l?.titulo || '').replace(/^Lição\s*\d+\s*[-
 
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
 
+// Regra do sorteio da SEMANA, lembrada no aparelho de quem conduz — a mesma
+// na tela do Sorteador e no Telão, para os dois nunca sortearem diferente.
+const CHAVE_REGRA_SEMANA = 'sorteioRegraSemana';
+export const useRegraSemana = () => {
+  const [r, setR] = useState<RegraSemana>(() => {
+    const salva = gs(CHAVE_REGRA_SEMANA, 'semana-completa');
+    return salva === 'semana-por-dias' ? 'semana-por-dias' : 'semana-completa';
+  });
+  const escolher = useCallback((x: RegraSemana) => { ss(CHAVE_REGRA_SEMANA, x); setR(x); }, []);
+  return [r, escolher] as const;
+};
+
+export const AlternarRegraSemana = ({ regra, onTrocar, className = '' }: { regra: RegraSemana; onTrocar: (r: RegraSemana) => void; className?: string }) => (
+  <div className={`theme-toggle sorteio-modo ${className}`} role="group" aria-label="Regra do sorteio da semana">
+    <button className={`theme-btn${regra === 'semana-completa' ? ' active' : ''}`} onClick={() => onTrocar('semana-completa')}>✅ Semana completa no dia</button>
+    <button className={`theme-btn${regra === 'semana-por-dias' ? ' active' : ''}`} onClick={() => onTrocar('semana-por-dias')}>📅 Por dias estudados</button>
+  </div>
+);
+
 export const detalheDoGanhador = (g: Participante, regra: RegraSorteio) =>
   regra === 'semana-completa' ? `${g.xp} XP · ${g.dias} dias`
+  : regra === 'semana-por-dias' ? `${plural(g.dias, 'dia estudado', 'dias estudados')} · ${plural(g.bilhetes, 'bilhete', 'bilhetes')}`
   : regra === 'temporada-tudo' ? `${g.dias} dias estudados na temporada`
   : `${plural(g.bilhetes, 'bilhete', 'bilhetes')} · ${plural(g.semanasCompletas, 'semana completa', 'semanas completas')}`;
 
 const rotuloDoChip = (u: Participante, regra: RegraSorteio) =>
-  (u.nome?.split(' ')[0] || '') + (regra === 'temporada-bilhete-por-semana' ? ` ×${u.bilhetes}` : '');
+  (u.nome?.split(' ')[0] || '') + (regra === 'temporada-bilhete-por-semana' || regra === 'semana-por-dias' ? ` ×${u.bilhetes}` : '');
 
 export type EstadoRegistro = 'livre' | 'salvando' | 'salvo' | 'erro';
 
@@ -2999,7 +3021,7 @@ const SorteadorTelao = ({ eyebrow, titulo, regra, turmaNome, users, totalBilhete
           <div className="st-info">
             {turmaNome && <span>{turmaNome}</span>}
             {users.length > 0 && <span><b>{users.length}</b> participante{users.length !== 1 ? 's' : ''}</span>}
-            {users.length > 0 && regra === 'temporada-bilhete-por-semana' && <span><b>{totalBilhetes}</b> bilhetes</span>}
+            {users.length > 0 && (regra === 'temporada-bilhete-por-semana' || regra === 'semana-por-dias') && <span><b>{totalBilhetes}</b> bilhetes</span>}
           </div>
         </div>
 
@@ -3085,10 +3107,11 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   // Semana ou temporada. Na temporada, a lição escolhida só serve para dizer
   // QUAL temporada; a regra fica lembrada no aparelho de quem conduz.
   const [tipo, setTipo] = useState<'semana' | 'temporada'>('semana');
-  const [regraTemporada, setRegraTemporadaState] = useState<Exclude<RegraSorteio, 'semana-completa'>>(
+  const [regraTemporada, setRegraTemporadaState] = useState<RegraTemporada>(
     () => gs('sorteioRegraTemporada', 'temporada-bilhete-por-semana'));
-  const setRegraTemporada = (r: Exclude<RegraSorteio, 'semana-completa'>) => { ss('sorteioRegraTemporada', r); setRegraTemporadaState(r); };
-  const regra: RegraSorteio = tipo === 'semana' ? 'semana-completa' : regraTemporada;
+  const setRegraTemporada = (r: RegraTemporada) => { ss('sorteioRegraTemporada', r); setRegraTemporadaState(r); };
+  const [regraSemana, setRegraSemana] = useRegraSemana();
+  const regra: RegraSorteio = tipo === 'semana' ? regraSemana : regraTemporada;
 
   const { users, ganhador, idx, animando, loading, carregar, iniciar, sorteados } = useSorteador(sel.licao, turmaDoSorteio, sel.track, regra);
   const totalBilhetes = users.reduce((s, u) => s + u.bilhetes, 0);
@@ -3270,6 +3293,8 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
             : 'Na temporada, qualquer lição dela serve: é ela que diz qual temporada sortear.'}
         />
 
+        {tipo === 'semana' && <AlternarRegraSemana regra={regraSemana} onTrocar={setRegraSemana} />}
+
         {tipo === 'temporada' && (
           <div className="theme-toggle sorteio-modo" role="group" aria-label="Regra da temporada">
             <button className={`theme-btn${regraTemporada === 'temporada-tudo' ? ' active' : ''}`} onClick={() => setRegraTemporada('temporada-tudo')}>✅ Estudou tudo</button>
@@ -3278,7 +3303,9 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
         )}
 
         <div style={{fontSize:13, color:'var(--mut)', marginBottom:12, textAlign:'center', lineHeight:1.5}}>
-          {tipo === 'semana' ? (
+          {tipo === 'semana' && regraSemana === 'semana-por-dias' ? (
+            <>Cada <strong style={{color:'var(--txt2)'}}>dia estudado</strong> na semana <strong style={{color:'var(--gold)'}}>{sel.licao?.semana}</strong> vale 1 bilhete{naTurma}<br />Quem estudou mais tem mais chance — mas quem fez um dia só também concorre. Atraso vale.</>
+          ) : tipo === 'semana' ? (
             <>Sorteia entre os que fizeram os <strong style={{color:'var(--txt2)'}}>7 dias no dia certo</strong> da semana <strong style={{color:'var(--gold)'}}>{sel.licao?.semana}</strong>{naTurma}<br />Quem estudou algum dia atrasado fica fora do semanal, mas a semana ainda conta no sorteio da temporada.</>
           ) : (
             <>
@@ -3305,7 +3332,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
           <>
             <div style={{fontSize:13, color:'var(--mut)', marginBottom:10, textAlign:'center'}}>
               {naFila.length} participante{naFila.length !== 1 ? 's elegíveis' : ' elegível'}
-              {regra === 'temporada-bilhete-por-semana' ? ` · ${totalBilhetes} bilhetes na urna` : ''}:
+              {regra === 'temporada-bilhete-por-semana' || regra === 'semana-por-dias' ? ` · ${totalBilhetes} bilhetes na urna` : ''}:
             </div>
             <div className="sorteador-chips">
               {naFila.map(u => (
@@ -3386,7 +3413,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
                   <div className="sorteio-hist-nome">{r.ganhadorNome}</div>
                   <div className="sorteio-hist-meta">
                     {rotuloDoPeriodo(r)} · {REGRA_TEXTO[r.regra]} · entre {plural(r.participantes, 'pessoa', 'pessoas')}
-                    {r.regra === 'temporada-bilhete-por-semana' ? ` (${r.bilhetes} bilhetes)` : ''}
+                    {r.regra === 'temporada-bilhete-por-semana' || r.regra === 'semana-por-dias' ? ` (${r.bilhetes} bilhetes)` : ''}
                   </div>
                   <div className="sorteio-hist-meta">
                     {r.criadoEm?.toDate ? r.criadoEm.toDate().toLocaleDateString('pt-BR') : 'agora'} · sorteado por {r.sorteadoPorNome}

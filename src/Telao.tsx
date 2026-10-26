@@ -7,7 +7,7 @@ import {
   precarregarSorteioTambor, precarregarEfeitos, ATAQUE_S, SomTocando,
 } from './utils';
 import { situacaoSorteioSemanal } from './relatorioTemporada';
-import { Confetti, COR_TRILHA_MISTA, useTurmaAtiva, Track } from './components';
+import { Confetti, COR_TRILHA_MISTA, useTurmaAtiva, useRegraSemana, AlternarRegraSemana, Track } from './components';
 import { SlideSorteio } from './Apresentacao';
 
 // ===== TELÃO AO VIVO: ranking → campeões → sorteio =====
@@ -245,6 +245,7 @@ export const TelaoAoVivo = ({ licao: licaoInicial, jogador, onSair }: { licao: a
   useEffect(() => { if (cena === 'sorteio') setSorteioMontado(true); }, [cena]);
   useEffect(() => { setSorteioMontado(cena === 'sorteio'); }, [turmaId, licao?.semana]);
   const teclaSorteio = useRef<((e: KeyboardEvent) => boolean) | null>(null);
+  const [regraSemana, setRegraSemana] = useRegraSemana();
 
   const irPara = useCallback((c: Cena) => {
     setCena(atual => {
@@ -324,6 +325,8 @@ export const TelaoAoVivo = ({ licao: licaoInicial, jogador, onSair }: { licao: a
                 key={`${turmaId}_${licao.semana}`}
                 modo="semana" licao={licao} turmaId={turmaId} track={turma.track} turmaNome={turma.nome} jogador={jogador}
                 registrarTecla={fn => { teclaSorteio.current = fn; }}
+                regraSemana={regraSemana}
+                topo={<AlternarRegraSemana regra={regraSemana} onTrocar={setRegraSemana} className="tv-regra" />}
               />
             )}
           </section>

@@ -5,12 +5,16 @@ import { collapseByUserWeek, embaralhar } from './utils';
 //   cada (desde 27/09/2026 — antes aceitava atraso; ver semanaTodaNoDia em
 //   relatorioTemporada.ts). O id ficou o mesmo porque firestore.rules valida
 //   a lista de regras de `sorteios`.
+// semana-por-dias: 1 bilhete por dia estudado na semana (atraso vale) — quem
+//   estudou mais tem mais chance, mas quem fez um dia só também entra.
 // temporada-tudo: quem fez TODOS os dias liberados da temporada, 1 bilhete cada
 //   (atraso vale).
 // temporada-bilhete-por-semana: 1 bilhete por semana completa na temporada —
 //   quem foi constante tem mais chance, mas quem fechou uma semana só também entra
 //   (atraso vale).
-export type RegraSorteio = 'semana-completa' | 'temporada-tudo' | 'temporada-bilhete-por-semana';
+export type RegraSorteio = 'semana-completa' | 'semana-por-dias' | 'temporada-tudo' | 'temporada-bilhete-por-semana';
+export type RegraSemana = Extract<RegraSorteio, `semana-${string}`>;
+export type RegraTemporada = Exclude<RegraSorteio, RegraSemana>;
 
 export type Participante = {
   id: string;
@@ -55,7 +59,7 @@ const turmaAtualPorAluno = (rows: any[]): Record<string, string | undefined> => 
 export const participantesDaTemporada = (
   rows: any[],
   metaPorSemana: Record<string, number>,
-  regra: Exclude<RegraSorteio, 'semana-completa'>,
+  regra: RegraTemporada,
   recorte: { turmaId?: string; track?: string },
 ): Participante[] => {
   const semanas = new Set(Object.keys(metaPorSemana));
@@ -95,6 +99,18 @@ export const participantesDaTemporada = (
     .sort((a, b) => (b.bilhetes - a.bilhetes) || (b.dias - a.dias) || (b.xp - a.xp));
 };
 
+// Semana por dias estudados: cada dia feito na semana é 1 bilhete. Recebe o
+// ranking da semana da turma (uma linha por aluno, já agregada).
+export const participantesDaSemanaPorDias = (rank: any[]): Participante[] =>
+  rank
+    .filter(u => !u.isAdmin && !u.isProfessor)
+    .map(u => {
+      const dias = u.dias ?? (u.done?.length || 0);
+      return { id: u.id, nome: u.nome, avatar: u.avatar, xp: u.xp || 0, dias, bilhetes: dias, semanasCompletas: dias >= 7 ? 1 : 0 };
+    })
+    .filter(p => p.bilhetes > 0)
+    .sort((a, b) => (b.bilhetes - a.bilhetes) || (b.xp - a.xp));
+
 // Ordem dos ganhadores, sem repetir ninguém, com chance proporcional aos
 // bilhetes: embaralha TODOS os bilhetes (Fisher-Yates, não o sort aleatório
 // enviesado) e fica com a primeira aparição de cada pessoa. O 1º da ordem sai
@@ -110,6 +126,7 @@ export const ordemPonderada = (participantes: { bilhetes: number }[]): number[] 
 
 export const REGRA_TEXTO: Record<RegraSorteio, string> = {
   'semana-completa': '1 bilhete por quem fez os 7 dias no dia certo',
+  'semana-por-dias': '1 bilhete por dia estudado na semana',
   'temporada-tudo': '1 bilhete por quem estudou todos os dias',
   'temporada-bilhete-por-semana': '1 bilhete por semana completa',
 };

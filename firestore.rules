@@ -1340,8 +1340,8 @@ service cloud.firestore {
         && data.track in ['teen', 'youngAdult', 'adult']
         && data.tipo in ['semana', 'temporada']
         && data.periodo is string && data.periodo.size() > 0 && data.periodo.size() <= 100
-        && data.regra in ['semana-completa', 'temporada-tudo', 'temporada-bilhete-por-semana']
-        && ((data.tipo == 'semana') == (data.regra == 'semana-completa'))
+        && data.regra in ['semana-completa', 'semana-por-dias', 'temporada-tudo', 'temporada-bilhete-por-semana']
+        && ((data.tipo == 'semana') == (data.regra in ['semana-completa', 'semana-por-dias']))
         && data.ganhadorId is string && data.ganhadorId.size() > 0 && data.ganhadorId.size() <= 200
         && data.ganhadorNome is string && data.ganhadorNome.size() > 0 && data.ganhadorNome.size() <= 80
         && data.ganhadorAvatar is string && data.ganhadorAvatar.size() <= 64

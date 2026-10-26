@@ -732,7 +732,7 @@ export type RegistroSorteio = {
   id: string;
   turmaId: string; track: string;
   tipo: 'semana' | 'temporada'; periodo: string;
-  regra: 'semana-completa' | 'temporada-tudo' | 'temporada-bilhete-por-semana';
+  regra: 'semana-completa' | 'semana-por-dias' | 'temporada-tudo' | 'temporada-bilhete-por-semana';
   ganhadorId: string; ganhadorNome: string; ganhadorAvatar: string;
   participantes: number; bilhetes: number;
   sorteadoPor: string; sorteadoPorNome: string;

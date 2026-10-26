@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { participantesDaTemporada, ordemPonderada, diasLiberadosPorSemana } from '../../src/sorteio';
+import { participantesDaTemporada, participantesDaSemanaPorDias, ordemPonderada, diasLiberadosPorSemana, REGRA_TEXTO } from '../../src/sorteio';
 
 // Uma linha por (aluno, semana), no formato que getSeasonProgress devolve.
 const linha = (userId: string, week: string, dias: number, extra: Record<string, unknown> = {}) => ({
@@ -110,5 +110,22 @@ describe('diasLiberadosPorSemana', () => {
       { semana: 'W2', dias: [{ data: '2026-10-03' }] },
     ];
     expect(diasLiberadosPorSemana(licoes, '2026-09-27')).toEqual({ W1: 2, W2: 0 });
+  });
+});
+
+describe('participantesDaSemanaPorDias — 1 bilhete por dia estudado', () => {
+  it('cada dia vale um bilhete, atraso conta e equipe fica de fora', () => {
+    const ps = participantesDaSemanaPorDias([
+      { id: 'a', nome: 'Ana', avatar: '🦊', xp: 900, dias: 5 },
+      { id: 'b', nome: 'Bia', avatar: '🐬', xp: 300, done: [1, 2] },
+      { id: 'c', nome: 'Caio', avatar: '🦁', xp: 0, dias: 0 },
+      { id: 'p', nome: 'Prof', avatar: '🎓', xp: 999, dias: 7, isProfessor: true },
+      { id: 'adm', nome: 'Admin', avatar: '🛡️', xp: 999, dias: 7, isAdmin: true },
+    ]);
+    expect(ps.map(p => [p.id, p.bilhetes])).toEqual([['a', 5], ['b', 2]]);
+  });
+
+  it('a regra da semana de sempre continua com o mesmo texto', () => {
+    expect(REGRA_TEXTO['semana-completa']).toBe('1 bilhete por quem fez os 7 dias no dia certo');
   });
 });
