@@ -145,6 +145,14 @@ export const adminSetUserLocation = async (userId: string, locationId: string) =
   await setDoc(userRef, { locationId }, { merge: true });
 };
 
+// Admin troca a trilha (a lição) de um aluno. O aluno não consegue sozinho:
+// a regra congela local e trilha depois do cadastro (ownerLocationTrackUnchanged).
+// O progresso da trilha antiga fica onde está — é outra lição; o app do aluno
+// lê a trilha nova do servidor no próximo boot e passa a mostrar a lição dela.
+export const adminSetUserTrack = async (userId: string, track: string) => {
+  await updateDoc(doc(db, 'users', userId), { track });
+};
+
 // Admin define em qual local cada professor pode gerar convite
 export const assignTeacherLocation = async (teacherId: string, locationId: string, assignedBy: string) => {
   const ref = doc(db, 'teacherAssignments', teacherId);

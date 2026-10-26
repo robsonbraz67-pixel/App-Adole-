@@ -1,7 +1,7 @@
 import { describe, it, beforeAll, afterAll, beforeEach } from 'vitest';
-import { assertSucceeds } from '@firebase/rules-unit-testing';
+import { assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import { serverTimestamp } from 'firebase/firestore';
-import { setup, teardown, limpar, comoUsuario, semearAluno, semearDoc, semearTurma, PERFIL_BASE } from './helpers';
+import { setup, teardown, limpar, comoUsuario, semearAluno, semearAdmin, semearDoc, semearTurma, PERFIL_BASE } from './helpers';
 
 // Turma mista (jovens + adultos): o código MISTA- é de trilha `adult`, mas
 // quem escolhe "Jovens" no cadastro grava `youngAdult`. A checagem do convite
@@ -54,4 +54,14 @@ describe('turma mista — cadastro com código MISTA-', () => {
       }));
     });
   }
+
+  // Trocar a lição de um aluno novo (Painel Admin → 📖 Lição): só o admin.
+  it('admin troca a trilha de um aluno; o aluno não troca a própria', async () => {
+    await semearCulto();
+    await semearAdmin('admin1');
+    await semearAluno('aluno1', { track: 'teen', locationId: 'ucob', turmaId: 'culto' });
+
+    await assertFails(comoUsuario('aluno1').doc('users/aluno1').update({ track: 'adult' }));
+    await assertSucceeds(comoUsuario('admin1').doc('users/aluno1').update({ track: 'adult' }));
+  });
 });

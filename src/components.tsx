@@ -131,7 +131,7 @@ export const Splash = () => {
 };
 
 /* ===== LOGIN ===== */
-import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, adminMesclarContas, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, adminMoverParaTurma, adminRealinharProgresso, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio, getSeasonProgress, registrarSorteio, getSorteiosDaTurma, apagarSorteio, RegistroSorteio } from './firebase';
+import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, adminMesclarContas, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, adminSetUserTrack, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, adminMoverParaTurma, adminRealinharProgresso, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio, getSeasonProgress, registrarSorteio, getSorteiosDaTurma, apagarSorteio, RegistroSorteio } from './firebase';
 import { participantesDaTemporada, participantesDaSemanaPorDias, ordemPonderada, diasLiberadosPorSemana, REGRA_TEXTO, RegraSorteio, RegraSemana, RegraTemporada, Participante } from './sorteio';
 import { reportarProblema } from './errorLog';
 
@@ -6384,6 +6384,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [buscaUsuario, setBuscaUsuario] = useState('');
   // Rede de segurança para a ordem errada de publicação: se as regras já
   // estreitaram (Fase 3b) e a flag ainda está desligada, getAllUsers volta
   // permission-denied e o professor ficaria olhando um painel quebrado. Neste
@@ -6422,6 +6423,23 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, locationId } : u));
     } catch (e) {
       alert('Erro ao alterar local do usuário');
+    }
+  };
+
+  // Trocar a lição (trilha) de um aluno — ex.: entrou como Adolescente, mas é
+  // da classe de Jovens. Confirma antes: os dias já feitos ficam na lição antiga.
+  const handleSetUserTrack = async (u: any, track: Track) => {
+    if ((u.track || 'teen') === track) return;
+    if (!window.confirm(
+      `Trocar a lição de "${u.nome}" para ${TRACK_LABELS[track]}?\n\n`
+      + `Os dias já feitos na lição de ${TRACK_LABELS[(u.track || 'teen') as Track]} continuam lá, mas não contam na lição nova. `
+      + 'Se o app dele estiver aberto, a troca aparece quando ele abrir o app de novo.'
+    )) return;
+    try {
+      await adminSetUserTrack(u.id, track);
+      setUsers(prev => prev.map(x => x.id === u.id ? { ...x, track } : x));
+    } catch (e) {
+      alert('Erro ao trocar a lição do aluno. Verifique sua conexão e tente novamente.');
     }
   };
 
@@ -6552,9 +6570,18 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
       <div style={{padding:'20px 16px'}}>
         <div className="sec-title" style={{marginBottom:8}}>Gerenciar Usuários (Admins)</div>
         <div style={{background:'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24}}>
+           {!loadingUsers && (
+              <input value={buscaUsuario} onChange={e => setBuscaUsuario(e.target.value)} placeholder="🔎 Buscar por nome ou e-mail"
+                style={{width:'100%', padding:'8px 10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13, marginBottom:10, boxSizing:'border-box'}} />
+           )}
            {loadingUsers ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : (
               <div style={{display:'flex', flexDirection:'column', gap: 10, maxHeight: 250, overflowY:'auto'}}>
-                {[...users].sort((a,b) => (b.isAdmin?1:0) - (a.isAdmin?1:0)).map((u: any) => (
+                {[...users]
+                  .filter(u => {
+                    const q = buscaUsuario.trim().toLowerCase();
+                    return !q || (u.nome || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+                  })
+                  .sort((a,b) => (b.isAdmin?1:0) - (a.isAdmin?1:0)).map((u: any) => (
                   <div key={u.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px', background:'var(--row-bg)', borderRadius:8}}>
                      <div style={{display:'flex', alignItems:'center', gap: 10}}>
                         <div style={{fontSize:20, width:28, height:28, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
@@ -6570,6 +6597,15 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
                      </div>
                      {isSuperAdmin && u.email?.toLowerCase() !== SUPER_ADMIN_EMAIL && (
                        <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap: 6}}>
+                       <select
+                         value={(u.track || 'teen') as Track}
+                         onChange={e => handleSetUserTrack(u, e.target.value as Track)}
+                         aria-label={`Lição de ${u.nome}`}
+                         title="Trocar a lição (trilha) deste aluno"
+                         style={{fontSize:11, padding:'4px 6px', borderRadius:6, background:'var(--input-bg)', color:'var(--txt2)', border:'1px solid var(--input-border)', maxWidth:150}}
+                       >
+                         {(Object.keys(TRACK_LABELS) as Track[]).map(t => <option key={t} value={t}>📖 {TRACK_LABELS[t]}</option>)}
+                       </select>
                        {MULTI_LOCATION_ENABLED && (
                        <div style={{display:'flex', alignItems:'center', gap:6}}>
                          <select
