@@ -6385,6 +6385,11 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [buscaUsuario, setBuscaUsuario] = useState('');
+  // Filtros da lista de usuários: igreja e lição (trilha). É a tela de
+  // correção — achar quem caiu na lição errada sem rolar a escola inteira.
+  const [filtroIgreja, setFiltroIgreja] = useState('');
+  const [filtroLicao, setFiltroLicao] = useState<'' | Track>('');
+  const [turmasAdm, setTurmasAdm] = useState<Turma[]>([]);
   // Rede de segurança para a ordem errada de publicação: se as regras já
   // estreitaram (Fase 3b) e a flag ainda está desligada, getAllUsers volta
   // permission-denied e o professor ficaria olhando um painel quebrado. Neste
@@ -6416,6 +6421,29 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
     getAllTeacherAssignments().then(a => { if (!unmounted) setTeacherAssignments(a); }).catch(() => {});
     return () => { unmounted = true; };
   }, []);
+
+  useEffect(() => { getTurmas().then(setTurmasAdm).catch(() => {}); }, []);
+  const nomeDaTurma = (id?: string) => (id && turmasAdm.find(t => t.id === id)?.nome) || '';
+
+  // Usuários agrupados por igreja, com os filtros aplicados. "Sem igreja" por
+  // último; dentro de cada igreja, a liderança primeiro e depois por nome.
+  const gruposDeUsuarios = useMemo(() => {
+    const q = buscaUsuario.trim().toLowerCase();
+    const nomeIgreja = (id?: string) => (id && locations.find(l => l.id === id)?.name) || 'Sem igreja';
+    const grupos: Record<string, { id: string; nome: string; usuarios: any[] }> = {};
+    for (const u of users) {
+      if (q && !(u.nome || '').toLowerCase().includes(q) && !(u.email || '').toLowerCase().includes(q)) continue;
+      const igreja = u.locationId || '__sem__';
+      if (filtroIgreja && igreja !== filtroIgreja) continue;
+      if (filtroLicao && (u.track || 'teen') !== filtroLicao) continue;
+      (grupos[igreja] ||= { id: igreja, nome: nomeIgreja(u.locationId), usuarios: [] }).usuarios.push(u);
+    }
+    const papel = (u: any) => (u.isAdmin ? 0 : u.isProfessor ? 1 : 2);
+    Object.values(grupos).forEach(g => g.usuarios.sort((a, b) => (papel(a) - papel(b)) || (a.nome || '').localeCompare(b.nome || '', 'pt-BR')));
+    return Object.values(grupos).sort((a, b) =>
+      (a.id === '__sem__' ? 1 : 0) - (b.id === '__sem__' ? 1 : 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [users, locations, buscaUsuario, filtroIgreja, filtroLicao]);
+  const totalFiltrado = gruposDeUsuarios.reduce((n, g) => n + g.usuarios.length, 0);
 
   const handleSetUserLocation = async (userId: string, locationId: string) => {
     try {
@@ -6572,16 +6600,32 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
         <div style={{background:'var(--panel-bg)', padding: 12, borderRadius: 12, marginBottom: 24}}>
            {!loadingUsers && (
               <input value={buscaUsuario} onChange={e => setBuscaUsuario(e.target.value)} placeholder="🔎 Buscar por nome ou e-mail"
-                style={{width:'100%', padding:'8px 10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13, marginBottom:10, boxSizing:'border-box'}} />
+                style={{width:'100%', padding:'8px 10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13, marginBottom:8, boxSizing:'border-box'}} />
            )}
+           {!loadingUsers && (
+              <div style={{display:'flex', gap:8, marginBottom:6}}>
+                <select value={filtroIgreja} onChange={e => setFiltroIgreja(e.target.value)} aria-label="Filtrar por igreja" style={{flex:1, minWidth:0, padding:'8px 10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13}}>
+                  <option value="">🏛️ Todas as igrejas</option>
+                  {[...locations].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(l => <option key={l.id} value={l.id}>🏛️ {l.name}</option>)}
+                  <option value="__sem__">🏛️ Sem igreja</option>
+                </select>
+                <select value={filtroLicao} onChange={e => setFiltroLicao(e.target.value as '' | Track)} aria-label="Filtrar por lição" style={{flex:1, minWidth:0, padding:'8px 10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:13}}>
+                  <option value="">📖 Todas as lições</option>
+                  {(Object.keys(TRACK_LABELS) as Track[]).map(t => <option key={t} value={t}>📖 {TRACK_LABELS[t]}</option>)}
+                </select>
+              </div>
+           )}
+           {!loadingUsers && <div style={{fontSize:11, color:'var(--mut)', marginBottom:10}}>{totalFiltrado} de {users.length} usuário(s)</div>}
            {loadingUsers ? <div style={{color:'var(--mut)', fontSize:14}}>Carregando...</div> : (
-              <div style={{display:'flex', flexDirection:'column', gap: 10, maxHeight: 250, overflowY:'auto'}}>
-                {[...users]
-                  .filter(u => {
-                    const q = buscaUsuario.trim().toLowerCase();
-                    return !q || (u.nome || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
-                  })
-                  .sort((a,b) => (b.isAdmin?1:0) - (a.isAdmin?1:0)).map((u: any) => (
+              <div style={{display:'flex', flexDirection:'column', gap: 14, maxHeight: 480, overflowY:'auto'}}>
+                {gruposDeUsuarios.length === 0 && <div style={{color:'var(--mut)', fontSize:13, textAlign:'center', padding:10}}>Ninguém com esses filtros.</div>}
+                {gruposDeUsuarios.map(g => (
+                <div key={g.id} style={{display:'flex', flexDirection:'column', gap: 8}}>
+                  <div style={{position:'sticky', top:0, zIndex:1, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 8px', borderRadius:8, background:'var(--panel-bg)', borderBottom:'1px solid var(--panel-border)', fontSize:12, fontWeight:900, color:'var(--txt2)'}}>
+                    <span>🏛️ {g.nome}</span>
+                    <span style={{color:'var(--mut)', fontWeight:700}}>{g.usuarios.length}</span>
+                  </div>
+                {g.usuarios.map((u: any) => (
                   <div key={u.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px', background:'var(--row-bg)', borderRadius:8}}>
                      <div style={{display:'flex', alignItems:'center', gap: 10}}>
                         <div style={{fontSize:20, width:28, height:28, borderRadius:'50%', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
@@ -6593,6 +6637,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
                              {streaks[u.id]?.streak > 0 && <span style={{color:'var(--flame)', fontSize:12, marginLeft:4}}>🔥 {streaks[u.id].streak}</span>}
                            </div>
                            <div style={{fontSize:11, color:'var(--mut)'}}>{u.email}</div>
+                           <div style={{fontSize:11, color:'var(--mut)'}}>📖 {TRACK_LABELS[(u.track || 'teen') as Track]} · {nomeDaTurma(u.turmaId) ? `🏫 ${nomeDaTurma(u.turmaId)}` : '🏫 sem turma'}</div>
                         </div>
                      </div>
                      {isSuperAdmin && u.email?.toLowerCase() !== SUPER_ADMIN_EMAIL && (
@@ -6652,6 +6697,8 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
                        </div>
                      )}
                   </div>
+                ))}
+                </div>
                 ))}
               </div>
            )}
