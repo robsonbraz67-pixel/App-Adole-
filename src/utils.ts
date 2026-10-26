@@ -773,3 +773,33 @@ export const ehRankingMisto = (linhas: { track?: string; isAdmin?: boolean; isPr
     && alunos.some(r => r.track === 'adult')
     && !alunos.some(r => (r.track || 'teen') === 'teen');
 };
+
+// ===== Convite por link (…/?convite=CODIGO) =====
+// O código fica guardado no aparelho até ser usado: o login com Google sai da
+// página e volta, e sem isto o convite se perderia no caminho. Vale 7 dias —
+// sem validade, quem clicou uma vez cairia no cadastro da turma para sempre.
+const CHAVE_CONVITE = 'conviteTurmaPendente';
+const VALIDADE_CONVITE_MS = 7 * 24 * 3600 * 1000;
+
+export const codigoDoLink = (search: string): string | null => {
+  const bruto = new URLSearchParams(search).get('convite') || '';
+  const code = bruto.trim().toUpperCase().replace(/\s+/g, '');
+  return /^[A-Z0-9-]{4,40}$/.test(code) ? code : null;
+};
+
+export const linkDoConvite = (origem: string, code: string) =>
+  `${origem.replace(/\/+$/, '')}/?convite=${encodeURIComponent(code)}`;
+
+export const guardarConvitePendente = (code: string) => {
+  try { localStorage.setItem(CHAVE_CONVITE, JSON.stringify({ code, ts: Date.now() })); } catch {}
+};
+export const lerConvitePendente = (): string | null => {
+  try {
+    const raw = localStorage.getItem(CHAVE_CONVITE);
+    if (!raw) return null;
+    const { code, ts } = JSON.parse(raw);
+    if (typeof code !== 'string' || !ts || Date.now() - ts > VALIDADE_CONVITE_MS) { localStorage.removeItem(CHAVE_CONVITE); return null; }
+    return code;
+  } catch { return null; }
+};
+export const limparConvitePendente = () => { try { localStorage.removeItem(CHAVE_CONVITE); } catch {} };

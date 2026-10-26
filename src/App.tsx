@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { getTrackLessons, loadTrackLessons } from './data';
-import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO, agoraLocalHora, getDiaId } from './utils';
+import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO, agoraLocalHora, getDiaId, codigoDoLink, guardarConvitePendente, lerConvitePendente } from './utils';
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress, getWeeklyRanking } from './firebase';
 import { Apresentacao } from './Apresentacao';
 import { TelaoAoVivo } from './Telao';
@@ -196,6 +196,15 @@ export default function App() {
     const t = setTimeout(recarregar, 400);
     return () => clearTimeout(t);
   }, [temVersaoNova, tela, liveGameActive]);
+
+  // Deep link ?convite=<código da turma>: guarda no aparelho (sobrevive ao
+  // login com Google) e limpa da URL. O cadastro (Config) aplica sozinho.
+  useEffect(() => {
+    const code = codigoDoLink(window.location.search);
+    if (!code) return;
+    guardarConvitePendente(code);
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
 
   // Deep link ?dupla=<id>: guarda e limpa da URL (sobrevive ao login)
   useEffect(() => {
@@ -427,6 +436,7 @@ export default function App() {
       if (unmounted) return;
 
       let hasLocation = !!j?.locationId;
+      let temTurma = !!j?.turmaId;
 
       if (j) {
         setJogador(j);
@@ -460,6 +470,7 @@ export default function App() {
                setJogador(updatedJ);
                ss('jogador', updatedJ);
                hasLocation = !!updatedJ.locationId;
+               temTurma = !!updatedJ.turmaId;
             }
             const track = dbUser?.track || initialTrack;
             // O cache local do aparelho (jogador.track, lido acima como
@@ -522,7 +533,10 @@ export default function App() {
       }
 
       if (!unmounted) {
-        setTela(j ? (hasLocation ? 'home' : 'config') : 'login');
+        // Convite pendente de quem já tem conta e ainda não tem turma: vai
+        // direto ao Perfil, onde o código aparece pronto para usar.
+        const conviteParaQuemJaTemConta = !!lerConvitePendente() && hasLocation && !temTurma;
+        setTela(j ? (hasLocation && !conviteParaQuemJaTemConta ? 'home' : 'config') : 'login');
       }
     };
 
@@ -576,7 +590,7 @@ export default function App() {
     setProg({ ...p, pos: calcPos(weekRows, j.id, p.xp || 0) });
     if (j.isNew) delete j.isNew;
     ss('jogador', j);
-    setTela(j.locationId ? 'home' : 'config');
+    setTela(j.locationId && !(lerConvitePendente() && !j.turmaId) ? 'home' : 'config');
   };
 
   const handleDoneQuiz = async (res: any) => {

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded, getTrackLessonsComHistorico, loadTrackLessonsComHistorico } from './data';
 import { planejarBackfill, planejarMovimentacao } from './backfillTurmas';
-import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, dataCurta, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor, isRankingHidden, PREFIXO_TURMA_MISTA, ehCodigoDeTurmaMista, podeEscolherJovemAdulto, ehRankingMisto } from './utils';
+import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, dataCurta, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor, isRankingHidden, PREFIXO_TURMA_MISTA, ehCodigoDeTurmaMista, podeEscolherJovemAdulto, ehRankingMisto, lerConvitePendente, limparConvitePendente, linkDoConvite } from './utils';
 import { montarResumoTemporada, ResumoTemporada, semanaTodaNoDia, diasEmAtraso, AlunoComAtraso, DiaAtrasado, situacaoSorteioSemanal, SituacaoSorteioSemanal } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 import { ehEspecial, prepararEspecial, PerguntaEspecial, duracaoPergunta, ROTULO_TIPO, resumoGabarito } from './perguntasEspeciais';
@@ -138,6 +138,7 @@ import { reportarProblema } from './errorLog';
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const convite = useMemo(() => lerConvitePendente(), []);
 
   const goGoogle = async () => {
     setLoading(true);
@@ -185,6 +186,12 @@ export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
       {/* Contraste invertido por tema: no escuro o botão é branco, no claro é
           tinta. Nos dois casos ele é o elemento de maior contraste da tela —
           é o único caminho daqui. */}
+      {convite && (
+        <div style={{maxWidth:340, width:'100%', marginBottom:16, padding:'12px 14px', borderRadius:12, background:'rgba(30,158,134,.1)', border:'1px solid rgba(30,158,134,.35)', fontSize:13.5, lineHeight:1.5, color:'var(--txt2)'}}>
+          🎟️ Você recebeu um convite para uma turma (<strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{convite}</strong>).<br />
+          Entre com Google e o cadastro já vem com a turma.
+        </div>
+      )}
       <button className={`btn btn-login${loading ? ' btn-dis' : ''}`} onClick={goGoogle} style={{maxWidth:340}}>
         <span className="g-disc">G</span>
         {loading ? 'Carregando...' : 'Entrar com Google'}
@@ -4781,6 +4788,18 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
     setOcupado(false);
   };
 
+  // Link que já abre o cadastro com este código aplicado (…/?convite=CODIGO).
+  // No celular abre o menu de compartilhar (WhatsApp); no computador, copia.
+  const compartilharLink = async (t: Turma, code: string) => {
+    const url = linkDoConvite(window.location.origin, code);
+    const texto = `Entre na turma "${t.nome}" no SabatinaQuest: abra o link, entre com Google e o cadastro já vem com a turma.`;
+    try {
+      if (navigator.share) { await navigator.share({ title: 'Convite SabatinaQuest', text: texto, url }); return; }
+    } catch (e: any) { if (e?.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(`${texto}\n${url}`); alert(`Link copiado!\n\n${url}\n\nCole no WhatsApp para convidar.`); }
+    catch { window.prompt('Copie o link do convite:', url); }
+  };
+
   const handleToggleCodigo = async (turmaId: string, code: string, active: boolean) => {
     try {
       await setInviteCodeActive(code, !active);
@@ -5133,6 +5152,7 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                             </span>
                             <div style={{display:'flex', gap:6, flexShrink:0}}>
                               <button onClick={() => copiar(c.code)} style={btnMini('var(--teal)', 'rgba(30,158,134,.2)')}>Copiar</button>
+                              {c.active && <button onClick={() => compartilharLink(t, c.code)} style={btnMini('#F7C600', 'rgba(247,198,0,.15)')}>🔗 Link</button>}
                               <button onClick={() => handleToggleCodigo(t.id, c.code, c.active)} style={btnMini(c.active ? '#F7C600' : 'var(--success)', c.active ? 'rgba(247,198,0,.15)' : 'rgba(79,184,92,.2)')}>
                                 {c.active ? 'Revogar' : 'Reativar'}
                               </button>
@@ -6776,6 +6796,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
   // recolhido atrás de um link porque, para o aluno, isto nunca serve.
   const [mostrarConviteProf, setMostrarConviteProf] = useState(false);
   const [codigoProf, setCodigoProf] = useState('');
+  const caixaConvite = useRef<HTMLDivElement>(null);
   const [resgatando, setResgatando] = useState(false);
 
   // Um campo, dois caminhos: PROF- torna a pessoa professora da turma; o resto
@@ -6821,13 +6842,14 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
   const [redeemed, setRedeemed] = useState<{ code: string; locationId: string; track: Track; turmaId?: string } | null>(null);
   const [trilhaEscolhida, setTrilhaEscolhida] = useState<Track | null>(null);
 
-  const handleRedeem = async () => {
-    const code = normalizeInviteCode(inviteInput);
+  const handleRedeem = async (codeDoLink?: string) => {
+    const code = normalizeInviteCode(codeDoLink ?? inviteInput);
     if (!code) return;
     setRedeeming(true);
     try {
       const inv = await getInviteCodeByCode(code);
       if (!inv || !inv.active) {
+        if (codeDoLink) limparConvitePendente();
         alert('Código inválido ou desativado. Confira com quem te enviou.');
       } else {
         setRedeemed({ code, locationId: inv.locationId, track: inv.track as Track, turmaId: inv.turmaId });
@@ -6841,6 +6863,24 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
     }
     setRedeeming(false);
   };
+
+  // Convite por link (…/?convite=CODIGO, guardado pelo App antes do login).
+  // Cadastro novo: aplica o código sozinho. Quem já tem conta: abre a caixa
+  // do código já preenchida, no fim do Perfil, e rola até ela.
+  useEffect(() => {
+    const code = lerConvitePendente();
+    if (!code) return;
+    if (!locationLocked) {
+      setInviteInput(code);
+      handleRedeem(code);
+      return;
+    }
+    limparConvitePendente();
+    if (jogador.turmaId) return;
+    setCodigoProf(code);
+    setMostrarConviteProf(true);
+    setTimeout(() => caixaConvite.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+  }, []);
 
   // Phone number helpers — store as E164 (5511999999999), display as (11) 99999-9999
   const e164ToDisplay = (v: string) => {
@@ -7022,7 +7062,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                       placeholder="Ex: TEEN-AB3K9"
                       style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, fontFamily:'monospace', letterSpacing:1, outline:'none'}}
                     />
-                    <button type="button" onClick={handleRedeem} disabled={redeeming || !inviteInput.trim()} className={`btn btn-gold btn-sm ${redeeming || !inviteInput.trim() ? 'btn-dis' : ''}`} style={{width:'auto', fontSize:13, whiteSpace:'nowrap'}}>
+                    <button type="button" onClick={() => handleRedeem()} disabled={redeeming || !inviteInput.trim()} className={`btn btn-gold btn-sm ${redeeming || !inviteInput.trim() ? 'btn-dis' : ''}`} style={{width:'auto', fontSize:13, whiteSpace:'nowrap'}}>
                       {redeeming ? '...' : 'Aplicar'}
                     </button>
                   </div>
@@ -7054,7 +7094,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                       placeholder="Ex: TEEN-AB3K9"
                       style={{flex:1, padding:'10px', borderRadius:8, background:'var(--input-bg)', color:'var(--txt)', border:'1px solid var(--input-border)', fontSize:14, fontFamily:'monospace', letterSpacing:1, outline:'none'}}
                     />
-                    <button type="button" onClick={handleRedeem} disabled={redeeming || !inviteInput.trim()} className={`btn btn-ghost btn-sm ${redeeming || !inviteInput.trim() ? 'btn-dis' : ''}`} style={{width:'auto', fontSize:13, whiteSpace:'nowrap'}}>
+                    <button type="button" onClick={() => handleRedeem()} disabled={redeeming || !inviteInput.trim()} className={`btn btn-ghost btn-sm ${redeeming || !inviteInput.trim() ? 'btn-dis' : ''}`} style={{width:'auto', fontSize:13, whiteSpace:'nowrap'}}>
                       {redeeming ? '...' : 'Aplicar'}
                     </button>
                   </div>
@@ -7294,6 +7334,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
             // Só quando existe: a regra exige turmaId não-vazio quando a chave
             // está presente, e string vazia derrubaria o cadastro inteiro.
             if (finalTurmaId) payload.turmaId = finalTurmaId;
+            if (finalInviteCode) limparConvitePendente();
             onSave(payload);
           }}
           style={{fontSize: 18, marginTop: 10}}
@@ -7314,7 +7355,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                 🎟️ Tenho um código de convite
               </button>
             ) : (
-              <div style={{background:'var(--panel-bg)', padding:'14px 16px', borderRadius:14, border:'1px solid var(--panel-border)'}}>
+              <div ref={caixaConvite} style={{background:'var(--panel-bg)', padding:'14px 16px', borderRadius:14, border:'1px solid var(--panel-border)'}}>
                 <div style={{fontWeight:800, color:'var(--txt2)', marginBottom:6}}>🎟️ Código de convite</div>
                 <div style={{fontSize:12, color:'var(--mut)', marginBottom:10, lineHeight:1.5}}>
                   Cole o código que te mandaram. Ele te liga à turma certa — e, se for um convite de professor (começa com <strong>PROF-</strong>), também te torna professor(a) dela.
