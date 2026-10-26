@@ -273,7 +273,7 @@ const SlideRevelacao = ({ perfil, candidatos, pos }: { perfil: PerfilAluno; cand
 };
 
 // ===== Slide: sorteio ao vivo (o Sorteador de verdade) =====
-const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, registrarTecla }: {
+export const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, registrarTecla }: {
   modo: Modo; licao: any; turmaId: string; track: string; turmaNome: string; jogador: any;
   registrarTecla: (fn: ((e: KeyboardEvent) => boolean) | null) => void;
 }) => {

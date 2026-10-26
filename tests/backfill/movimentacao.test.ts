@@ -49,6 +49,24 @@ describe('planejarMovimentacao — mover ou inserir um aluno', () => {
     expect(r.outraTrilha).toBe(1);
   });
 
+  // Turma mista (jovens e adultos no mesmo ranking): o aluno entra na turma
+  // sem trocar de lição, e leva o progresso da trilha DELE.
+  it('turma mista: mantém a trilha do aluno e traz o progresso dela', () => {
+    const r = planejarMovimentacao({
+      usuario: { id: 'a1', locationId: 'igreja1', track: 'adult', turmaId: 'turmaB' },
+      progressos: [
+        { id: 'a1_adult_2026-W43', userId: 'a1', track: 'adult', turmaId: 'turmaB' },
+        { id: 'a1_youngAdult_2026-W40', userId: 'a1', track: 'youngAdult' },
+      ],
+      turma: turmaJ,
+      manterTrilha: true,
+    });
+    expect(r.perfil).toEqual({ turmaId: 'turmaJ' });
+    expect(r.mudaTrilha).toBe(false);
+    expect(r.progresso).toEqual(['a1_adult_2026-W43']);
+    expect(r.outraTrilha).toBe(1);
+  });
+
   it('nunca toca progresso de outra pessoa', () => {
     const r = planejarMovimentacao({
       usuario: { id: 'a1', locationId: 'igreja1', track: 'teen' },
@@ -132,5 +150,18 @@ describe('planejarBackfill — semanas presas na turma anterior', () => {
     expect(r.progElegiveis).toEqual([]);
     expect(r.progDesalinhados).toEqual([{ id: 'a1_2026-W39', userId: 'a1', de: 'turmaB' }]);
     expect(r.donosDoProgresso).toEqual(['André']);
+  });
+});
+
+// Sem marcar "manter a trilha", mover continua igual ao que sempre foi.
+describe('planejarMovimentacao — padrão inalterado', () => {
+  it('sem manterTrilha, o aluno herda a trilha da turma como antes', () => {
+    const args = {
+      usuario: { id: 'a1', locationId: 'igreja1', track: 'teen' },
+      progressos: [{ id: 'a1_2026-W39', userId: 'a1', track: 'teen' }],
+      turma: { id: 'turmaJ', nome: 'Jovens', locationId: 'igreja1', track: 'youngAdult' },
+    };
+    expect(planejarMovimentacao(args)).toEqual(planejarMovimentacao({ ...args, manterTrilha: false }));
+    expect(planejarMovimentacao(args).perfil).toEqual({ turmaId: 'turmaJ', track: 'youngAdult' });
   });
 });

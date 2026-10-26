@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { getTrackLessons, loadTrackLessons, isTrackLoaded, getTrackLessonsComHistorico, loadTrackLessonsComHistorico } from './data';
 import { planejarBackfill, planejarMovimentacao } from './backfillTurmas';
-import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, dataCurta, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor, isRankingHidden } from './utils';
+import { gs, ss, uid, embaralhar, xpSpeed, getRecencyMult, getDiaId, getMsgRes, calcPos, PROG0, shareApp, playSound, somLigado, formatDiaSemana, dataCurta, getAudioCtx, computeRealStreak, hojeLocalISO, pairDias, pairSolo, pairSincronia, fmtDias, firstName, pairNome, DatasEstudo, precarregarSorteioTambor, tocarSorteioTambor, isRankingHidden, PREFIXO_TURMA_MISTA, ehCodigoDeTurmaMista, podeEscolherJovemAdulto, ehRankingMisto } from './utils';
 import { montarResumoTemporada, ResumoTemporada, semanaTodaNoDia, diasEmAtraso, AlunoComAtraso, DiaAtrasado, situacaoSorteioSemanal, SituacaoSorteioSemanal } from './relatorioTemporada';
 import { partirEmVersos, ehReferencia, buscarVerso, Verso } from './versos';
 import { ehEspecial, prepararEspecial, PerguntaEspecial, duracaoPergunta, ROTULO_TIPO, resumoGabarito } from './perguntasEspeciais';
@@ -28,6 +28,32 @@ export const PROFESSOR_ESCOPO_TURMA = true;
 
 export type Track = 'teen' | 'youngAdult' | 'adult';
 export const TRACK_LABELS: Record<Track, string> = { teen: '🧑 Adolescente', youngAdult: '🧑‍🎓 Jovem', adult: '👨‍👩‍👧 Adultos' };
+
+// Turma mista (jovens e adultos no mesmo ranking): cada linha ganha a cor da
+// trilha. Só essas duas trilhas se misturam; adolescente fica sem cor.
+export const COR_TRILHA_MISTA: Partial<Record<Track, { cor: string; rotulo: string }>> = {
+  youngAdult: { cor: '#F28C28', rotulo: 'Jovens' },
+  adult: { cor: '#3B82F6', rotulo: 'Adultos' },
+};
+
+const EscolhaJovemAdulto = ({ valor, onEscolher }: { valor: Track | null; onEscolher: (t: Track) => void }) => (
+  <div style={{marginTop:10}}>
+    <div style={{fontSize:12, fontWeight:800, color:'var(--txt2)', marginBottom:6}}>Você é da classe de: *</div>
+    <div style={{display:'flex', gap:8}}>
+      {(['youngAdult', 'adult'] as Track[]).map(t => {
+        const { cor, rotulo } = COR_TRILHA_MISTA[t]!;
+        const sel = valor === t;
+        return (
+          <button key={t} type="button" onClick={() => onEscolher(t)}
+            style={{flex:1, padding:'12px 8px', borderRadius:10, cursor:'pointer', fontSize:14, fontWeight:900,
+              border:`2px solid ${cor}`, background: sel ? cor : 'transparent', color: sel ? '#fff' : cor}}>
+            {sel ? '✓ ' : ''}{t === 'youngAdult' ? '🧑‍🎓' : '👨‍👩‍👧'} {rotulo}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+);
 
 export type Tema = 'auto' | 'dark' | 'light' | 'neon' | 'manga' | 'mvp' | 'mvp-light';
 export const TEMAS: { id: Tema; label: string }[] = [
@@ -2014,7 +2040,7 @@ const SEMANA_SCOPES = [
   { k: 'weekGeral', label: 'Toda a escola' },
 ];
 
-export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeType, onBack, licao: licaoAtual, rankingLoading: carregandoAtual, onRefresh, onSorteador }: any) => {
+export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeType, onBack, licao: licaoAtual, rankingLoading: carregandoAtual, onRefresh, onSorteador, onTelao }: any) => {
   // Seletor de semana (o mesmo do sorteio) nas abas da SEMANA individual. A
   // semana atual continua vindo da assinatura ao vivo do App; uma semana
   // passada é uma foto lida uma vez (getWeeklyRankingDaTurma / getWeeklyRanking
@@ -2092,6 +2118,14 @@ export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeTy
       staff: all.filter((r: any) => r.isAdmin || r.isProfessor).sort(bySort),
     };
   }, [ranking, jogador, type, prog, porDias, isPair, semanaPassada]);
+
+  // Turma mista: só na semana da MINHA turma (regra em ehRankingMisto).
+  const turmaMista = type === 'week' && !!jogador?.turmaId && ehRankingMisto(todosRegular);
+
+  const faixaTrilha = (r: any) => {
+    const cor = turmaMista ? COR_TRILHA_MISTA[(r.track || 'teen') as Track]?.cor : undefined;
+    return cor ? <div style={{height:4,width:36,borderRadius:2,background:cor,margin:'3px auto 0'}}/> : null;
+  };
 
   const myIsStaff = !!jogador.isAdmin || !!jogador.isProfessor;
   const myIdx = myIsStaff
@@ -2200,6 +2234,7 @@ export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeTy
 
   const renderRow = (r: any, zone: 'promo' | 'down' | '') => {
     const eu = !!r.eu;
+    const corTrilha = turmaMista ? COR_TRILHA_MISTA[(r.track || 'teen') as Track]?.cor : undefined;
     const i = todosRegular.indexOf(r);
     const atraso = metaDias - (r.dias || 0);
     const sit = situacaoPorId.get(r.id);
@@ -2211,7 +2246,7 @@ export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeTy
       : 'var(--g2)';
     const bd = eu ? 'rgba(247,198,0,.4)' : zone === 'promo' ? 'rgba(30,158,134,.4)' : zone === 'down' ? 'rgba(229,0,109,.3)' : 'var(--b2)';
     return (
-      <div key={r.id} style={{background:bg,border:`2px solid ${bd}`,borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
+      <div key={r.id} style={{background:bg,border:`2px solid ${bd}`,...(corTrilha ? {borderLeft:`8px solid ${corTrilha}`} : {}),borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,animation:`popIn .3s ease ${i*.05}s both`,color:'var(--txt)'}}>
         <div style={{fontWeight:900,fontSize:16,width:26,textAlign:'center',color:i<3?'#F5C842':zone==='promo'?'var(--teal)':zone==='down'?'var(--magenta)':'var(--mut)'}}>{i < 3 ? meds[i] : `${i + 1}º`}</div>
         {isPair
           ? <PairAvatars a={r.aAvatar} b={r.bAvatar} />
@@ -2315,6 +2350,11 @@ export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeTy
         </div>
       )}
 
+      {myIsStaff && onTelao && (
+        <div style={{padding:'0 16px 8px'}}>
+          <button className="btn btn-gold btn-sm" onClick={() => onTelao(comSeletorSemana ? licao : licaoAtual)} style={{width:'100%', margin:0}}>📺 Telão: ranking, campeões e sorteio</button>
+        </div>
+      )}
       {myIsStaff && (
         <div style={{display:'flex', gap:8, padding:'0 16px 12px'}}>
           {onSorteador && (
@@ -2357,6 +2397,7 @@ export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeTy
                 </div>
               )}
               <div style={{fontWeight:800,fontSize:12,maxWidth:74,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[1].nome}</div>
+              {faixaTrilha(regular[1])}
               <div className="pod-base p2">🥈</div>
               <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{regular[1].xp} XP</div>
               <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {fmtDias(regular[1].dias || 0)} d</div>
@@ -2369,6 +2410,7 @@ export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeTy
                 </div>
               )}
               <div style={{fontWeight:900,fontSize:14,maxWidth:86,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--gold)'}}>{regular[0].nome}</div>
+              {faixaTrilha(regular[0])}
               <div className="pod-base p1">🥇</div>
               <div style={{fontWeight:900,color:'var(--gold)',fontSize:14,lineHeight:1.1}}>{regular[0].xp} XP</div>
               <div style={{fontSize:11,color:'var(--gold)',fontWeight:800,marginTop:1}}>📅 {fmtDias(regular[0].dias || 0)} d</div>
@@ -2380,6 +2422,7 @@ export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeTy
                 </div>
               )}
               <div style={{fontWeight:800,fontSize:11,maxWidth:70,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regular[2].nome}</div>
+              {faixaTrilha(regular[2])}
               <div className="pod-base p3">🥉</div>
               <div style={{fontWeight:900,color:'var(--gold)',fontSize:12,lineHeight:1.1}}>{regular[2].xp} XP</div>
               <div style={{fontSize:10,color:'var(--mut)',marginTop:1}}>📅 {fmtDias(regular[2].dias || 0)} d</div>
@@ -2408,6 +2451,15 @@ export const Ranking = ({ jogador, ranking: rankingAtual, prog, type, onChangeTy
               : sorteioSemanal
                 ? <>🎰 Sorteio da semana: cada dia feito <strong>no dia dele</strong>. Um dia atrasado ou faltando tira do sorteio desta semana (mas a semana ainda conta na campanha)</>
                 : <>🎰 Fique em dia com os {metaDias} dia{metaDias!==1?'s':''} já liberado{metaDias!==1?'s':''} para participar do sorteio</>}
+          </div>
+        )}
+        {turmaMista && (
+          <div style={{display:'flex',justifyContent:'center',gap:16,fontSize:12,fontWeight:800,marginBottom:8}}>
+            {(['youngAdult', 'adult'] as Track[]).map(t => (
+              <span key={t} style={{display:'flex',alignItems:'center',gap:6,color:'var(--txt2)'}}>
+                <span style={{width:12,height:12,borderRadius:3,background:COR_TRILHA_MISTA[t]!.cor}}/>{COR_TRILHA_MISTA[t]!.rotulo}
+              </span>
+            ))}
           </div>
         )}
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
@@ -4685,12 +4737,17 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
     } catch { alert('Erro ao atualizar o convite.'); }
   };
 
-  const handleGerarConvite = async (t: Turma) => {
+  // Turma mista (`mista`): código MISTA-, e quem entra com ele escolhe Jovens
+  // ou Adultos no cadastro. O ranking da semana consulta por turmaId + semana
+  // (ISO, igual em todas as trilhas), então os dois disputam juntos.
+  const handleGerarConvite = async (t: Turma, mista = false) => {
     setOcupado(true);
     try {
-      const code = await generateInviteCode(t.locationId, t.track, jogador.id, t.id);
+      const code = await generateInviteCode(t.locationId, t.track, jogador.id, t.id, mista ? PREFIXO_TURMA_MISTA : undefined);
       carregarCodigos(t.id);
-      alert(`Código gerado: ${code}\n\nQuem entrar com ele já cai nesta turma, nesta igreja e nesta trilha.`);
+      alert(mista
+        ? `Código gerado: ${code}\n\nQuem entrar com ele cai nesta turma e escolhe, no cadastro, se é da classe de Jovens ou de Adultos.`
+        : `Código gerado: ${code}\n\nQuem entrar com ele já cai nesta turma, nesta igreja e nesta trilha.`);
     } catch (e: any) {
       alert(e?.message || 'Erro ao gerar o convite.');
     }
@@ -4934,6 +4991,10 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                       <div style={{display:'flex', flexWrap:'wrap', gap:6, marginBottom:10}}>
                         <button onClick={() => setEditando(t.id)} style={btnMini('var(--teal)', 'rgba(30,158,134,.2)')}>✏️ Editar</button>
                         <button onClick={() => handleGerarConvite(t)} disabled={ocupado} style={btnMini('#F7C600', 'rgba(247,198,0,.15)')}>🎟️ Gerar convite de aluno</button>
+                        {(t.track === 'adult' || t.track === 'youngAdult') && (
+                          <button onClick={() => handleGerarConvite(t, true)} disabled={ocupado} title="Quem entrar com este código escolhe Jovens ou Adultos no cadastro e disputa o ranking desta turma"
+                            style={btnMini('var(--mut)', 'var(--row-bg-strong)')}>🎟️ Convite turma mista (Jovens + Adultos)</button>
+                        )}
                         <button onClick={() => handleGerarConviteProf(t)} disabled={ocupado} style={btnMini('var(--admin)', 'rgba(124,79,224,.2)')}>🎓 Convite de professor</button>
                         <button onClick={() => setMoverPara(moverPara === t.id ? null : t.id)} disabled={ocupado} style={btnMini('var(--success)', 'rgba(79,184,92,.2)')}>👤 Inserir ou mover aluno</button>
                         <button onClick={() => handleEnsaio(t)} disabled={ocupado} style={btnMini('var(--admin)', 'rgba(124,79,224,.2)')}>🧪 Ensaio do carimbo</button>
@@ -5041,7 +5102,7 @@ const TurmasPanel = ({ jogador, locations, users, onLocationCreated, onUsuariosC
                         {codigos[t.id].map(c => (
                           <div key={c.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'6px 8px', background:'var(--row-bg-strong)', borderRadius:6, opacity: c.active ? 1 : 0.55}}>
                             <span style={{fontFamily:'monospace', fontWeight:900, fontSize:14, color:'var(--gold)', letterSpacing:1}}>
-                              {c.code} {!c.active && <span style={{fontSize:10, color:'var(--danger)', letterSpacing:0}}>REVOGADO</span>}
+                              {c.code} <span style={{fontSize:10, color:'var(--mut)', letterSpacing:0}}>{ehCodigoDeTurmaMista(c.code) ? 'Jovens + Adultos' : TRACK_LABELS[c.track as Track] || c.track}</span> {!c.active && <span style={{fontSize:10, color:'var(--danger)', letterSpacing:0}}>REVOGADO</span>}
                             </span>
                             <div style={{display:'flex', gap:6, flexShrink:0}}>
                               <button onClick={() => copiar(c.code)} style={btnMini('var(--teal)', 'rgba(30,158,134,.2)')}>Copiar</button>
@@ -5119,9 +5180,18 @@ const MoverAluno = ({ turma, turmas, users, locName, onFechar, onMovido }: {
 }) => {
   const [busca, setBusca] = useState('');
   const [alvo, setAlvo] = useState<any>(null);
-  const [plano, setPlano] = useState<ReturnType<typeof planejarMovimentacao> | null>(null);
+  const [progsAlvo, setProgsAlvo] = useState<any[] | null>(null);
+  // Turma mista: o aluno entra no ranking desta turma sem trocar de lição.
+  const [manterTrilha, setManterTrilha] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [feito, setFeito] = useState('');
+  const plano = useMemo(() => !alvo || !progsAlvo ? null : planejarMovimentacao({
+    usuario: { id: alvo.id, nome: alvo.nome, turmaId: alvo.turmaId, track: alvo.track, locationId: alvo.locationId },
+    progressos: progsAlvo.map((p: any) => ({ id: p.id, userId: p.userId, turmaId: p.turmaId, track: p.track })),
+    turma: { id: turma.id, nome: turma.nome, locationId: turma.locationId, track: turma.track },
+    manterTrilha,
+  }), [alvo, progsAlvo, turma, manterTrilha]);
+  const trilhaDiferente = !!alvo && (alvo.track || 'teen') !== (turma.track || 'teen');
 
   const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const nomeTurma = (id?: string | null) => (id && turmas.find(x => x.id === id)?.nome) || (id ? 'turma desconhecida' : 'sem turma');
@@ -5137,14 +5207,9 @@ const MoverAluno = ({ turma, turmas, users, locName, onFechar, onMovido }: {
   }, [busca, users]);
 
   const escolher = async (u: any) => {
-    setAlvo(u); setPlano(null); setFeito(''); setOcupado(true);
+    setAlvo(u); setProgsAlvo(null); setFeito(''); setManterTrilha(false); setOcupado(true);
     try {
-      const progs = await getProgressoDoUsuario(u.id);
-      setPlano(planejarMovimentacao({
-        usuario: { id: u.id, nome: u.nome, turmaId: u.turmaId, track: u.track, locationId: u.locationId },
-        progressos: progs.map((p: any) => ({ id: p.id, userId: p.userId, turmaId: p.turmaId, track: p.track })),
-        turma: { id: turma.id, nome: turma.nome, locationId: turma.locationId, track: turma.track },
-      }));
+      setProgsAlvo(await getProgressoDoUsuario(u.id));
     } catch (e: any) {
       alert(e?.message || 'Não foi possível ler o progresso desse aluno.');
       setAlvo(null);
@@ -5163,7 +5228,7 @@ const MoverAluno = ({ turma, turmas, users, locName, onFechar, onMovido }: {
         + (r.progresso.falhas.length ? ` ${r.progresso.falhas.length} recusada(s) — ver o console.` : '')
         + ' Se o app dele estiver aberto, o próximo quiz já grava na turma nova.');
       if (r.progresso.falhas.length) console.warn('Mover aluno — progresso recusado:', r.progresso.falhas);
-      setAlvo(null); setPlano(null); setBusca('');
+      setAlvo(null); setProgsAlvo(null); setBusca('');
     } catch (e: any) {
       alert(e?.message || 'Erro ao mover o aluno. Nada foi alterado no progresso.');
     }
@@ -5204,6 +5269,12 @@ const MoverAluno = ({ turma, turmas, users, locName, onFechar, onMovido }: {
         <div style={{fontSize:12, color:'var(--txt2)', lineHeight:1.6}}>
           <div style={{fontWeight:800, marginBottom:4}}>{alvo.avatar} {alvo.nome}</div>
           <div>🏫 {plano.jaEstava ? <>já é de <strong>{turma.nome}</strong></> : <>{nomeTurma(plano.deTurma)} → <strong style={{color:'var(--gold)'}}>{turma.nome}</strong></>}</div>
+          {trilhaDiferente && (
+            <label style={{display:'flex', alignItems:'center', gap:6, margin:'4px 0', cursor:'pointer'}}>
+              <input type="checkbox" checked={manterTrilha} onChange={e => setManterTrilha(e.target.checked)} disabled={ocupado} />
+              <span>Manter a trilha dele ({trilha(alvo.track)}) — turma mista</span>
+            </label>
+          )}
           {plano.mudaIgreja && <div>🏛️ Igreja: {locName(alvo.locationId) } → <strong>{locName(turma.locationId)}</strong></div>}
           {plano.mudaTrilha && <div>📚 Trilha: {trilha(alvo.track)} → <strong>{trilha(turma.track)}</strong> <span style={{color:'var(--mut)'}}>(a lição dele passa a ser a da turma)</span></div>}
           <div>📈 {plano.progresso.length} semana(s) de progresso vêm para esta turma{plano.outraTrilha ? ` · ${plano.outraTrilha} de outra trilha ficam onde estão` : ''}</div>
@@ -5214,7 +5285,7 @@ const MoverAluno = ({ turma, turmas, users, locName, onFechar, onMovido }: {
                 {ocupado ? 'Gravando...' : plano.jaEstava ? '✅ Acertar progresso' : plano.deTurma ? '✅ Mover para esta turma' : '✅ Inserir nesta turma'}
               </button>
             )}
-            <button onClick={() => { setAlvo(null); setPlano(null); }} disabled={ocupado}
+            <button onClick={() => { setAlvo(null); setProgsAlvo(null); }} disabled={ocupado}
               style={{background:'var(--row-bg)', color:'var(--mut)', border:'none', borderRadius:6, padding:'8px 14px', fontSize:13, fontWeight:800, cursor:'pointer'}}>Voltar</button>
           </div>
         </div>
@@ -5986,7 +6057,7 @@ const RelatorioTemporadaAba = ({ relatorio, carregando, erro, onBaixar }: {
   );
 };
 
-const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador, onApresentacao }: any) => {
+const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador, onApresentacao, onTelao }: any) => {
   // A turma do painel é a que ele está CONDUZINDO (Fase 6), não mais a do
   // perfil dele: um professor pode conduzir mais de uma, e pode conduzir uma
   // de que não faz parte.
@@ -6250,16 +6321,17 @@ const PainelProfessor = ({ jogador, licao, onBack, onModoAoVivo, onSorteador, on
           {onSorteador && <button className="btn btn-ghost" onClick={onSorteador} style={{flex:1}}>🎰 SORTEIO</button>}
           {onApresentacao && <button className="btn btn-ghost" onClick={onApresentacao} style={{flex:1}}>🎬 APRESENTAÇÃO</button>}
         </div>
+        {onTelao && <button className="btn btn-gold" onClick={onTelao} style={{marginTop:8}}>📺 TELÃO: RANKING, CAMPEÕES E SORTEIO</button>}
       </div>
     </div>
   );
 };
 
-export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApresentacao }: any) => {
+export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApresentacao, onTelao }: any) => {
   // Professor com escopo de turma não vê o painel do sistema: vê o dele.
   // Admin continua vendo tudo, inclusive quando também é professor.
   if (PROFESSOR_ESCOPO_TURMA && jogador?.isProfessor && !jogador?.isAdmin) {
-    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} onApresentacao={onApresentacao} />;
+    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} onApresentacao={onApresentacao} onTelao={onTelao} />;
   }
 
   const isSuperAdmin = jogador?.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
@@ -6420,7 +6492,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
   // Depois de TODOS os hooks: a condição muda em tempo de execução, e um
   // retorno antecipado lá em cima puliria os hooks seguintes.
   if (semAcessoGlobal) {
-    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} onApresentacao={onApresentacao} />;
+    return <PainelProfessor jogador={jogador} licao={licao} onBack={onBack} onModoAoVivo={onModoAoVivo} onSorteador={onSorteador} onApresentacao={onApresentacao} onTelao={onTelao} />;
   }
 
   return (
@@ -6630,6 +6702,7 @@ export const Admin = ({ licao, jogador, onBack, onModoAoVivo, onSorteador, onApr
           {onApresentacao && <button className="btn btn-ghost" onClick={onApresentacao} style={{flex:1}}>🎬 APRESENTAÇÃO</button>}
           </div>
         )}
+        {onTelao && <button className="btn btn-gold" onClick={onTelao} style={{marginTop:8}}>📺 TELÃO: RANKING, CAMPEÕES E SORTEIO</button>}
       </div>
     </div>
   );
@@ -6719,6 +6792,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
   const [inviteInput, setInviteInput] = useState('');
   const [redeeming, setRedeeming] = useState(false);
   const [redeemed, setRedeemed] = useState<{ code: string; locationId: string; track: Track; turmaId?: string } | null>(null);
+  const [trilhaEscolhida, setTrilhaEscolhida] = useState<Track | null>(null);
 
   const handleRedeem = async () => {
     const code = normalizeInviteCode(inviteInput);
@@ -6730,6 +6804,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
         alert('Código inválido ou desativado. Confira com quem te enviou.');
       } else {
         setRedeemed({ code, locationId: inv.locationId, track: inv.track as Track, turmaId: inv.turmaId });
+        setTrilhaEscolhida(null);
         setLocationId(inv.locationId);
         setTrack(inv.track as Track);
         setShowNewLocation(false);
@@ -6905,7 +6980,9 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                   <div style={{fontSize:13, color:'var(--txt2)', background:'var(--row-bg)', borderRadius:10, padding:'12px'}}>
                     ✅ Código <strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{redeemed.code}</strong> aplicado.<br/>
                     <span style={{display:'block', marginTop:6}}>📍 <strong>{locations.find(l => l.id === redeemed.locationId)?.name || 'Local do convite'}</strong></span>
-                    <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>
+                    {podeEscolherJovemAdulto(redeemed)
+                      ? <EscolhaJovemAdulto valor={trilhaEscolhida} onEscolher={setTrilhaEscolhida} />
+                      : <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>}
                     <span style={{fontSize:12, color:'var(--mut)', display:'block', marginTop:6}}>Toque em salvar para confirmar sua entrada.</span>
                     <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); setLocationId(''); }} style={{marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código</button>
                   </div>
@@ -6936,7 +7013,9 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                   <div style={{fontSize:13, color:'var(--txt2)', background:'var(--row-bg)', borderRadius:10, padding:'12px'}}>
                     ✅ Código <strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{redeemed.code}</strong> aplicado.<br/>
                     <span style={{display:'block', marginTop:6}}>📍 <strong>{locations.find(l => l.id === redeemed.locationId)?.name || 'Local do convite'}</strong></span>
-                    <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>
+                    {podeEscolherJovemAdulto(redeemed)
+                      ? <EscolhaJovemAdulto valor={trilhaEscolhida} onEscolher={setTrilhaEscolhida} />
+                      : <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>}
                     <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); setLocationId(''); }} style={{marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código / escolher manualmente</button>
                   </div>
                 ) : (
@@ -7137,6 +7216,11 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
             // SEM turma mesmo usando um código que aponta para uma — e some do
             // ranking por turma até alguém carimbar na mão.
             let finalTurmaId: string | undefined = jogador.turmaId;
+            if (podeEscolherJovemAdulto(redeemed) && !trilhaEscolhida) {
+              alert('Escolha se você é da classe de Jovens ou de Adultos.');
+              return;
+            }
+            const trilhaDoConvite: Track = (podeEscolherJovemAdulto(redeemed) && trilhaEscolhida) || redeemed?.track || track;
             if (!locationLocked) {
               if (canManageLocations) {
                 // Admin/professor: setup manual
@@ -7160,13 +7244,13 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                 // Aluno com exigência de código LIGADA
                 if (!redeemed) { alert('Digite e aplique um código de convite para entrar.'); return; }
                 finalLocationId = redeemed.locationId;
-                finalTrack = redeemed.track;
+                finalTrack = trilhaDoConvite;
                 finalInviteCode = redeemed.code;
                 finalTurmaId = redeemed.turmaId || finalTurmaId;
               } else if (redeemed) {
                 // Aluno usou o código (atalho opcional)
                 finalLocationId = redeemed.locationId;
-                finalTrack = redeemed.track;
+                finalTrack = trilhaDoConvite;
                 finalInviteCode = redeemed.code;
                 finalTurmaId = redeemed.turmaId || finalTurmaId;
               } else {

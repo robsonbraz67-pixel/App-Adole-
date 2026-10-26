@@ -753,3 +753,23 @@ export const formatDiaSemana = (dia: string): string => {
 };
 
 
+
+// ===== Turma mista (jovens + adultos no mesmo ranking) =====
+// O prefixo do código É a marca: só um código MISTA- abre a escolha "Jovens ou
+// Adultos" no cadastro. Os códigos TEEN-, JOV- e ADT- que já circulam
+// continuam fixando a trilha exatamente como antes.
+export const PREFIXO_TURMA_MISTA = 'MISTA';
+export const ehCodigoDeTurmaMista = (code?: string | null) =>
+  (code || '').trim().toUpperCase().replace(/\s+/g, '').startsWith(`${PREFIXO_TURMA_MISTA}-`);
+export const podeEscolherJovemAdulto = (r?: { code: string; track: string } | null) =>
+  !!r && ehCodigoDeTurmaMista(r.code) && (r.track === 'youngAdult' || r.track === 'adult');
+
+// Cor por trilha no ranking: só quando jovens e adultos aparecem juntos e
+// NINGUÉM é adolescente — turma de adolescentes (ou de uma trilha só) fica
+// exatamente como sempre foi. Equipe (admin/professor) não conta.
+export const ehRankingMisto = (linhas: { track?: string; isAdmin?: boolean; isProfessor?: boolean }[]) => {
+  const alunos = linhas.filter(r => !r.isAdmin && !r.isProfessor);
+  return alunos.some(r => r.track === 'youngAdult')
+    && alunos.some(r => r.track === 'adult')
+    && !alunos.some(r => (r.track || 'teen') === 'teen');
+};

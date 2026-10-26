@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { getTrackLessons, loadTrackLessons } from './data';
 import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking, aggregateSeasonRanking, mergeLiveWeek, buildPairWeekRanking, buildPairSeasonRanking, hojeLocalISO, agoraLocalHora, getDiaId } from './utils';
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress, getWeeklyRanking } from './firebase';
 import { Apresentacao } from './Apresentacao';
+import { TelaoAoVivo } from './Telao';
 import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, MuralOracoes, ReportarProblemaModal, TEMAS, Tema } from './components';
 import { BUILD_ID, buscarBuildPublicado, buscarAvisoNovoEndereco, telaPermiteReload, recarregar, podeRecarregarDeNovo, INTERVALO_CHECAGEM_MS } from './version';
 import { setErroContexto } from './errorLog';
@@ -70,6 +71,19 @@ export default function App() {
   const [tela, setTela] = useState('splash');
   // O sorteio abre do painel ou do atalho do ranking; "Voltar" devolve à origem.
   const [voltarDoSorteio, setVoltarDoSorteio] = useState<'home' | 'ranking'>('home');
+  // Telão ao vivo (ranking → campeões → sorteio): abre por cima da tela atual,
+  // em tela cheia, na semana escolhida. Fechar volta exatamente para onde estava.
+  const [licaoDoTelao, setLicaoDoTelao] = useState<any>(null);
+  const abrirTelao = (l: any) => {
+    setLicaoDoTelao(l || licao);
+    const el: any = document.documentElement;
+    (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el)?.catch?.(() => {});
+  };
+  const fecharTelao = useCallback(() => {
+    setLicaoDoTelao(null);
+    const d: any = document;
+    if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen)?.call(d)?.catch?.(() => {});
+  }, []);
   // Semana escolhida no seletor do ranking: o atalho abre o sorteio nela.
   const [licaoDoSorteio, setLicaoDoSorteio] = useState<any>(null);
   const [jogador, setJogador] = useState<any>(null);
@@ -930,8 +944,8 @@ export default function App() {
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} onMural={() => abrirMural('estudo')} />}
       {tela === 'quiz' && diaAtual && <Quiz dia={diaAtual} liberado={(prog.liberados || []).includes(diaAtual.id)} onDone={handleDoneQuiz} onBack={() => setTela('estudo')} />}
       {tela === 'resultado' && resultado && <Resultado res={resultado} dia={diaAtual} prog={prog} onRanking={() => loadLatestRanking('week')} onHome={() => setTela('home')} onMural={() => abrirMural('resultado')} />}
-      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading || weekGeralLoading} onRefresh={() => loadSeason(licao.trimestre, true)} onSorteador={(jogador?.isAdmin || jogador?.isProfessor) ? (l: any) => { setLicaoDoSorteio(l || null); setVoltarDoSorteio('ranking'); setTela('sorteador'); } : undefined} />}
-      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onModoAoVivo={() => setTela('liveHost')} onSorteador={() => { setLicaoDoSorteio(null); setVoltarDoSorteio('home'); setTela('sorteador'); }} onApresentacao={() => setTela('apresentacao')} />}
+      {tela === 'ranking' && <Ranking jogador={jogador} ranking={ranking} prog={prog} type={rankingType} onChangeType={loadLatestRanking} onBack={() => setTela('home')} licao={licao} rankingLoading={seasonLoading || weekGeralLoading} onRefresh={() => loadSeason(licao.trimestre, true)} onSorteador={(jogador?.isAdmin || jogador?.isProfessor) ? (l: any) => { setLicaoDoSorteio(l || null); setVoltarDoSorteio('ranking'); setTela('sorteador'); } : undefined} onTelao={(jogador?.isAdmin || jogador?.isProfessor) ? abrirTelao : undefined} />}
+      {tela === 'admin' && <Admin licao={licao} jogador={jogador} onBack={() => setTela('home')} onModoAoVivo={() => setTela('liveHost')} onSorteador={() => { setLicaoDoSorteio(null); setVoltarDoSorteio('home'); setTela('sorteador'); }} onApresentacao={() => setTela('apresentacao')} onTelao={() => abrirTelao(licao)} />}
       {tela === 'liveHost' && (
         <React.Suspense fallback={<CarregandoAoVivo />}>
           <LiveHost licao={licao} jogador={jogador} onBack={() => setTela('admin')} onActiveChange={setLiveGameActive} />
@@ -940,6 +954,7 @@ export default function App() {
       {tela === 'config' && <Config jogador={jogador} onSave={handleUpdateConfig} onSwitchTrack={handleSwitchTrack} onBack={() => setTela('home')} onLogout={handleLogout} theme={theme} onThemeChange={setTheme} />}
       {tela === 'sorteador' && <Sorteador licao={licaoDoSorteio || licao} jogador={jogador} onBack={() => { setTela(voltarDoSorteio); setVoltarDoSorteio('home'); }} />}
       {tela === 'apresentacao' && <Apresentacao licao={licao} jogador={jogador} onBack={() => setTela('admin')} />}
+      {licaoDoTelao && jogador && <TelaoAoVivo licao={licaoDoTelao} jogador={jogador} onSair={fecharTelao} />}
       {tela === 'oracoes' && <MuralOracoes jogador={jogador} onBack={() => setTela(voltarDoMural)} />}
       {tela === 'dupla' && <Dupla jogador={jogador} licao={licao} prog={prog} weekRows={weekRows} activePair={activePair} pendingInvite={pendingInvite} onPairChange={setActivePair} onClearPending={clearPendingInvite} onBack={() => setTela('home')} onRankingDuplas={() => loadLatestRanking('duplasSemana')} />}
       {tela === 'home' && <div onClick={handleLogoTap} style={{position:'fixed',top:0,left:0,width:55,height:55,zIndex:500,opacity:0,cursor:'default'}} />}

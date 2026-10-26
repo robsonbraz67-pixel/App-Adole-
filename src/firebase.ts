@@ -426,10 +426,11 @@ export const normalizeInviteCode = (code: string) => (code || '').trim().toUpper
 // turmaId é opcional e chegou na Fase 2: o código emitido pelo painel de turmas
 // carrega a turma, então quem resgata já entra matriculado nela. Os códigos
 // antigos não têm o campo e continuam válidos — a regra o aceita ausente.
-export const generateInviteCode = async (locationId: string, track: string, createdBy: string, turmaId?: string): Promise<string> => {
+// `prefixo`: só o código da turma mista usa (MISTA-, ver utils.ts).
+export const generateInviteCode = async (locationId: string, track: string, createdBy: string, turmaId?: string, prefixo?: string): Promise<string> => {
   // tenta algumas vezes para o caso raríssimo de colisão de sufixo
   for (let attempt = 0; attempt < 5; attempt++) {
-    const code = `${TRACK_PREFIX[track] || 'TRK'}-${randomCodeSuffix()}`;
+    const code = `${prefixo || TRACK_PREFIX[track] || 'TRK'}-${randomCodeSuffix()}`;
     const ref = doc(db, 'inviteCodes', code);
     const existing = await getDoc(ref);
     if (existing.exists()) continue;

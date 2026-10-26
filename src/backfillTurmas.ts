@@ -121,17 +121,22 @@ export const planejarBackfill = ({ usuarios, progressos, turma, incluirSemIgreja
 // duas. O progresso que acompanha é o da trilha da turma — de todas as
 // semanas, para o histórico dele aparecer no ranking da turma nova. Progresso
 // de outra trilha fica onde está: é outro ranking.
-export const planejarMovimentacao = ({ usuario, progressos, turma }: {
+//
+// `manterTrilha` é a turma mista (jovens e adultos no mesmo ranking): o aluno
+// continua na trilha dele, e o progresso que vem junto é o dessa trilha.
+export const planejarMovimentacao = ({ usuario, progressos, turma, manterTrilha = false }: {
   usuario: PerfilBackfill;
   progressos: ProgressoBackfill[];
   turma: TurmaBackfill;
+  manterTrilha?: boolean;
 }) => {
+  const trilha = manterTrilha ? trackDe(usuario.track) : trackDe(turma.track);
   const perfil: { turmaId: string; locationId?: string; track?: string } = { turmaId: turma.id };
   if (usuario.locationId !== turma.locationId) perfil.locationId = turma.locationId;
-  if (trackDe(usuario.track) !== trackDe(turma.track)) perfil.track = turma.track;
+  if (trackDe(usuario.track) !== trilha) perfil.track = turma.track;
 
   const doDono = progressos.filter(p => p.userId === usuario.id);
-  const mesmaTrilha = doDono.filter(p => trackDe(p.track) === trackDe(turma.track));
+  const mesmaTrilha = doDono.filter(p => trackDe(p.track) === trilha);
   const progresso = mesmaTrilha.filter(p => p.turmaId !== turma.id).map(p => p.id);
 
   return {
