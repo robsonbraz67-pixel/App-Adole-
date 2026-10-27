@@ -6924,6 +6924,11 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
   const [redeeming, setRedeeming] = useState(false);
   const [redeemed, setRedeemed] = useState<{ code: string; locationId: string; track: Track; turmaId?: string } | null>(null);
   const [trilhaEscolhida, setTrilhaEscolhida] = useState<Track | null>(null);
+  // Cadastro que veio pelo link de convite: igreja e turma ficam travadas no
+  // convite — some o "usar outro código / escolher manualmente" e a escolha de
+  // local/trilha avulsa. Só sobra o que o convite permite (Jovens/Adultos no
+  // MISTA-). Código inválido destrava e o cadastro segue o caminho normal.
+  const [conviteTravado, setConviteTravado] = useState(false);
 
   const handleRedeem = async (codeDoLink?: string) => {
     const code = normalizeInviteCode(codeDoLink ?? inviteInput);
@@ -6932,7 +6937,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
     try {
       const inv = await getInviteCodeByCode(code);
       if (!inv || !inv.active) {
-        if (codeDoLink) limparConvitePendente();
+        if (codeDoLink) { limparConvitePendente(); setConviteTravado(false); }
         alert('Código inválido ou desativado. Confira com quem te enviou.');
       } else {
         setRedeemed({ code, locationId: inv.locationId, track: inv.track as Track, turmaId: inv.turmaId });
@@ -6942,6 +6947,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
         setShowNewLocation(false);
       }
     } catch (e) {
+      if (codeDoLink) setConviteTravado(false);
       alert('Não foi possível validar o código. Verifique sua conexão.');
     }
     setRedeeming(false);
@@ -6954,6 +6960,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
     const code = lerConvitePendente();
     if (!code) return;
     if (!locationLocked) {
+      setConviteTravado(true);
       setInviteInput(code);
       handleRedeem(code);
       return;
@@ -7134,7 +7141,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                       ? <EscolhaJovemAdulto valor={trilhaEscolhida} onEscolher={setTrilhaEscolhida} />
                       : <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>}
                     <span style={{fontSize:12, color:'var(--mut)', display:'block', marginTop:6}}>Toque em salvar para confirmar sua entrada.</span>
-                    <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); setLocationId(''); }} style={{marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código</button>
+                    {!conviteTravado && <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); setLocationId(''); }} style={{marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código</button>}
                   </div>
                 ) : (
                   <div style={{display:'flex', gap:8}}>
@@ -7158,15 +7165,19 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                continua só para admin/professor). */
             <>
               <div style={{marginBottom:14, padding:'12px 14px', borderRadius:12, background:'rgba(30,158,134,.08)', border:'1px solid rgba(30,158,134,.25)'}}>
-                <div style={{fontSize:13, fontWeight:800, color:'var(--teal)', marginBottom:8}}>🎟️ Tem um código de convite? (opcional)</div>
-                {redeemed ? (
+                <div style={{fontSize:13, fontWeight:800, color:'var(--teal)', marginBottom:8}}>{conviteTravado ? '🔒 Convite da sua turma' : '🎟️ Tem um código de convite? (opcional)'}</div>
+                {conviteTravado && !redeemed ? (
+                  <div style={{fontSize:13, color:'var(--mut)', padding:'8px 0'}}>Abrindo seu convite…</div>
+                ) : redeemed ? (
                   <div style={{fontSize:13, color:'var(--txt2)', background:'var(--row-bg)', borderRadius:10, padding:'12px'}}>
                     ✅ Código <strong style={{fontFamily:'monospace', color:'var(--gold)'}}>{redeemed.code}</strong> aplicado.<br/>
                     <span style={{display:'block', marginTop:6}}>📍 <strong>{locations.find(l => l.id === redeemed.locationId)?.name || 'Local do convite'}</strong></span>
                     {podeEscolherJovemAdulto(redeemed)
                       ? <EscolhaJovemAdulto valor={trilhaEscolhida} onEscolher={setTrilhaEscolhida} />
                       : <span style={{display:'block'}}>🛤️ <strong>{TRACK_LABELS[redeemed.track]}</strong></span>}
-                    <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); setLocationId(''); }} style={{marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código / escolher manualmente</button>
+                    {conviteTravado
+                      ? <span style={{display:'block', marginTop:8, fontSize:11, color:'var(--mut)'}}>🔒 Igreja e turma definidas pelo convite.</span>
+                      : <button type="button" onClick={() => { setRedeemed(null); setInviteInput(''); setLocationId(''); }} style={{marginTop:6, background:'none', border:'none', color:'var(--mut)', fontSize:11, cursor:'pointer', padding:0, textDecoration:'underline'}}>Usar outro código / escolher manualmente</button>}
                   </div>
                 ) : (
                   <div style={{display:'flex', gap:8}}>
@@ -7184,7 +7195,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
                 )}
               </div>
 
-              {!redeemed && (
+              {!redeemed && !conviteTravado && (
                 <>
                   <div style={{fontSize:12, fontWeight:700, color:'var(--mut)', marginBottom:8, textTransform:'uppercase', letterSpacing:1}}>Trilha *</div>
                   <div style={{display:'flex', gap:8, marginBottom:16, flexWrap:'wrap'}}>
@@ -7366,6 +7377,7 @@ export const Config = ({ jogador, onSave, onSwitchTrack, onBack, onLogout, theme
             // SEM turma mesmo usando um código que aponta para uma — e some do
             // ranking por turma até alguém carimbar na mão.
             let finalTurmaId: string | undefined = jogador.turmaId;
+            if (conviteTravado && !redeemed) { alert('Aguarde: seu convite ainda está sendo aberto.'); return; }
             if (podeEscolherJovemAdulto(redeemed) && !trilhaEscolhida) {
               alert('Escolha se você é da classe de Jovens ou de Adultos.');
               return;
