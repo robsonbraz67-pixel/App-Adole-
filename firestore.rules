@@ -1057,9 +1057,21 @@ service cloud.firestore {
         && camposDiagnosticoValidos(data);
     }
 
+    // Sugestão pela tela do QR das aulas (?relato=sugestao): quem escaneia pode
+    // não ter conta. Sem login, só passa o relato marcado como sugestão, sem
+    // identidade de usuário e sem erro técnico — o resto da validação é a mesma.
+    function isSugestaoSemLogin(data) {
+      return data.mensagem.matches('(?s)\\[Sugestão\\] .+')
+        && (!data.keys().hasAny(['userId']) || data.userId == null)
+        && (!data.keys().hasAny(['email']) || data.email == null)
+        && (!data.keys().hasAny(['nome']) || data.nome == null || data.nome.size() <= 80)
+        && !data.keys().hasAny(['ultimoErro']);
+    }
+
     match /userReports/{id} {
       allow get, list: if canManage();
-      allow create: if isAuthenticated() && isValidUserReport(incoming());
+      allow create: if isValidUserReport(incoming())
+        && (isAuthenticated() || isSugestaoSemLogin(incoming()));
       // Só a liderança move o status (lido/resolvido); o resto do relato é imutável.
       allow update: if canManage()
         && incoming().diff(existing()).affectedKeys().hasOnly(['status'])

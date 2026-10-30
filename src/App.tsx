@@ -4,7 +4,7 @@ import { gs, ss, calcPos, PROG0, playSound, getRecencyMult, aggregateWeekRanking
 import { waitForAuthInit, getProgress, getUser, saveUser, saveProgress, saveStudyNote, mergeProgress, logout, getDayOverride, getActivePair, getPairInvite, listenToWeekProgress, listenToPairRoster, getSeasonProgress, getWeeklyRanking } from './firebase';
 import { Apresentacao } from './Apresentacao';
 import { TelaoAoVivo } from './Telao';
-import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, MuralOracoes, ReportarProblemaModal, TEMAS, Tema } from './components';
+import { Splash, Login, Home, Estudo, Quiz, Resultado, Ranking, Admin, Config, BottomNav, Sorteador, Dupla, MuralOracoes, ReportarProblemaModal, SugestaoAvulsa, TEMAS, Tema } from './components';
 import { BUILD_ID, buscarBuildPublicado, buscarAvisoNovoEndereco, telaPermiteReload, recarregar, podeRecarregarDeNovo, INTERVALO_CHECAGEM_MS } from './version';
 import { setErroContexto } from './errorLog';
 // Sob demanda: o Modo Ao Vivo pesa ~62 KB (tela do host, do jogador, gerador
@@ -116,7 +116,9 @@ export default function App() {
   const [liveJoinCode, setLiveJoinCode] = useState<string | null>(null);
   const [liveGameActive, setLiveGameActive] = useState(false);
   const [showReportFAB, setShowReportFAB] = useState(false);
-  const [reportSugestao, setReportSugestao] = useState(false);
+  // ?relato=sugestao (QR do slide das aulas) abre a tela de sugestão antes de
+  // qualquer gate de login/boot — lido já no primeiro render, não num efeito.
+  const [sugestaoAvulsa, setSugestaoAvulsa] = useState(() => new URLSearchParams(window.location.search).get('relato') === 'sugestao');
   // O mural é alcançado de três lugares (barra de baixo, estudo do dia e
   // resultado do quiz). Guardar a origem é o que evita jogar a pessoa na
   // Home no meio de um estudo só porque ela foi orar por alguém.
@@ -193,10 +195,11 @@ export default function App() {
   // cache teimoso do navegador (mais comum no Safari/iOS logo depois de um
   // deploy) faz o app recarregar pra sempre sem nunca abrir de verdade.
   useEffect(() => {
-    if (!temVersaoNova || !telaPermiteReload(tela) || liveGameActive || !podeRecarregarDeNovo()) return;
+    // sugestaoAvulsa: não recarregar com a pessoa no meio de uma sugestão.
+    if (!temVersaoNova || !telaPermiteReload(tela) || liveGameActive || sugestaoAvulsa || !podeRecarregarDeNovo()) return;
     const t = setTimeout(recarregar, 400);
     return () => clearTimeout(t);
-  }, [temVersaoNova, tela, liveGameActive]);
+  }, [temVersaoNova, tela, liveGameActive, sugestaoAvulsa]);
 
   // Deep link ?convite=<código da turma>: guarda no aparelho (sobrevive ao
   // login com Google) e limpa da URL. O cadastro (Config) aplica sozinho.
@@ -237,24 +240,6 @@ export default function App() {
       setLiveJoinCode(code);
     } catch {}
   }, []);
-
-  // Deep link ?relato=sugestao (QR do slide de agradecimento): guarda no
-  // aparelho e limpa da URL; a 🐞 abre sozinha, no modo sugestão, assim que
-  // houver jogador — quem não estava logado passa pelo login antes.
-  useEffect(() => {
-    const relato = new URLSearchParams(window.location.search).get('relato');
-    if (!relato) return;
-    localStorage.setItem('pendingRelato', relato);
-    window.history.replaceState({}, '', window.location.pathname);
-  }, []);
-  useEffect(() => {
-    if (!jogador?.id) return;
-    const relato = localStorage.getItem('pendingRelato');
-    if (!relato) return;
-    localStorage.removeItem('pendingRelato');
-    setReportSugestao(relato === 'sugestao');
-    setShowReportFAB(true);
-  }, [jogador?.id]);
 
   const sairDoJogoAoVivo = () => {
     localStorage.removeItem('pendingLiveJoin');
@@ -936,6 +921,10 @@ export default function App() {
     </React.Suspense>
   );
 
+  if (sugestaoAvulsa) return (
+    <SugestaoAvulsa onAbrirApp={() => { window.history.replaceState({}, '', window.location.pathname); setSugestaoAvulsa(false); }} />
+  );
+
   if (tela === 'splash') return <Splash />;
   if (tela === 'login') return <Login onLogin={handleLogin} />;
   if (!jogador || !licao) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100dvh',color:'var(--mut)'}}>Carregando...</div>;
@@ -960,7 +949,7 @@ export default function App() {
           remontar a cada troca de tela. Sobe acima da bot-nav quando ela
           existe; nas telas sem nav (quiz/liveHost) fica na mesma altura. */}
       <button
-        onClick={() => { setReportSugestao(false); setShowReportFAB(true); }}
+        onClick={() => setShowReportFAB(true)}
         aria-label="Reportar um problema"
         title="Reportar um problema"
         style={{
@@ -971,7 +960,7 @@ export default function App() {
           boxShadow:'0 8px 22px rgba(0,0,0,.35)', zIndex:300, cursor:'pointer', padding:0,
         }}
       >🐞</button>
-      {showReportFAB && <ReportarProblemaModal sugestao={reportSugestao} onClose={() => setShowReportFAB(false)} />}
+      {showReportFAB && <ReportarProblemaModal onClose={() => setShowReportFAB(false)} />}
 
       {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={abrirDia} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} onMural={() => abrirMural('estudo')} />}

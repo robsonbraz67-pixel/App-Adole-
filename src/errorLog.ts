@@ -76,3 +76,27 @@ export const reportarProblema = async (mensagem: string, ultimoErro?: string): P
     return false;
   }
 };
+
+// Sugestão pela tela aberta pelo QR das aulas (?relato=sugestao). Funciona sem
+// login: as regras só aceitam relato sem conta quando vem marcado com
+// "[Sugestão]", sem userId/email e sem erro técnico — por isso não reaproveita
+// reportarProblema, que sempre manda `ultimoErro`.
+export const enviarSugestao = async (texto: string, nomeDigitado?: string): Promise<boolean> => {
+  try {
+    const comuns = camposComuns();
+    const logado = !!auth.currentUser;
+    await addDoc(collection(db, 'userReports'), {
+      ...comuns,
+      userId: logado ? comuns.userId : null,
+      email: logado ? comuns.email : null,
+      nome: (nomeDigitado || '').trim().slice(0, 80) || comuns.nome,
+      tela: 'sugestao-qr',
+      mensagem: `[Sugestão] ${String(texto || '').trim()}`.slice(0, 1000),
+      status: 'novo',
+      criadoEm: serverTimestamp(),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};

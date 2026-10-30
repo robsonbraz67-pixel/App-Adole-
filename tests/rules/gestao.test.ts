@@ -1,7 +1,7 @@
 import { describe, it, beforeAll, afterAll, beforeEach } from 'vitest';
 import { assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import { serverTimestamp } from 'firebase/firestore';
-import { setup, teardown, limpar, comoUsuario, semearAluno, semearProfessor, semearDoc } from './helpers';
+import { setup, teardown, limpar, comoUsuario, comoAnonimo, semearAluno, semearProfessor, semearDoc } from './helpers';
 
 // Ferramentas de gestão (locais, convites, atribuição de professor, conteúdo)
 // concentram quase todo o risco de escalada de privilégio do app: são
@@ -120,5 +120,26 @@ describe('errorLogs e userReports', () => {
 
     await assertFails(db.doc('errorLogs/log1').get());
     await assertFails(db.doc('userReports/rel1').get());
+  });
+
+  // #47/#48 — a tela do QR das aulas (?relato=sugestao) funciona sem login,
+  // mas sem conta só entra sugestão: nada de se passar por um usuário nem de
+  // usar a caixa de relatos para mandar outra coisa.
+  const sugestao = (extra: Record<string, unknown> = {}) => ({
+    mensagem: '[Sugestão] Um modo noturno mais escuro', status: 'novo', nome: 'Ana', tela: 'sugestao-qr',
+    userId: null, email: null, buildId: 'abc123', userAgent: 'test-agent', criadoEm: serverTimestamp(), ...extra,
+  });
+
+  it('sem login, envia sugestão marcada', async () => {
+    await assertSucceeds(comoAnonimo().collection('userReports').add(sugestao()));
+  });
+
+  it('sem login, não envia relato comum nem sugestão com identidade ou erro técnico', async () => {
+    const db = comoAnonimo();
+    await assertFails(db.collection('userReports').add(sugestao({ mensagem: 'O quiz travou' })));
+    await assertFails(db.collection('userReports').add(sugestao({ userId: 'aluno1' })));
+    await assertFails(db.collection('userReports').add(sugestao({ email: 'aluno1@teste.com' })));
+    await assertFails(db.collection('userReports').add(sugestao({ ultimoErro: '' })));
+    await assertFails(db.collection('userReports').add(sugestao({ nome: 'x'.repeat(81) })));
   });
 });

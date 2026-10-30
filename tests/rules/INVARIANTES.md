@@ -155,6 +155,8 @@ escreve neles ainda — estes testes existem para que a regra esteja provada
 | 44 | Aluno comum **não** cria convite de professor | 264 | ❌ | ✔️ feito |
 | 45 | Admin cria convite de professor | 264 | ✅ | ✔️ feito |
 | 46 | Aluno **não** se matricula em turma que não existe | 135-144 | ❌ | ✔️ feito |
+| 47 | Sem login, envia `userReports` marcado `[Sugestão]` (QR das aulas) | 1063 | ✅ | ✔️ feito |
+| 48 | Sem login, **não** envia relato comum, nem com `userId`/`email`/`ultimoErro` | 1063 | ❌ | ✔️ feito |
 
 > **#35 e #37 são a mesma trava do `locationId`, aplicada à turma.** Sem #35 o
 > aluno se mudaria de turma sozinho; sem #37 ele gravaria progresso carimbado

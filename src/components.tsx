@@ -133,7 +133,7 @@ export const Splash = () => {
 /* ===== LOGIN ===== */
 import { getProgressoDoUsuario, adminZerarDia, adminZerarSemana, adminMesclarContas, signInWithGoogle, getUser, getAllUsers, toggleAdmin, toggleGuest, toggleProfessor, blockUser, deleteUser, saveDayOverride, getWeeklyRanking, getUserAllDone, getAllUsersStreaks, getStudyLocations, createStudyLocation, adminSetUserLocation, adminSetUserTrack, assignTeacherLocation, removeTeacherAssignment, getAllTeacherAssignments, generateInviteCode, getInviteCodes, setInviteCodeActive, deleteInviteCode, getInviteCodeByCode, getInviteCodesByTurma, getTeacherAssignment, normalizeInviteCode, getTurmas, createTurma, updateTurma, arquivarTurma, Turma, getTodosProgressos, adminCarimbarTurma, adminMoverParaTurma, adminRealinharProgresso, resgatarConviteProfessor, ehCodigoDeProfessor, matricularPorCodigoDaTurma, generateTeacherInvite, getTeacherInvitesByTurma, setTeacherInviteActive, getUsersDaTurma, getTurma, getTurmasQueConduzo, getWeeklyRankingDaTurma, createPairInvite, acceptPairInvite, unpair, listenToPair, setPairShare, PairType, getStudyNotes, getErrorLogs, excluirErrorLog, getRelatosUsuarios, marcarRelatoStatus, excluirRelato, listenToPedidosOracao, criarPedidoOracao, reagirAoPedido, CATEGORIAS_ORACAO, CategoriaOracao, categoriaDe, rotuloCategoria, OracaoParticular, listenToOracoesParticulares, criarOracaoParticular, marcarParticularRespondida, excluirOracaoParticular, PARTICULAR_TEXTO_MAX, marcarPedidoRespondido, excluirPedidoOracao, listenToRecados, enviarRecado, marcarRecadoLido, excluirRecado, PEDIDO_TEXTO_MAX, RECADO_TEXTO_MAX, PedidoOracao, ReacaoPedido, RecadoApoio, getSeasonProgress, registrarSorteio, getSorteiosDaTurma, apagarSorteio, RegistroSorteio } from './firebase';
 import { participantesDaTemporada, participantesDaSemanaPorDias, ordemPonderada, diasLiberadosPorSemana, REGRA_TEXTO, RegraSorteio, RegraSemana, RegraTemporada, Participante } from './sorteio';
-import { reportarProblema } from './errorLog';
+import { reportarProblema, enviarSugestao } from './errorLog';
 
 export const Login = ({ onLogin }: { onLogin: (j: any) => void }) => {
   const [loading, setLoading] = useState(false);
@@ -297,21 +297,79 @@ export const InstalarApp = () => {
   );
 };
 
-/* ===== REPORTAR PROBLEMA =====
-   Botão em Config (Perfil), disponível a qualquer momento — ao contrário do
-   relato direto da tela de erro (ErrorBoundary), este cobre "algo está
-   errado mas o app não travou" (som que não toca, ranking estranho etc.).
-   `sugestao` (deep link ?relato=sugestao) só troca os textos; o relato cai na
-   mesma lista do admin, marcado com "[Sugestão]" na frente. */
-export const ReportarProblemaModal = ({ onClose, sugestao = false }: { onClose: () => void; sugestao?: boolean }) => {
+/* ===== SUGESTÃO PELO QR (?relato=sugestao) =====
+   Tela própria, fora de login e boot (como o convidado do Ao Vivo): quem
+   escaneia o QR do slide da aula pode nem ter conta, e não pode depender do
+   login terminar para cair no lugar certo. Grava na mesma caixa da 🐞
+   (userReports), marcada com "[Sugestão]". */
+export const SugestaoAvulsa = ({ onAbrirApp }: { onAbrirApp: () => void }) => {
+  const [nome, setNome] = useState('');
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
 
   const enviar = async () => {
-    if (!texto.trim()) { alert(sugestao ? 'Escreva sua sugestão.' : 'Descreva o que aconteceu.'); return; }
+    if (!texto.trim()) { alert('Escreva sua sugestão.'); return; }
     setEnviando(true);
-    const ok = await reportarProblema(sugestao ? `[Sugestão] ${texto.trim()}` : texto.trim());
+    const ok = await enviarSugestao(texto, nome);
+    setEnviando(false);
+    if (ok) setEnviado(true);
+    else alert('Não foi possível enviar agora. Tente de novo em instantes.');
+  };
+
+  const campo = {width:'100%',padding:12,borderRadius:12,background:'var(--input-bg)',color:'var(--txt)',border:'1px solid var(--input-border)',fontSize:16,fontFamily:'inherit'} as const;
+
+  return (
+    <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',padding:'24px 16px'}}>
+      <div className="blobs" aria-hidden="true"><div className="blob b1" /><div className="blob b2" /><div className="blob b3" /></div>
+      <div className="glass" style={{padding:'24px 20px',maxWidth:420,width:'100%',position:'relative'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+          <img src="/icons/icon-192.png" alt="" width={48} height={48} style={{borderRadius:12}} />
+          <div>
+            <div style={{fontWeight:900,fontSize:18}}>
+              <span style={{color:'var(--gold)'}}>Sabatina</span><span style={{color:'var(--teal)'}}>Quest</span>
+            </div>
+            <div style={{fontSize:12,color:'var(--mut)'}}>Você está ajudando a construir o app</div>
+          </div>
+        </div>
+        {enviado ? (
+          <>
+            <div style={{fontSize:40,textAlign:'center',margin:'8px 0'}}>🙌</div>
+            <div style={{textAlign:'center',fontWeight:900,fontSize:18,marginBottom:6}}>Sugestão enviada!</div>
+            <div style={{textAlign:'center',fontSize:14,color:'var(--txt2)',marginBottom:18,lineHeight:1.5}}>Obrigado por colaborar com o desenvolvimento do SabatinaQuest.</div>
+            <button className="btn btn-gold" onClick={() => { setTexto(''); setEnviado(false); }} style={{marginBottom:8}}>Enviar outra</button>
+            <button className="btn btn-ghost" onClick={onAbrirApp}>Abrir o SabatinaQuest</button>
+          </>
+        ) : (
+          <>
+            <div style={{fontWeight:900,fontSize:20,marginBottom:6}}>💡 Sua sugestão para o app</div>
+            <div style={{fontSize:13,color:'var(--txt2)',marginBottom:14,lineHeight:1.5}}>
+              Uma ideia, um elogio ou algo que poderia ser melhor? Não precisa entrar na conta.
+            </div>
+            <input value={nome} onChange={e => setNome(e.target.value)} maxLength={80} placeholder="Seu nome (opcional)" autoComplete="name" style={{...campo,marginBottom:10}} />
+            <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5} maxLength={980} placeholder="Ex: seria legal se o app tivesse..." style={{...campo,resize:'vertical',marginBottom:12}} />
+            <button className="btn btn-gold" onClick={enviar} disabled={enviando} style={{marginBottom:8}}>{enviando ? 'Enviando...' : 'Enviar sugestão'}</button>
+            <button className="btn btn-ghost" onClick={onAbrirApp}>Ir para o app</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ===== REPORTAR PROBLEMA =====
+   Botão em Config (Perfil), disponível a qualquer momento — ao contrário do
+   relato direto da tela de erro (ErrorBoundary), este cobre "algo está
+   errado mas o app não travou" (som que não toca, ranking estranho etc.). */
+export const ReportarProblemaModal = ({ onClose }: { onClose: () => void }) => {
+  const [texto, setTexto] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+
+  const enviar = async () => {
+    if (!texto.trim()) { alert('Descreva o que aconteceu.'); return; }
+    setEnviando(true);
+    const ok = await reportarProblema(texto.trim());
     setEnviando(false);
     if (ok) setEnviado(true);
     else alert('Não foi possível enviar agora. Tente de novo em instantes.');
@@ -323,22 +381,20 @@ export const ReportarProblemaModal = ({ onClose, sugestao = false }: { onClose: 
         {enviado ? (
           <>
             <div style={{fontSize:32,textAlign:'center',marginBottom:8}}>✅</div>
-            <div style={{textAlign:'center',fontWeight:900,fontSize:16,marginBottom:16}}>{sugestao ? 'Sugestão enviada. Obrigado por ajudar a construir o SabatinaQuest!' : 'Relato enviado. Obrigado!'}</div>
+            <div style={{textAlign:'center',fontWeight:900,fontSize:16,marginBottom:16}}>Relato enviado. Obrigado!</div>
             <button className="btn btn-gold" onClick={onClose}>Fechar</button>
           </>
         ) : (
           <>
-            <div style={{fontWeight:900,fontSize:16,marginBottom:10}}>{sugestao ? '💡 Sugestão para o app' : '🐞 Reportar um problema'}</div>
+            <div style={{fontWeight:900,fontSize:16,marginBottom:10}}>🐞 Reportar um problema</div>
             <div style={{fontSize:12,color:'var(--mut)',marginBottom:10,lineHeight:1.5}}>
-              {sugestao
-                ? 'Uma ideia, um elogio ou algo que poderia ser melhor? A equipe do SabatinaQuest lê tudo.'
-                : 'Descreva o que aconteceu — a liderança recebe junto com informações técnicas do seu aparelho.'}
+              Descreva o que aconteceu — a liderança recebe junto com informações técnicas do seu aparelho.
             </div>
             <textarea
               value={texto}
               onChange={e => setTexto(e.target.value)}
               rows={4}
-              placeholder={sugestao ? 'Ex: seria legal se o app tivesse...' : 'Ex: o quiz travou na pergunta 3...'}
+              placeholder="Ex: o quiz travou na pergunta 3..."
               style={{width:'100%',padding:10,borderRadius:10,background:'var(--input-bg)',color:'var(--txt)',border:'1px solid var(--input-border)',fontSize:14,resize:'vertical',marginBottom:12,fontFamily:'inherit'}}
             />
             <div style={{display:'flex',gap:8}}>
