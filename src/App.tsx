@@ -116,6 +116,7 @@ export default function App() {
   const [liveJoinCode, setLiveJoinCode] = useState<string | null>(null);
   const [liveGameActive, setLiveGameActive] = useState(false);
   const [showReportFAB, setShowReportFAB] = useState(false);
+  const [reportSugestao, setReportSugestao] = useState(false);
   // O mural é alcançado de três lugares (barra de baixo, estudo do dia e
   // resultado do quiz). Guardar a origem é o que evita jogar a pessoa na
   // Home no meio de um estudo só porque ela foi orar por alguém.
@@ -236,6 +237,24 @@ export default function App() {
       setLiveJoinCode(code);
     } catch {}
   }, []);
+
+  // Deep link ?relato=sugestao (QR do slide de agradecimento): guarda no
+  // aparelho e limpa da URL; a 🐞 abre sozinha, no modo sugestão, assim que
+  // houver jogador — quem não estava logado passa pelo login antes.
+  useEffect(() => {
+    const relato = new URLSearchParams(window.location.search).get('relato');
+    if (!relato) return;
+    localStorage.setItem('pendingRelato', relato);
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+  useEffect(() => {
+    if (!jogador?.id) return;
+    const relato = localStorage.getItem('pendingRelato');
+    if (!relato) return;
+    localStorage.removeItem('pendingRelato');
+    setReportSugestao(relato === 'sugestao');
+    setShowReportFAB(true);
+  }, [jogador?.id]);
 
   const sairDoJogoAoVivo = () => {
     localStorage.removeItem('pendingLiveJoin');
@@ -941,7 +960,7 @@ export default function App() {
           remontar a cada troca de tela. Sobe acima da bot-nav quando ela
           existe; nas telas sem nav (quiz/liveHost) fica na mesma altura. */}
       <button
-        onClick={() => setShowReportFAB(true)}
+        onClick={() => { setReportSugestao(false); setShowReportFAB(true); }}
         aria-label="Reportar um problema"
         title="Reportar um problema"
         style={{
@@ -952,7 +971,7 @@ export default function App() {
           boxShadow:'0 8px 22px rgba(0,0,0,.35)', zIndex:300, cursor:'pointer', padding:0,
         }}
       >🐞</button>
-      {showReportFAB && <ReportarProblemaModal onClose={() => setShowReportFAB(false)} />}
+      {showReportFAB && <ReportarProblemaModal sugestao={reportSugestao} onClose={() => setShowReportFAB(false)} />}
 
       {tela === 'home' && <Home jogador={jogador} licao={licao} prog={prog} onEstudo={abrirDia} onRanking={() => loadLatestRanking('week')} onRankingSemana={async (l: any) => { if (l.semana !== licao.semana) await handleChangeLicao(l); loadLatestRanking('week', l); }} onConfig={() => setTela('config')} onAdmin={() => setTela('admin')} onChangeLicao={handleChangeLicao} />}
       {tela === 'estudo' && diaAtual && <Estudo dia={diaAtual} prog={prog} jogador={jogador} semana={licao.semana} activePair={activePair} onSaveStudy={handleSaveStudy} onDayUpdated={(d: any) => setDiaAtual(d)} onQuiz={() => setTela('quiz')} onBack={() => setTela('home')} onMural={() => abrirMural('estudo')} />}

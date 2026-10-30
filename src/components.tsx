@@ -300,16 +300,18 @@ export const InstalarApp = () => {
 /* ===== REPORTAR PROBLEMA =====
    Botão em Config (Perfil), disponível a qualquer momento — ao contrário do
    relato direto da tela de erro (ErrorBoundary), este cobre "algo está
-   errado mas o app não travou" (som que não toca, ranking estranho etc.). */
-export const ReportarProblemaModal = ({ onClose }: { onClose: () => void }) => {
+   errado mas o app não travou" (som que não toca, ranking estranho etc.).
+   `sugestao` (deep link ?relato=sugestao) só troca os textos; o relato cai na
+   mesma lista do admin, marcado com "[Sugestão]" na frente. */
+export const ReportarProblemaModal = ({ onClose, sugestao = false }: { onClose: () => void; sugestao?: boolean }) => {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
 
   const enviar = async () => {
-    if (!texto.trim()) { alert('Descreva o que aconteceu.'); return; }
+    if (!texto.trim()) { alert(sugestao ? 'Escreva sua sugestão.' : 'Descreva o que aconteceu.'); return; }
     setEnviando(true);
-    const ok = await reportarProblema(texto.trim());
+    const ok = await reportarProblema(sugestao ? `[Sugestão] ${texto.trim()}` : texto.trim());
     setEnviando(false);
     if (ok) setEnviado(true);
     else alert('Não foi possível enviar agora. Tente de novo em instantes.');
@@ -321,20 +323,22 @@ export const ReportarProblemaModal = ({ onClose }: { onClose: () => void }) => {
         {enviado ? (
           <>
             <div style={{fontSize:32,textAlign:'center',marginBottom:8}}>✅</div>
-            <div style={{textAlign:'center',fontWeight:900,fontSize:16,marginBottom:16}}>Relato enviado. Obrigado!</div>
+            <div style={{textAlign:'center',fontWeight:900,fontSize:16,marginBottom:16}}>{sugestao ? 'Sugestão enviada. Obrigado por ajudar a construir o SabatinaQuest!' : 'Relato enviado. Obrigado!'}</div>
             <button className="btn btn-gold" onClick={onClose}>Fechar</button>
           </>
         ) : (
           <>
-            <div style={{fontWeight:900,fontSize:16,marginBottom:10}}>🐞 Reportar um problema</div>
+            <div style={{fontWeight:900,fontSize:16,marginBottom:10}}>{sugestao ? '💡 Sugestão para o app' : '🐞 Reportar um problema'}</div>
             <div style={{fontSize:12,color:'var(--mut)',marginBottom:10,lineHeight:1.5}}>
-              Descreva o que aconteceu — a liderança recebe junto com informações técnicas do seu aparelho.
+              {sugestao
+                ? 'Uma ideia, um elogio ou algo que poderia ser melhor? A equipe do SabatinaQuest lê tudo.'
+                : 'Descreva o que aconteceu — a liderança recebe junto com informações técnicas do seu aparelho.'}
             </div>
             <textarea
               value={texto}
               onChange={e => setTexto(e.target.value)}
               rows={4}
-              placeholder="Ex: o quiz travou na pergunta 3..."
+              placeholder={sugestao ? 'Ex: seria legal se o app tivesse...' : 'Ex: o quiz travou na pergunta 3...'}
               style={{width:'100%',padding:10,borderRadius:10,background:'var(--input-bg)',color:'var(--txt)',border:'1px solid var(--input-border)',fontSize:14,resize:'vertical',marginBottom:12,fontFamily:'inherit'}}
             />
             <div style={{display:'flex',gap:8}}>
