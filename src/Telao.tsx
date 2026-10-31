@@ -10,12 +10,13 @@ import { situacaoSorteioSemanal } from './relatorioTemporada';
 import { Confetti, COR_TRILHA_MISTA, useTurmaAtiva, useRegraSemana, AlternarRegraSemana, Track } from './components';
 import { SlideSorteio } from './Apresentacao';
 
-// ===== TELÃO AO VIVO: ranking → campeões → sorteio =====
+// ===== TELÃO AO VIVO: campeões → ranking → sorteio =====
 //
 // Três cenas no mesmo palco 16:9 (.st-palco + quadro em cqh, como o telão do
 // Sorteador e a Apresentação). Diferente da Apresentação, que é um roteiro
 // linear de slides, aqui as cenas ficam TODAS montadas: ir ao sorteio e voltar
-// ao ranking não perde nada — o pódio continua revelado e quem já saiu
+// ao ranking não perde nada. Abre nos campeões: o pódio é a abertura, e o
+// ranking completo vem depois dele — o pódio continua revelado e quem já saiu
 // sorteado continua na lista. O ranking é a mesma assinatura ao vivo do app
 // (listenToWeekProgress por turma): quem termina o quiz sobe na tela na hora.
 //
@@ -24,8 +25,8 @@ import { SlideSorteio } from './Apresentacao';
 
 type Cena = 'ranking' | 'campeoes' | 'sorteio';
 const CENAS: { k: Cena; rotulo: string; tecla: string }[] = [
-  { k: 'ranking', rotulo: '🏆 Ranking', tecla: '1' },
-  { k: 'campeoes', rotulo: '👑 Campeões', tecla: '2' },
+  { k: 'campeoes', rotulo: '👑 Campeões', tecla: '1' },
+  { k: 'ranking', rotulo: '🏆 Ranking', tecla: '2' },
   { k: 'sorteio', rotulo: '🎰 Sorteio', tecla: '3' },
 ];
 
@@ -38,7 +39,7 @@ const Av = ({ a, className = '' }: { a?: string; className?: string }) =>
     ? <img src={a} className={`${className} img`} alt="" />
     : <span className={className}>{a || '👤'}</span>;
 
-// ---------- cena 1: ranking ao vivo ----------
+// ---------- cena 2: ranking ao vivo ----------
 // Linhas em posição absoluta: quando a assinatura reordena, cada linha DESLIZA
 // até o lugar novo (transição de top/left) em vez de pular.
 const CenaRanking = ({ alunos, licao, turmaNome, misto, subiram }: {
@@ -94,7 +95,7 @@ const CenaRanking = ({ alunos, licao, turmaNome, misto, subiram }: {
   );
 };
 
-// ---------- cena 2: campeões (pódio premium) ----------
+// ---------- cena 1: campeões (pódio premium) ----------
 const METAL = ['ouro', 'prata', 'bronze'];
 const CenaCampeoes = ({ top, revelados, suspense, misto }: {
   top: any[]; revelados: number; suspense: boolean; misto: boolean;
@@ -150,7 +151,7 @@ export const TelaoAoVivo = ({ licao: licaoInicial, jogador, onSair }: { licao: a
   const conducao = useTurmaAtiva(jogador);
   const turma = conducao.turma;
   const turmaId = conducao.turmaId;
-  const [cena, setCena] = useState<Cena>('ranking');
+  const [cena, setCena] = useState<Cena>('campeoes');
   const [dir, setDir] = useState<1 | -1>(1);
 
   // A lição da trilha DA TURMA na mesma semana (as semanas são ISO, iguais em
@@ -284,7 +285,7 @@ export const TelaoAoVivo = ({ licao: licaoInicial, jogador, onSair }: { licao: a
   };
 
   return createPortal(
-    <div className="st-palco tv-palco" role="dialog" aria-modal="true" aria-label="Telão: ranking, campeões e sorteio">
+    <div className="st-palco tv-palco" role="dialog" aria-modal="true" aria-label="Telão: campeões, ranking e sorteio">
       <div className="tv-tela" data-dir={dir}>
         <div className="tv-topo">
           <nav className="tv-nav" style={{ ['--i' as any]: idxCena }}>

@@ -2862,7 +2862,9 @@ export const useSorteador = (licao: any, turmaId: string | undefined, track: str
   const [idx, setIdx] = useState(0);
   const [animando, setAnimando] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [queue, setQueue] = useState<number[]>([]);
+  // Ordem dos próximos ganhadores, por ID (não por posição na lista): assim
+  // recarregar os participantes no meio da rodada não embaralha quem é quem.
+  const [queue, setQueue] = useState<string[]>([]);
   // Quem já saiu sorteado NESTA sessão (mais de um prêmio seguido, sem sair
   // da tela) — some do giro e da fila de cima, e vai pra lista de baixo. É
   // diferente do `historico` da tela normal (RegistroSorteio[] do Firestore):
@@ -2871,6 +2873,13 @@ export const useSorteador = (licao: any, turmaId: string | undefined, track: str
   // Registrar ainda.
   const [sorteados, setSorteados] = useState<Participante[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Trava contra dois giros ao mesmo tempo (clique + tecla do passador no
+  // mesmo instante): o segundo pegava a mesma fila, os dois laços trocavam o
+  // nome da tela um por cima do outro e o ganhador entrava duas vezes na lista.
+  const girando = useRef(false);
+  // Só a última carga vale: trocar a regra com uma carga no ar deixava a
+  // resposta antiga chegar por último e sortear com a lista da outra regra.
+  const pedido = useRef(0);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -2883,31 +2892,45 @@ export const useSorteador = (licao: any, turmaId: string | undefined, track: str
   // aqui evita o pior caso — sortear entre os elegíveis da semana anterior
   // achando que é a nova, sem nada na tela denunciando.
   useEffect(() => {
-    setUsers([]); setGanhador(null); setQueue([]); setIdx(0); setSorteados([]);
+    pedido.current++;
+    setUsers([]); setGanhador(null); setQueue([]); setIdx(0); setSorteados([]); setLoading(false);
   }, [licao?.semana, licao?.trimestre, turmaId, track, regra]);
 
-  const carregar = async () => {
-    setLoading(true); setGanhador(null); setQueue([]); setSorteados([]);
-    try {
-      if (regra === 'semana-completa') {
-        const rank = await getWeeklyRankingDaTurma(licao.semana, turmaId);
-        setUsers(rank
+  const buscar = async (): Promise<Participante[]> => {
+    if (regra === 'semana-completa') {
+      const rank = await getWeeklyRankingDaTurma(licao.semana, turmaId);
+      return rank
           // Semanal só vale no dia certo: fez a lição atrasada, fica de fora
           // deste sorteio (mas a semana ainda conta no da temporada).
           .filter((u: any) => !u.isAdmin && !u.isProfessor && u.dias === 7 && semanaTodaNoDia(u, licao))
-          .map((u: any) => ({ id: u.id, nome: u.nome, avatar: u.avatar, xp: u.xp || 0, dias: u.dias, bilhetes: 1, semanasCompletas: 1 })));
-      } else if (regra === 'semana-por-dias') {
-        setUsers(participantesDaSemanaPorDias(await getWeeklyRankingDaTurma(licao.semana, turmaId)));
-      } else {
-        const licoes = (await loadTrackLessonsComHistorico(track as Track))
-          .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre);
-        const meta = diasLiberadosPorSemana(licoes, hojeLocalISO());
-        const rows = await getSeasonProgress(Object.keys(meta));
-        setUsers(participantesDaTemporada(rows, meta, regra, { turmaId, track }));
-      }
-    } catch { /* silent */ }
-    setLoading(false);
+          .map((u: any) => ({ id: u.id, nome: u.nome, avatar: u.avatar, xp: u.xp || 0, dias: u.dias, bilhetes: 1, semanasCompletas: 1 }));
+    }
+    if (regra === 'semana-por-dias') return participantesDaSemanaPorDias(await getWeeklyRankingDaTurma(licao.semana, turmaId));
+    const licoes = (await loadTrackLessonsComHistorico(track as Track))
+      .filter((l: any) => !l.isAdminOnly && l.trimestre === licao?.trimestre);
+    const meta = diasLiberadosPorSemana(licoes, hojeLocalISO());
+    const rows = await getSeasonProgress(Object.keys(meta));
+    return participantesDaTemporada(rows, meta, regra, { turmaId, track });
   };
+
+  // `manterSorteados`: recarregar no meio da rodada (alguém acabou de
+  // terminar a lição) traz os novos para a fila sem devolver quem já ganhou.
+  const carregarLista = async (manterSorteados: boolean) => {
+    if (girando.current) return;
+    const meu = ++pedido.current;
+    setLoading(true);
+    if (!manterSorteados) { setGanhador(null); setSorteados([]); }
+    try {
+      const lista = await buscar();
+      if (meu !== pedido.current) return;
+      setUsers(lista);
+      setQueue([]);
+      setIdx(0);
+    } catch { /* silent */ }
+    if (meu === pedido.current) setLoading(false);
+  };
+  const carregar = () => carregarLista(false);
+  const recarregar = () => carregarLista(true);
 
   const playTick = (fast: boolean) => {
     if (!somLigado()) return;
@@ -2944,7 +2967,7 @@ export const useSorteador = (licao: any, turmaId: string | undefined, track: str
   };
 
   const iniciar = async () => {
-    if (users.length === 0) return;
+    if (users.length === 0 || girando.current || loading) return;
     // Era `.sort(() => Math.random() - 0.5)` — o mesmo shuffle enviesado que
     // o embaralhar() de utils.ts já corrigiu pras alternativas do quiz (ver o
     // comentário lá: a posição original tende a "grudar" perto do início).
@@ -2953,24 +2976,43 @@ export const useSorteador = (licao: any, turmaId: string | undefined, track: str
     // quem começa perto do topo da lista ganha o sorteio desproporcionalmente
     // mais, toda semana.
     // Com 1 bilhete para todos, a ordem ponderada é um Fisher-Yates comum.
-    let fila = queue.length > 0 ? queue : ordemPonderada(users);
+    //
+    // A fila é refeita só com quem ainda não ganhou: refazê-la com a lista
+    // inteira (como era) trazia de volta quem já tinha saído, o giro rodava
+    // numa lista vazia (nome em branco na tela) e o nome se repetia em
+    // "Já sorteados".
+    const jaSaiu = new Set(sorteados.map(s => s.id));
+    const presentes = new Set(users.map(u => u.id));
+    let fila = queue.filter(id => presentes.has(id) && !jaSaiu.has(id));
+    if (fila.length === 0) {
+      const restantes = users.filter(u => !jaSaiu.has(u.id));
+      fila = ordemPonderada(restantes).map(i => restantes[i].id);
+    }
     if (fila.length === 0) return; // todo mundo desta lista já foi sorteado
-    const winner = fila[0];
+    const winner = users.findIndex(u => u.id === fila[0]);
+    girando.current = true;
     setQueue(fila.slice(1));
-    setGanhador(null); setAnimando(true);
 
     // O giro só passa por quem ainda não ganhou nesta sessão — quem já saiu
     // sorteado não deveria "concorrer de novo" na tela, mesmo a fila (acima)
     // já garantindo que ele não seria escolhido de novo. `winner` nunca está
     // em `sorteados` ainda (só entra em revelar(), abaixo), então a lista
     // de elegíveis sempre tem pelo menos ele.
-    const sorteadosIds = new Set(sorteados.map(s => s.id));
-    const elegiveis = users.map((_, i) => i).filter(i => !sorteadosIds.has(users[i].id));
+    const elegiveis = users.map((_, i) => i).filter(i => !jaSaiu.has(users[i].id));
     let pos = Math.floor(Math.random() * elegiveis.length); // posição inicial aleatória
+    // O giro já começa num nome que concorre — sem isso, enquanto o tambor
+    // carrega, a tela mostrava o ganhador anterior girando de novo.
+    setIdx(elegiveis[pos]);
+    setGanhador(null); setAnimando(true);
 
+    let revelado = false;
     const revelar = () => {
-      setIdx(winner); setGanhador(users[winner]); setAnimando(false);
-      setSorteados(prev => [...prev, users[winner]]);
+      if (revelado) return;
+      revelado = true;
+      girando.current = false;
+      const g = users[winner];
+      setIdx(winner); setGanhador(g); setAnimando(false);
+      setSorteados(prev => prev.some(p => p.id === g.id) ? prev : [...prev, g]);
       setTimeout(playWin, 150);
     };
 
@@ -3018,7 +3060,7 @@ export const useSorteador = (licao: any, turmaId: string | undefined, track: str
     tick();
   };
 
-  return { users, ganhador, idx, animando, loading, carregar, iniciar, sorteados };
+  return { users, ganhador, idx, animando, loading, carregar, recarregar, iniciar, sorteados };
 };
 
 export const AvatarSorteio = ({ u, className }: { u: any; className: string }) =>
@@ -3070,8 +3112,16 @@ export const BotaoRegistrar = ({ estado, onRegistrar, className = '' }: { estado
   </button>
 );
 
+// Traz quem terminou a lição depois que a lista foi carregada, sem devolver
+// para a fila quem já foi sorteado nesta rodada.
+export const BotaoRecarregar = ({ loading, onClick, className = '' }: { loading: boolean; onClick: () => void; className?: string }) => (
+  <button className={`btn btn-ghost st-btn st-btn-reg ${className}${loading ? ' btn-dis' : ''}`} onClick={onClick} disabled={loading}>
+    {loading ? 'Recarregando…' : '🔄 Recarregar participantes'}
+  </button>
+);
+
 /* ===== SORTEADOR — MODO TELÃO (16:9) ===== */
-const SorteadorTelao = ({ eyebrow, titulo, regra, turmaNome, users, totalBilhetes, ganhador, idx, animando, loading, sorteados = [], registro, podeRegistrar, onRegistrar, onCarregar, onSortear, onSair }: any) => {
+const SorteadorTelao = ({ eyebrow, titulo, regra, turmaNome, users, totalBilhetes, ganhador, idx, animando, loading, sorteados = [], registro, podeRegistrar, onRegistrar, onCarregar, onRecarregar, onSortear, onSair }: any) => {
   const atual = users[idx];
   const sorteadosIds = new Set(sorteados.map((u: Participante) => u.id));
   const naFila = users.filter((u: Participante) => !sorteadosIds.has(u.id));
@@ -3133,10 +3183,11 @@ const SorteadorTelao = ({ eyebrow, titulo, regra, turmaNome, users, totalBilhete
         <div className="st-base">
           {users.length > 0 && (
             <div className="st-acoes">
-              <button className={`btn btn-gold st-btn${animando ? ' btn-dis' : ''}`} onClick={onSortear} disabled={animando}>
-                {animando ? '🎰 Sorteando…' : ganhador ? '🔁 Sortear de novo' : '🎰 Sortear!'}
+              <button className={`btn btn-gold st-btn${animando || loading || !naFila.length ? ' btn-dis' : ''}`} onClick={onSortear} disabled={animando || loading || !naFila.length}>
+                {animando ? '🎰 Sorteando…' : !naFila.length ? 'Todos já sorteados' : ganhador ? '🔁 Sortear de novo' : '🎰 Sortear!'}
               </button>
               {ganhador && !animando && podeRegistrar && <BotaoRegistrar estado={registro} onRegistrar={onRegistrar} className="st-btn st-btn-reg" />}
+              {!animando && <BotaoRecarregar loading={loading} onClick={onRecarregar} />}
             </div>
           )}
           {sorteados.length > 0 && (
@@ -3180,7 +3231,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
   const [regraSemana, setRegraSemana] = useRegraSemana();
   const regra: RegraSorteio = tipo === 'semana' ? regraSemana : regraTemporada;
 
-  const { users, ganhador, idx, animando, loading, carregar, iniciar, sorteados } = useSorteador(sel.licao, turmaDoSorteio, sel.track, regra);
+  const { users, ganhador, idx, animando, loading, carregar, recarregar, iniciar, sorteados } = useSorteador(sel.licao, turmaDoSorteio, sel.track, regra);
   const totalBilhetes = users.reduce((s, u) => s + u.bilhetes, 0);
   // Quem já ganhou nesta rodada some da lista de elegíveis e vai pro rodapé
   // "Já sorteados" — ver o comentário em `sorteados`, dentro de useSorteador.
@@ -3291,14 +3342,14 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
     if (!telao) return;
     const tecla = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { sairTelao(); return; }
-      if ((e.key === ' ' || e.key === 'Enter' || e.key === 'PageDown' || e.key === 'ArrowRight') && !animando && users.length > 0) {
+      if ((e.key === ' ' || e.key === 'Enter' || e.key === 'PageDown' || e.key === 'ArrowRight') && !animando && naFila.length > 0) {
         e.preventDefault();
         iniciar();
       }
     };
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
-  }, [telao, animando, users.length, iniciar]);
+  }, [telao, animando, naFila.length, iniciar]);
 
   const eyebrow = tipo === 'semana' ? '🎰 Sorteio da semana' : '🏆 Sorteio da temporada';
   const tituloDoSorteio = tipo === 'semana' ? (tituloDaLicao(sel.licao) || sel.licao?.semana) : sel.licao?.trimestre;
@@ -3330,6 +3381,7 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
           podeRegistrar={!!turmaDoSorteio}
           onRegistrar={registrar}
           onCarregar={carregar}
+          onRecarregar={recarregar}
           onSortear={iniciar}
           onSair={sairTelao}
         />
@@ -3386,8 +3438,8 @@ export const Sorteador = ({ licao, jogador, onBack }: any) => {
         </div>
 
         <div style={{textAlign:'center'}}>
-          <button onClick={carregar} disabled={loading} className={`btn btn-ghost ${loading ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px 16px', marginBottom:16, width:'auto', display:'inline-flex'}}>
-            {loading ? 'Carregando...' : '🔄 Carregar Participantes'}
+          <button onClick={users.length ? recarregar : carregar} disabled={loading || animando} className={`btn btn-ghost ${loading || animando ? 'btn-dis' : ''}`} style={{fontSize:13, padding:'8px 16px', marginBottom:16, width:'auto', display:'inline-flex'}}>
+            {loading ? 'Carregando...' : users.length ? '🔄 Recarregar participantes' : '🔄 Carregar Participantes'}
           </button>
         </div>
 

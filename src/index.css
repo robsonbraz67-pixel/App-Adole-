@@ -1391,7 +1391,7 @@ body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 /* Tirinha quadro a quadro: sem barra de rolagem visível no trilho */
 .tirinha-trilho::-webkit-scrollbar{display:none}
 
-/* ===== TELÃO AO VIVO (src/Telao.tsx): ranking → campeões → sorteio =====
+/* ===== TELÃO AO VIVO (src/Telao.tsx): campeões → ranking → sorteio =====
    Mesmo palco 16:9 em cqh do Sorteador. As três cenas ficam montadas uma em
    cima da outra; a ativa aparece e as outras deslizam para o lado de onde
    vieram — ir e voltar é sempre o mesmo movimento, sem tela em branco. */

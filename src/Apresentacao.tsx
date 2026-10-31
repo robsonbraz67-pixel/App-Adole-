@@ -10,7 +10,7 @@ import {
 import { REGRA_TEXTO, RegraSorteio, RegraSemana, Participante } from './sorteio';
 import {
   Confetti, SeletorLicao, SeletorTurmaAtiva, useTurmaAtiva, useSorteador, AvatarSorteio, detalheDoGanhador,
-  BotaoRegistrar, EstadoRegistro,
+  BotaoRegistrar, BotaoRecarregar, EstadoRegistro,
 } from './components';
 
 // ===== APRESENTAÇÃO DE ENCERRAMENTO (semana ou temporada) =====
@@ -281,7 +281,7 @@ export const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, 
   regraSemana?: RegraSemana; topo?: React.ReactNode;
 }) => {
   const regra: RegraSorteio = modo === 'semana' ? regraSemana : 'temporada-tudo';
-  const { users, ganhador, idx, animando, loading, carregar, iniciar, sorteados } = useSorteador(licao, turmaId, track, regra);
+  const { users, ganhador, idx, animando, loading, carregar, recarregar, iniciar, sorteados } = useSorteador(licao, turmaId, track, regra);
   const [registro, setRegistro] = useState<EstadoRegistro>('livre');
   useEffect(() => { carregar(); }, [regra]);
   useEffect(() => { setRegistro('livre'); }, [ganhador]);
@@ -293,11 +293,11 @@ export const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, 
   // Espaço/Enter sorteiam neste slide (→ continua avançando).
   useEffect(() => {
     registrarTecla((e: KeyboardEvent) => {
-      if ((e.key === ' ' || e.key === 'Enter') && !animando && naFila.length > 0) { iniciar(); return true; }
+      if ((e.key === ' ' || e.key === 'Enter') && !animando && !loading && naFila.length > 0) { iniciar(); return true; }
       return false;
     });
     return () => registrarTecla(null);
-  }, [animando, naFila.length, iniciar]);
+  }, [animando, loading, naFila.length, iniciar]);
 
   const registrar = async () => {
     if (!ganhador || registro === 'salvando' || registro === 'salvo') return;
@@ -332,10 +332,13 @@ export const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, 
         {topo}
       </div>
       <div className="st-centro">
-        {loading ? (
+        {loading && users.length === 0 ? (
           <div className="st-vazio"><div className="st-legenda">Carregando participantes…</div></div>
         ) : users.length === 0 ? (
-          <div className="st-vazio"><div className="st-emoji-grande">🎰</div><div className="st-legenda">Ninguém concorre neste período.</div></div>
+          <div className="st-vazio">
+            <div className="st-emoji-grande">🎰</div><div className="st-legenda">Ninguém concorre neste período.</div>
+            <BotaoRecarregar loading={loading} onClick={recarregar} />
+          </div>
         ) : ganhador && !animando ? (
           <div className="st-vencedor" key={ganhador.id}>
             <div className="st-eyebrow ouro">🏆 Vencedor</div>
@@ -368,10 +371,11 @@ export const SlideSorteio = ({ modo, licao, turmaId, track, turmaNome, jogador, 
       <div className="st-base">
         {users.length > 0 && (
           <div className="st-acoes">
-            <button className={`btn btn-gold st-btn${animando || !naFila.length ? ' btn-dis' : ''}`} onClick={iniciar} disabled={animando || !naFila.length}>
+            <button className={`btn btn-gold st-btn${animando || loading || !naFila.length ? ' btn-dis' : ''}`} onClick={iniciar} disabled={animando || loading || !naFila.length}>
               {animando ? '🎰 Sorteando…' : !naFila.length ? 'Todos já sorteados' : ganhador ? '🔁 Sortear de novo' : '🎰 Sortear!'}
             </button>
             {ganhador && !animando && <BotaoRegistrar estado={registro} onRegistrar={registrar} className="st-btn st-btn-reg" />}
+            {!animando && <BotaoRecarregar loading={loading} onClick={recarregar} />}
           </div>
         )}
         {sorteados.length > 0 && (

@@ -71,7 +71,7 @@ export default function App() {
   const [tela, setTela] = useState('splash');
   // O sorteio abre do painel ou do atalho do ranking; "Voltar" devolve à origem.
   const [voltarDoSorteio, setVoltarDoSorteio] = useState<'home' | 'ranking'>('home');
-  // Telão ao vivo (ranking → campeões → sorteio): abre por cima da tela atual,
+  // Telão ao vivo (campeões → ranking → sorteio): abre por cima da tela atual,
   // em tela cheia, na semana escolhida. Fechar volta exatamente para onde estava.
   const [licaoDoTelao, setLicaoDoTelao] = useState<any>(null);
   const abrirTelao = (l: any) => {
